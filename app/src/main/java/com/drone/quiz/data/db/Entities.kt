@@ -64,7 +64,11 @@ data class ExamRecordEntity(
     val extraCounts: String = "",        // v2.8.0：新题型计数 JSON，如 {"multi":5,"blank":3,"short":2}
     // v2.8.6：开考时设定的合格线（成绩单回显用）。非空新列必须带 DEFAULT 且实体声明一致的
     // @ColumnInfo(defaultValue)——v2.8.1 已踩坑（Room 逐列校验 schema）
-    @ColumnInfo(defaultValue = "60") val passLine: Int = 60
+    @ColumnInfo(defaultValue = "60") val passLine: Int = 60,
+    // v2.11.0 随机选项：本场模考的选项乱序会话盐（0 = 未打乱）。
+    // 开考时生成、随记录落库，进程重启后 resumeExam 依此还原与开考时相同的选项顺序；
+    // 作答落库的 picked 恒为原始下标/位掩码（视图层乱序不污染数据）。
+    @ColumnInfo(defaultValue = "0") val optSalt: Long = 0
 )
 
 @Entity(tableName = "exam_answers", indices = [Index("examId"), Index("qid")])

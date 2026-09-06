@@ -253,5 +253,27 @@ for pat, desc in [
     for h in grep_hits(pat):
         print(f"[FAIL] 旧单槽会话 API 残留（{desc}）: {h}"); fail = True
 
+# 3.8) 随机选项机制断言（v2.11.0）：视图层乱序 + 数据层原始空间的结构性防删除断言。
+_opt = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/OptionShuffle.kt")
+for pat, desc in [
+    ("object OptionShuffle", "OptionShuffle 核心工具"),
+    ("fun permOf", "稳定 permutation 生成"),
+    ("fun uaToOriginal", "UserAnswer 显示→原始换算口（落库/判分唯一通道）"),
+    ("fun uaToDisplay", "UserAnswer 原始→显示换算口（回显高亮）"),
+]:
+    if pat not in _opt:
+        print(f"[FAIL] OptionShuffle 缺 {desc}（{pat}）"); fail = True
+# 刷题/模考两链路必须在 onCommit/onAnswer 换算回原始空间；错题特训不生成盐
+_prs = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt")
+_exm = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+for name, s in [("PracticeScreen", _prs), ("ExamScreens", _exm)]:
+    if "OptionShuffle.uaToOriginal" not in s:
+        print(f"[FAIL] {name} 缺作答换算回原始空间（OptionShuffle.uaToOriginal）——随机选项答案映射防线被拆"); fail = True
+if "src != \"wrong\"" not in _prs:
+    print("[FAIL] PracticeScreen 缺错题特训不打乱守卫（src != \"wrong\" 不生成盐）"); fail = True
+# 答案映射正确性单测必须存在（误删即失去核心命题的回归验证）
+if not os.path.exists(os.path.join(_repo_root, "app/src/test/java/com/drone/quiz/OptionShuffleTest.kt")):
+    print("[FAIL] OptionShuffleTest.kt 缺失（随机选项判分一致性的核心回归测试被误删）"); fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

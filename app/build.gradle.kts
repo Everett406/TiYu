@@ -16,8 +16,8 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 41
-        versionName = "2.10.3"
+        versionCode = 42
+        versionName = "2.11.0"
     }
 
     // 固定签名：本地（环境变量 DQ_KS_PATH/DQ_KS_STORE_PASS）与 GitHub Actions（secrets）共用同一 keystore，
@@ -96,4 +96,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
+    // v2.11.0 随机选项：OptionShuffle 答案映射正确性 JVM 单测
+    testImplementation("junit:junit:4.13.2")
 }
