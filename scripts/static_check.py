@@ -268,5 +268,22 @@ for _mime in ["application/zip", "application/x-zip-compressed", "application/oc
     if f'android:mimeType="{_mime}"' not in _manifest_xml:
         print(f"[FAIL] Manifest VIEW intent-filter 缺 mimeType {_mime}（微信/文件管理器兜底类型）"); fail = True
 
+# 3.9) 发版版本号三处一致性（v2.11.1 踩坑：APP_VERSION_TAG 漏同步，release 步骤
+#      用旧 tag v2.10.3 找到已存在 release 追加 APK——新版本没建、旧版本被污染）。
+import re as _re
+_gradle_src = load(_repo_root + "/app/build.gradle.kts")
+_wf_src = load(_repo_root + "/.github/workflows/build.yml")
+_vname = _re.search(r'versionName = "([\d.]+)"', _gradle_src)
+_vcode = _re.search(r'versionCode = (\d+)', _gradle_src)
+_wf_name = _re.search(r'APP_VERSION_NAME: ([\d.]+)', _wf_src)
+_wf_tag = _re.search(r'APP_VERSION_TAG: v?([\d.]+)', _wf_src)
+if not (_vname and _vcode and _wf_name and _wf_tag):
+    print("[FAIL] 版本号解析失败（gradle / build.yml 格式变更，请修 3.9 节正则）"); fail = True
+else:
+    if not (_vname.group(1) == _wf_name.group(1) == _wf_tag.group(1)):
+        print(f"[FAIL] 版本号三处不一致: gradle={_vname.group(1)} "
+              f"build.yml name={_wf_name.group(1)} tag={_wf_tag.group(1)}")
+        fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)
