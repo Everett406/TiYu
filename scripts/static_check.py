@@ -193,6 +193,9 @@ must = [
     ("ExternalBankImporter", "外部打开读流+PK头嗅探解析器(v2.11.1)"),
     ("ExternalBankFile", "外部打开预解析 DTO·直接进预览态(v2.11.1)"),
     ("ExternalImportHost", "外部导入全局宿主·复用导入弹窗(v2.11.1)"),
+    ("VibrateFeedback", "答对震动工具(v2.11.3)"),
+    ("vibrate_on_correct", "答对震动 DataStore 键(v2.11.3)"),
+    ("setVibrateOnCorrect", "答对震动开关 setter(v2.11.3)"),
 ]
 for pat, desc in must:
     if not grep_hits(pat):
@@ -296,6 +299,24 @@ for _gpat, _gdesc in [
 ]:
     for h in grep_hits(_gpat):
         print(f"[FAIL] 果冻动效残留（{_gdesc}，v2.11.2 已整体删除）: {h}"); fail = True
+
+# 3.11) 答对震动链路（v2.11.3）：刷题/特训统一提交入口 onCommit 判定「回答正确」时
+#       轻震一下。Manifest VIBRATE 权限缺失 = 震动静默失效；考试为整卷提交无即时
+#       判定，ExamScreens 出现震动调用即 FAIL（防止后续改造误接入）。
+if "android.permission.VIBRATE" not in _manifest_xml:
+    print("[FAIL] Manifest 缺 VIBRATE 权限（答对震动静默失效）"); fail = True
+_vib_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/util/VibrateFeedback.kt")
+for _vpat, _vdesc in [("VibratorManager", "API31 震动服务入口（minSdk 31 无旧版分支）"),
+                      ("EFFECT_CLICK", "平台标准点击触感"),
+                      ("hasVibrator", "无震动器设备防护")]:
+    if _vpat not in _vib_src:
+        print(f"[FAIL] VibrateFeedback 缺 {_vdesc}（{_vpat}）"); fail = True
+_practice_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt")
+if "VibrateFeedback.onCorrect(context)" not in _practice_src:
+    print("[FAIL] PracticeScreen onCommit 未接入答对震动（正确性首次判出处必震）"); fail = True
+for h in grep_hits("VibrateFeedback.onCorrect"):
+    if "ExamScreens" in h or "exam" in h.lower():
+        print(f"[FAIL] 考试路径不得接入答对震动（整卷提交无即时判定）: {h}"); fail = True
 
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

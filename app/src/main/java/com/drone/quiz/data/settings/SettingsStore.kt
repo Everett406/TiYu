@@ -65,6 +65,7 @@ data class AppSettings(
     val themeMode: Int = 0,      // 0 跟随系统 1 浅色 2 深色
     val fontLevel: Int = 1,      // 0..3 -> 0.85 / 1.0 / 1.15 / 1.3
     val autoNext: Boolean = true,
+    val vibrateOnCorrect: Boolean = true, // v2.11.3 答对轻震一下（刷题/特训；考试无即时判定不受影响）
     val passScore: Int = 60,     // 50..95 step 5
     val removeThreshold: Int = 2, // 错题移除：连续答对 N 次
     val dailyNotify: Boolean = false,
@@ -102,6 +103,8 @@ class SettingsStore(private val context: Context) {
         val theme = intPreferencesKey("theme")
         val font = intPreferencesKey("font_level")
         val autoNext = booleanPreferencesKey("auto_next")
+        // v2.11.3 答对震动开关
+        val vibrateCorrect = booleanPreferencesKey("vibrate_on_correct")
         val passScore = intPreferencesKey("pass_score")
         val removeThreshold = intPreferencesKey("remove_threshold")
         val dailyNotify = booleanPreferencesKey("daily_notify")
@@ -160,6 +163,7 @@ class SettingsStore(private val context: Context) {
             themeMode = p[K.theme] ?: 0,
             fontLevel = p[K.font] ?: 1,
             autoNext = p[K.autoNext] ?: true,
+            vibrateOnCorrect = p[K.vibrateCorrect] ?: true,
             passScore = p[K.passScore] ?: 60,
             removeThreshold = p[K.removeThreshold] ?: 2,
             dailyNotify = p[K.dailyNotify] ?: false,
@@ -390,6 +394,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setThemeMode(v: Int) = context.dataStore.edit { it[K.theme] = v }
     suspend fun setFontLevel(v: Int) = context.dataStore.edit { it[K.font] = v }
     suspend fun setAutoNext(v: Boolean) = context.dataStore.edit { it[K.autoNext] = v }
+    suspend fun setVibrateOnCorrect(v: Boolean) = context.dataStore.edit { it[K.vibrateCorrect] = v }
     suspend fun setPassScore(v: Int) = context.dataStore.edit { it[K.passScore] = v }
     suspend fun setRemoveThreshold(v: Int) = context.dataStore.edit { it[K.removeThreshold] = v }
     suspend fun setDailyNotify(v: Boolean) = context.dataStore.edit { it[K.dailyNotify] = v }

@@ -480,6 +480,29 @@ fun SettingsScreen(backdrop: Backdrop) {
                         backdrop = backdrop
                     )
                 }
+                // v2.11.3 答对震动：刷题/特训即时判定答对时轻震一下（考试不受影响）
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("答对震动", color = ui.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (settings.vibrateOnCorrect) "答对时轻震一下（考试不受影响）" else "已关闭",
+                            color = ui.textSub, fontSize = 12.sp
+                        )
+                    }
+                    GlassToggle(
+                        checked = { settings.vibrateOnCorrect },
+                        onCheckedChange = { v ->
+                            scope.launch { ServiceLocator.settings.setVibrateOnCorrect(v) }
+                        },
+                        backdrop = backdrop
+                    )
+                }
                 Row(
                     Modifier
                         .fillMaxWidth()

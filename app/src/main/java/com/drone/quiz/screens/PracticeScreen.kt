@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,6 +81,7 @@ import com.drone.quiz.screens.common.rememberBankName
 import com.drone.quiz.screens.common.remainingBottomPx
 import com.drone.quiz.screens.common.scrolledFromTopPx
 import com.drone.quiz.screens.common.softVerticalEdges
+import com.drone.quiz.util.VibrateFeedback
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
@@ -119,6 +121,7 @@ fun PracticeRunScreen(
     onExit: () -> Unit
 ) {
     val ui = LocalUi.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // v2.8.6 性能：不再整体收集 settings——DataStore 任意 key 写入（含本页每次翻页/作答的
@@ -132,6 +135,11 @@ fun PracticeRunScreen(
         .map { it.removeThreshold }
         .distinctUntilChanged()
         .collectAsState(initial = 2)
+    // v2.11.3 答对轻震开关：同规约只订阅本字段，无关 settings 写入不穿透本页
+    val vibrateOnCorrect by ServiceLocator.settings.settings
+        .map { it.vibrateOnCorrect }
+        .distinctUntilChanged()
+        .collectAsState(initial = true)
     val eyeCareOn by ServiceLocator.settings.settings
         .map { it.eyeCareReminder }
         .distinctUntilChanged()
@@ -344,6 +352,9 @@ fun PracticeRunScreen(
             ?: if (ua.texts.isNotEmpty() || ua.text.isNotBlank()) 1 else 0
         val correct = judgeAnswer(q, ua)
         if (correct != null && (prev == null || judgeAnswer(q, prev) == null)) {
+            // v2.11.3 答对轻震一下：正确性首次判出即触发（刷题/特训共用本入口，
+            // 随机小练同享；考试为整卷提交、出分才有对错，无即时判定不接入）。失败静默不影响记账。
+            if (correct == true && vibrateOnCorrect) VibrateFeedback.onCorrect(context)
             ServiceLocator.appScope.launch {
                 runCatching {
                     ServiceLocator.repo.recordAnswer(
