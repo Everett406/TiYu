@@ -174,12 +174,9 @@ must = [
     ("GlassInputDialog", "玻璃输入对话框·重命名用(v2.8.7)"),
     ("readableSubColor", "小字自适应背景色(v2.8.7)"),
     ("animateItem", "错题本删除靠拢动画(v2.8.7)"),
-    ("GooeyContainer", "果冻 gooey 融合容器(v2.9.3)"),
-    ("createChainEffect", "gooey 官方链式管线 blur→阈值(v2.9.3)"),
-    ("MODE_GOOEY", "特效三级体系·果冻模式(v2.9.3)"),
     ("acrylicMaterial", "亚克力表面材质·只模糊无折射(v2.9.3)"),
-    ("rememberReducedMotion", "系统减弱动画时只去果冻动效(v2.9.3)"),
-    ("GOOEY_SRC", "gooey AGSL alpha 阶跃着色器(v2.9.3)"),
+    ("rememberReducedMotion", "系统减弱动画降级(v2.9.3/v2.11.2 挪入 GlassKit)"),
+    ("MODE_ACRYLIC", "特效三级体系·亚克力模式(v2.11.2 原果冻，无 goo 动效)"),
     ("WidgetUpdater", "桌面小组件引擎·四款 RemoteViews(v2.10.0)"),
     ("ShareCardRenderer", "成绩分享卡 Canvas 渲染器·7主题(v2.10.0)"),
     ("ShareCardHost", "成绩分享卡全屏浮层·预览即产物(v2.10.0)"),
@@ -284,6 +281,21 @@ else:
         print(f"[FAIL] 版本号三处不一致: gradle={_vname.group(1)} "
               f"build.yml name={_wf_name.group(1)} tag={_wf_tag.group(1)}")
         fail = True
+
+# 3.10) 果冻(gooey)动效残留禁令（v2.11.2：关特效=纯亚克力模糊，goo 动效整体删除）。
+#       题屿自有 goo API 复活即 FAIL（createChainEffect 不进禁令——vendored
+#       com/kyant 库内部合法使用，grep 范围含 vendored 会误伤）。
+for _gpat, _gdesc in [
+    ("GooeyContainer", "goo 融合容器"),
+    ("GooeyItem", "goo 液滴"),
+    ("GooeyDefaults", "goo 参数"),
+    ("GOOEY_SRC", "goo AGSL 着色器"),
+    ("MODE_GOOEY", "旧果冻模式常量"),
+    ("ui.gooey", "goo 包引用"),
+    ("ui/gooey", "goo 包路径引用"),
+]:
+    for h in grep_hits(_gpat):
+        print(f"[FAIL] 果冻动效残留（{_gdesc}，v2.11.2 已整体删除）: {h}"); fail = True
 
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

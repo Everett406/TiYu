@@ -115,14 +115,14 @@ class MainActivity : ComponentActivity() {
                 var diagDismissed by remember { mutableStateOf(false) }
                 var bannerDismissed by remember { mutableStateOf(false) }
 
-                // 特效三级决策（v2.9.3 果冻模式）：
+                // 特效三级决策（v2.11.2：关特效 = 纯亚克力模糊，果冻动效已除）：
                 // - 上次启动异常（autoSafeMode）→ 无条件安全平涂兜底，独立于用户设置；
-                // - 用户开关仅在非崩溃时区分：开 = 液态玻璃（真折射）/ 关 = 果冻（亚克力+gooey）。
+                // - 用户开关仅在非崩溃时区分：开 = 液态玻璃（真折射）/ 关 = 亚克力（只模糊无折射）。
                 // GlassRuntime 是 mutableState，赋值即全局重组，切换即时生效无需重启。
                 GlassRuntime.mode = when {
                     snapshot.autoSafeMode -> GlassRuntime.MODE_SAFE
                     settings.effects -> GlassRuntime.MODE_GLASS
-                    else -> GlassRuntime.MODE_GOOEY
+                    else -> GlassRuntime.MODE_ACRYLIC
                 }
 
                 LaunchedEffect(Unit) {

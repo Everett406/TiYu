@@ -65,15 +65,13 @@ import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import kotlinx.coroutines.launch
 
 /**
- * 弹窗面板进出场（果冻模式：缩放融合——过冲 spring 让面板像液滴一样弹性就位；
- * 玻璃/安全模式保持原参数不动）。仅切换 spring 手感，不改变动画结构。
+ * 弹窗面板进出场（统一 spring 手感；v2.11.2 起不再区分果冻过冲）。
  */
 private fun overlayEnter(fadeMs: Int, initialScale: Float, stiffness: Float): EnterTransition {
-    val gooey = GlassRuntime.mode == GlassRuntime.MODE_GOOEY
     return fadeIn(tween(fadeMs)) + scaleIn(
-        initialScale = if (gooey) initialScale - 0.06f else initialScale,
+        initialScale = initialScale,
         animationSpec = spring(
-            dampingRatio = if (gooey) 0.5f else 0.85f,
+            dampingRatio = 0.85f,
             stiffness = stiffness
         )
     )
@@ -255,12 +253,7 @@ fun GlassBottomSheet(
         AnimatedVisibility(
             visible = visible,
             enter = slideInVertically(
-                animationSpec = if (GlassRuntime.mode == GlassRuntime.MODE_GOOEY) {
-                    // 果冻：滑入过冲回弹（液滴就位手感）
-                    spring(dampingRatio = 0.65f, stiffness = 380f)
-                } else {
-                    spring(dampingRatio = 0.9f, stiffness = 380f)
-                },
+                animationSpec = spring(dampingRatio = 0.9f, stiffness = 380f),
                 initialOffsetY = { it }
             ) + fadeIn(tween(200)),
             exit = slideOutVertically(

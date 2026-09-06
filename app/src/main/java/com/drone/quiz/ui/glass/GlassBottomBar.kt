@@ -44,10 +44,7 @@ import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
 import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.settings.AppSettings
-import com.drone.quiz.ui.gooey.GooeyContainer
-import com.drone.quiz.ui.gooey.GooeyDefaults
-import com.drone.quiz.ui.gooey.GooeyItem
-import com.drone.quiz.ui.gooey.rememberReducedMotion
+import com.drone.quiz.ui.glass.rememberReducedMotion
 import com.drone.quiz.ui.theme.LocalUi
 import androidx.compose.runtime.collectAsState
 import com.kyant.backdrop.Backdrop
@@ -95,33 +92,24 @@ fun GlassBottomTabs(
     val glassSettings by ServiceLocator.settings.settings.collectAsState(initial = AppSettings())
     val barBlurDp = when (glassSettings.glassBlur) { 0 -> 4.dp; 2 -> 14.dp; else -> 8.dp }
 
-    // 安全模式：实色胶囊底栏，无 RenderEffect，保留选中胶囊与切换
+    // 关闭特效（亚克力）/崩溃兑底（平涂）：无折射管线，保留选中胶囊与切换
     if (!GlassRuntime.enabled) {
-        if (GlassRuntime.mode == GlassRuntime.MODE_GOOEY) {
-            // 果冻模式：亚克力底座 + gooey 选中胶囊液态拖尾。
-            // 手感对齐 sinasamaki 底栏 metaball：主胶囊快 spring 追到选中位，
-            // 拖尾胶囊慢半拍 bounce 追随，goo 融合成液态拉伸；图标层在 goo 层之上永远锐利。
+        if (GlassRuntime.mode == GlassRuntime.MODE_ACRYLIC) {
+            // 亚克力模式（v2.11.2，原果冻）：亚克力底座 + 普通 spring 跟随选中胶囊。
+            // 无 goo 融合拖尾：胶囊本身快 spring 追到选中位，图标层永远锐利。
             val reduced = rememberReducedMotion()
             val density = LocalDensity.current
-            // glassBlur 三档 → (亚克力模糊 dp, goo blur px, goo threshold)
-            val (acrylicBlurPx, gooBlurPx, gooThreshold) =
-                GooeyDefaults.levelParams(glassSettings.glassBlur) { with(density) { it.toPx() } }
+            // glassBlur 三档 → 亚克力模糊 dp（低 4/中 8/高 14 由 barBlurDp 统一口径）
+            val acrylicBlurPx = barBlurDp.let { with(density) { it.toPx() } }
             val acrylicSurface = ui.surface.copy(alpha = if (ui.isDark) 0.45f else 0.6f)
 
             val selectedProvider = rememberUpdatedState(selectedTabIndex)
             val accentAnim = remember { Animatable(selectedTabIndex().toFloat()) }
-            val trailAnim = remember { Animatable(selectedTabIndex().toFloat()) }
-            // 主胶囊：快 spring 直达
+            // 主胶囊：快 spring 直达（减弱动画时瞬时定位）
             LaunchedEffect(Unit) {
                 snapshotFlow { selectedProvider.value() }.drop(1).collectLatest { idx ->
                     if (reduced) accentAnim.snapTo(idx.toFloat())
                     else accentAnim.animateTo(idx.toFloat(), spring(dampingRatio = 0.75f, stiffness = 420f))
-                }
-            }
-            // 拖尾胶囊：慢半拍 + 低阻尼 bounce（液体感来源）
-            LaunchedEffect(Unit) {
-                snapshotFlow { selectedProvider.value() }.drop(1).collectLatest { idx ->
-                    if (!reduced) trailAnim.animateTo(idx.toFloat(), spring(dampingRatio = 0.5f, stiffness = 140f))
                 }
             }
 
@@ -153,42 +141,20 @@ fun GlassBottomTabs(
                         .border(0.75.dp, acrylicStrokeBrush(ui.isDark), barShape)
                 )
 
-                // 2. goo 层：选中胶囊 + 拖尾（在图标之下作高亮背景）
-                GooeyContainer(
-                    modifier = Modifier.matchParentSize(),
-                    blurPx = gooBlurPx,
-                    threshold = gooThreshold,
-                    enabled = !reduced
-                ) {
-                    GooeyItem(
-                        Modifier
-                            .align(Alignment.CenterStart)
-                            .width(tabWidthDp)
-                            .height(56.dp)
-                            .graphicsLayer {
-                                translationX = 4.dp.toPx() + accentAnim.value * tabWidth
-                            }
-                            .clip(barShape)
-                            .background(ui.ink)
-                    )
-                    if (!reduced) {
-                        GooeyItem(
-                            Modifier
-                                .align(Alignment.CenterStart)
-                                .width(tabWidthDp * 0.72f)
-                                .height(38.dp)
-                                .graphicsLayer {
-                                    translationX = 4.dp.toPx() +
-                                        trailAnim.value * tabWidth +
-                                        tabWidth * 0.14f
-                                }
-                                .clip(barShape)
-                                .background(ui.ink)
-                        )
-                    }
-                }
+                // 2. 选中胶囊（普通渲染，在图标之下作高亮背景）
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .width(tabWidthDp)
+                        .height(56.dp)
+                        .graphicsLayer {
+                            translationX = 4.dp.toPx() + accentAnim.value * tabWidth
+                        }
+                        .clip(barShape)
+                        .background(ui.ink)
+                )
 
-                // 3. 图标层：选中 tab 图标染 onInk，永远锐利（不进 goo 阈值）
+                // 3. 图标层：选中 tab 图标染 onInk，永远锐利（在胶囊层之上）
                 Row(
                     Modifier
                         .matchParentSize()

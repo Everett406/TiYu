@@ -3,6 +3,21 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.11.2] - 2026-09-06
+
+### 调整 —— 关闭画面特效改为「亚克力模糊」（第四十一轮）
+
+- 设置页「画面特效」关闭后不再进入果冻模式：goo 融合动效（底栏液态拖尾、
+  按钮按压液泡、滑杆/开关液滴融合、弹窗过冲、勾选框融合）整体移除，
+  关闭特效 = 干净的亚克力毛玻璃（只模糊无折射）+ 正常交互动画手感。
+- 液态玻璃模式（特效开启）渲染路径一字未动；安全平涂兜底不受影响。
+- 设置页副标题「果冻模式 · 省电」→「亚克力模糊 · 省电」。
+- 实现：`GlassRuntime.MODE_GOOEY` 改名 `MODE_ACRYLIC`；`ui/gooey/Gooey.kt`
+  整文件删除（GooeyContainer/GooeyItem/GooeyDefaults/GOOEY_SRC/AGSL 管线）；
+  `rememberReducedMotion` 挪入 GlassKit（减弱动画降级保留）；底栏 goo 拖尾
+  改普通 spring 胶囊；GlassButton goo 组装改亚克力胶囊；Slider/Toggle goo
+  拇指改实色滑块；弹窗动画统一 spring；static_check 3.10 goo 残留禁令。
+
 ## [2.11.1] - 2026-09-06
 
 ### 新功能 —— 系统「其他应用打开」导入题库（第四十轮）

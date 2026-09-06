@@ -43,7 +43,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -58,10 +57,6 @@ import com.drone.quiz.data.repo.UserAnswer
 import com.drone.quiz.data.repo.displayUserAnswer
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.glass.GlassButton
-import com.drone.quiz.ui.glass.GlassRuntime
-import com.drone.quiz.ui.gooey.GooeyContainer
-import com.drone.quiz.ui.gooey.GooeyItem
-import com.drone.quiz.ui.gooey.rememberReducedMotion
 import com.drone.quiz.ui.theme.LocalReadingFont
 import com.drone.quiz.ui.theme.LocalUi
 import com.drone.quiz.ui.theme.backdropIsDark
@@ -137,9 +132,6 @@ fun OptionToggleRow(
 ) {
     val ui = LocalUi.current
     val submitted = resultState >= 0
-    // 果冻模式仅在关闭玻璃时生效；提前无条件读一次系统减弱动画（条件分支内不能调 Composable）
-    val reducedMotion = rememberReducedMotion()
-    val gooeyBox = GlassRuntime.mode == GlassRuntime.MODE_GOOEY && !reducedMotion
     val (bg, borderColor) = if (submitted) optionColors(resultState)
     else if (selected) ui.ink.copy(alpha = 0.10f) to ui.ink.copy(alpha = 0.35f)
     else ui.ink.copy(alpha = 0.05f) to ui.ink.copy(alpha = 0.08f)
@@ -153,96 +145,28 @@ fun OptionToggleRow(
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 多选用方框勾选，区别于单选圆徽章
-        if (gooeyBox) {
-            // 果冻：框与对勾进 goo 层融合——勾选瞬间对勾液态弹出并与框体桥接，
-            // 框体轻微脉动；goo 层 34dp 溢出 24dp 占位（blur 需扩散空间），行布局不变
-            val density = LocalDensity.current
-            val gooBlur = with(density) { 4.dp.toPx() }
-            val gooActive = selected || (submitted && resultState == 1)
-            val checkPop = remember {
-                Animatable(if (selected || (submitted && resultState == 1)) 1f else 0f)
-            }
-            LaunchedEffect(gooActive) {
-                checkPop.animateTo(
-                    if (gooActive) 1f else 0f,
-                    spring(dampingRatio = 0.45f, stiffness = 700f)
-                )
-            }
-            val boxPulse = remember { Animatable(1f) }
-            LaunchedEffect(selected) {
-                if (selected) {
-                    boxPulse.animateTo(1.1f, spring(dampingRatio = 0.45f, stiffness = 800f))
-                    boxPulse.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 400f))
-                }
-            }
-            val boxBg = when {
-                submitted && resultState == 1 -> ui.correct
-                submitted && resultState == 2 -> ui.wrong
-                selected -> ui.ink
-                else -> ui.ink.copy(alpha = 0.08f)
-            }
-            Box(Modifier.size(24.dp)) {
-                GooeyContainer(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .offset((-5).dp, (-5).dp),
-                    blurPx = gooBlur
-                ) {
-                    // 框体液滴（脉动一次回弹）
-                    GooeyItem(
-                        Modifier
-                            .align(Alignment.Center)
-                            .size(24.dp)
-                            .graphicsLayer {
-                                scaleX = boxPulse.value
-                                scaleY = boxPulse.value
-                            }
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(boxBg)
-                    )
-                    // 对勾液滴：弹出时与框体 goo 融合（误选框用白勾，同原逻辑）
-                    if (gooActive) {
-                        GooeyItem(
-                            Modifier
-                                .align(Alignment.Center)
-                                .graphicsLayer {
-                                    scaleX = checkPop.value
-                                    scaleY = checkPop.value
-                                }
-                        ) {
-                            Icon(
-                                AppIcons.Check, null,
-                                tint = if (submitted && resultState == 2) Color.White else ui.onInk,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
+        // 多选用方框勾选，区别于单选圆徽章（v2.11.2：goo 融合分支已除）
+        Box(
+            Modifier
+                .size(24.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    when {
+                        submitted && resultState == 1 -> ui.correct
+                        submitted && resultState == 2 -> ui.wrong
+                        selected -> ui.ink
+                        else -> ui.ink.copy(alpha = 0.08f)
                     }
-                }
-            }
-        } else {
-            Box(
-                Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        when {
-                            submitted && resultState == 1 -> ui.correct
-                            submitted && resultState == 2 -> ui.wrong
-                            selected -> ui.ink
-                            else -> ui.ink.copy(alpha = 0.08f)
-                        }
-                    )
-                    .border(1.dp, ui.ink.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (selected || (submitted && resultState == 1)) {
-                    Icon(
-                        AppIcons.Check, null,
-                        tint = if (submitted && resultState == 2) Color.White else ui.onInk,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                )
+                .border(1.dp, ui.ink.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected || (submitted && resultState == 1)) {
+                Icon(
+                    AppIcons.Check, null,
+                    tint = if (submitted && resultState == 2) Color.White else ui.onInk,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
         Text(

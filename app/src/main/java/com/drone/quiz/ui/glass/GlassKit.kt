@@ -64,10 +64,6 @@ import androidx.compose.ui.util.fastFirstOrNull
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
 import com.drone.quiz.ui.theme.LocalUi
-import com.drone.quiz.ui.gooey.GooeyContainer
-import com.drone.quiz.ui.gooey.GooeyDefaults
-import com.drone.quiz.ui.gooey.GooeyItem
-import com.drone.quiz.ui.gooey.rememberReducedMotion
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberBackdrop
@@ -93,15 +89,16 @@ import kotlin.math.tanh
 /**
  * 全局画面特效状态（三级体系）。
  * - mode==0 液态玻璃：Kyant0 backdrop 真折射（vibrancy+blur+lens），历史渲染路径一字未改；
- * - mode==1 果冻：亚克力表面（只模糊无折射）+ gooey 动效层（ui/gooey）；
+ * - mode==1 亚克力（v2.11.2 起，原果冻）：正常亚克力模糊表面（只模糊无折射），
+ *   无任何 goo 动效——关闭特效 = 干净的毛玻璃质感；
  * - mode==2 安全平涂：无任何 RenderEffect 的半透明材质（[glassMaterial]），仅崩溃兑底。
  *
  * 决策点在 MainActivity：autoSafeMode 无条件置 2（崩溃兑底，独立于用户设置）；
- * 用户开关 settings.effects 仅在非崩溃时区分 0（开=玻璃）/1（关=果冻）。切换即时生效。
+ * 用户开关 settings.effects 仅在非崩溃时区分 0（开=玻璃）/1（关=亚克力）。切换即时生效。
  */
 object GlassRuntime {
     const val MODE_GLASS = 0
-    const val MODE_GOOEY = 1
+    const val MODE_ACRYLIC = 1
     const val MODE_SAFE = 2
 
     var mode by mutableStateOf(MODE_GLASS)
@@ -111,6 +108,25 @@ object GlassRuntime {
 
     /** 兼容旧分叉点：true = 玻璃模式。渲染路径与历史版本完全一致。 */
     val enabled: Boolean get() = mode == MODE_GLASS
+}
+
+/**
+ * 系统开启「减弱动画」（动画时长缩放 = 0）时：动效降级为直达/瞬时。
+ * 读取一次即可（该设置变更会重建 Activity 组合，不做监听）。
+ * v2.11.2 自已删除的果冻模式源文件挪入（goo 动效已除，无障碍降级保留）。
+ */
+@Composable
+fun rememberReducedMotion(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return androidx.compose.runtime.remember {
+        runCatching {
+            android.provider.Settings.Global.getFloat(
+                context.contentResolver,
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f
+            ) == 0f
+        }.getOrDefault(false)
+    }
 }
 
 /**
@@ -131,8 +147,8 @@ fun Modifier.glass(
     depth: Boolean = false,
     acrylicBlurDp: Dp = 8.dp
 ): Modifier = if (!GlassRuntime.enabled) {
-    if (GlassRuntime.mode == GlassRuntime.MODE_GOOEY) {
-        // 果冻：亚克力表面（沿用 backdrop 管线，只模糊、无 vibrancy/lens）+ 细描边柔和阴影
+    if (GlassRuntime.mode == GlassRuntime.MODE_ACRYLIC) {
+        // 亚克力（关闭特效）：毛玻璃表面（沿用 backdrop 管线，只模糊、无 vibrancy/lens）+ 细描边柔和阴影
         val dark = GlassRuntime.isDark
         Modifier
             .shadow(
@@ -234,8 +250,8 @@ fun GlassCard(
             lensAmountDp = 20.dp,
             surfaceColor = ui.surface.copy(alpha = surfaceAlpha)
         )
-    } else if (refracts && GlassRuntime.mode == GlassRuntime.MODE_GOOEY) {
-        // 果冻：亚克力表面（只模糊 8dp，无折射），表面半透明度沿用调用方语义
+    } else if (refracts && GlassRuntime.mode == GlassRuntime.MODE_ACRYLIC) {
+        // 亚克力（关闭特效）：毛玻璃表面（只模糊 8dp，无折射），表面半透明度沿用调用方语义
         Modifier.acrylicMaterial(
             backdrop = backdrop,
             shape = shape,
@@ -284,18 +300,35 @@ fun GlassButton(
     )
 
     val glassActive = refracts && GlassRuntime.enabled
-    val gooeyActive = !glassActive && GlassRuntime.mode == GlassRuntime.MODE_GOOEY
+    val acrylicActive = !glassActive && GlassRuntime.mode == GlassRuntime.MODE_ACRYLIC
 
     val containerModifier = if (!glassActive) {
-        if (gooeyActive) {
-            // 果冻模式：基础容器（亚克力表面 + 按压液泡在下方 goo 层组装；
-            // 文字/图标绝不进 goo 阈值层，仍保持锐利）
+        if (acrylicActive) {
+            // 亚克力模式：毛玻璃胶囊（只模糊无折射）+ 细描边 + 按压缩放，无任何 goo 动效
             modifier
                 .graphicsLayer {
                     scaleX = pressScale.value
                     scaleY = pressScale.value
                 }
                 .shadow(5.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.12f))
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { Capsule() },
+                    effects = { blur(8f.dp.toPx()) },
+                    onDrawSurface = {
+                        if (surfaceColor != Color.Unspecified) drawRect(surfaceColor)
+                        else drawRect(if (ui.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.72f))
+                    }
+                )
+                .border(
+                    0.75.dp,
+                    if (ui.isDark) Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.06f))
+                    ) else Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.30f))
+                    ),
+                    RoundedCornerShape(50)
+                )
                 .clickable(
                     interactionSource = pressSource,
                     indication = null,
@@ -303,6 +336,7 @@ fun GlassButton(
                     onClick = onClick
                 )
                 .height(heightDp)
+                .padding(horizontal = 18.dp)
         } else {
         // 材质模式（安全模式）：质感胶囊，保留按压缩放
         modifier
@@ -405,91 +439,14 @@ fun GlassButton(
             .padding(horizontal = 18.dp)
     }
 
-    if (gooeyActive) {
-        // 果冻组装：goo 层（表面液滴 + 按压液泡融合）→ 锐利细描边 → 内容
-        val reduced = rememberReducedMotion()
-        val pressBlob = animateFloatAsState(
-            targetValue = if (pressed) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.5f, stiffness = 700f),
-            label = "gooPressBlob"
-        )
-        val gooBlurPx = with(LocalDensity.current) { 5.dp.toPx() }
-        val blobColor = if (surfaceColor != Color.Unspecified) surfaceColor
-        else if (ui.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.72f)
-        Box(containerModifier) {
-            GooeyContainer(
-                modifier = Modifier.matchParentSize(),
-                blurPx = gooBlurPx,
-                threshold = GooeyDefaults.DEFAULT_THRESHOLD,
-                enabled = !reduced
-            ) {
-                // 表面液滴：强调底色用实色；否则亚克力（backdrop blur 采样）
-                GooeyItem(
-                    Modifier
-                        .fillMaxSize()
-                        .then(
-                            if (surfaceColor != Color.Unspecified) {
-                                Modifier.background(surfaceColor, RoundedCornerShape(50))
-                            } else {
-                                Modifier.drawBackdrop(
-                                    backdrop = backdrop,
-                                    shape = { Capsule() },
-                                    effects = { blur(8f.dp.toPx()) },
-                                    onDrawSurface = {
-                                        drawRect(
-                                            if (ui.isDark) Color.White.copy(alpha = 0.14f)
-                                            else Color.White.copy(alpha = 0.72f)
-                                        )
-                                    }
-                                )
-                            }
-                        )
-                )
-                // 按压液泡：从中心鼓出，与胶囊边缘融合（减弱动画时不渲染）
-                if (!reduced) {
-                    GooeyItem(
-                        Modifier
-                            .align(Alignment.Center)
-                            .size((heightDp.value * 0.62f).dp)
-                            .graphicsLayer {
-                                scaleX = pressBlob.value
-                                scaleY = pressBlob.value
-                            }
-                            .background(blobColor, CircleShape)
-                    )
-                }
-            }
-            // 细描边在 goo 层之外画，保持锐利
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .border(
-                        0.75.dp,
-                        if (ui.isDark) Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.06f))
-                        ) else Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.30f))
-                        ),
-                        RoundedCornerShape(50)
-                    )
-            )
-            Row(
-                Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content
-            )
-        }
-    } else {
-        Row(
-            containerModifier,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
-    }
+    // 亚克力/安全模式：内容直接躺在容器胶囊上（毛玻璃表面已含在 containerModifier）；
+    // 真折射模式：LiquidButton 内容同款布局
+    Row(
+        containerModifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
 }
 
 /**
@@ -678,54 +635,14 @@ fun GlassSlider(
             }
 
         if (!glassActive) {
-            if (GlassRuntime.mode == GlassRuntime.MODE_GOOEY) {
-                // 果冻：goo 拇指——主 blob + 速度拖尾液滴融合（goo 层 64x40：
-                // 比拇指大一圈给 blur 扩散空间；thumbBase 公式读 size.width，
-                // goo 层中心与拇指中心几何等价，定位行为一致）
-                val reduced = rememberReducedMotion()
-                val thumbColor = if (ui.isDark) Color(0xFFF2EBDD) else Color.White
-                Box(
-                    thumbBase.size(64.dp, 40.dp)
-                ) {
-                    GooeyContainer(
-                        modifier = Modifier.matchParentSize(),
-                        enabled = !reduced
-                    ) {
-                        // 拖尾液滴：拇指速度反向偏移，追上时融合
-                        GooeyItem(
-                            Modifier
-                                .align(Alignment.Center)
-                                .size(13.dp)
-                                .graphicsLayer {
-                                    val v = dampedDragAnimation.velocity
-                                    translationX = -(v * 3f).coerceIn(-11f, 11f)
-                                }
-                                .background(thumbColor, CircleShape)
-                        )
-                        // 主拇指：拖动中轻微拉长（果冻拉伸感）
-                        GooeyItem(
-                            Modifier
-                                .align(Alignment.Center)
-                                .size(40.dp, 24.dp)
-                                .graphicsLayer {
-                                    val v = dampedDragAnimation.velocity
-                                    scaleX = 1f + (abs(v) * 0.06f).coerceIn(0f, 0.18f)
-                                }
-                                .clip(RoundedCornerShape(50))
-                                .background(thumbColor)
-                        )
-                    }
-                }
-            } else {
-                // 材质模式：实色滑块 + 轻阴影，无 RenderEffect（原样保留）
-                Box(
-                    thumbBase
-                        .shadow(4.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.22f))
-                        .clip(RoundedCornerShape(50))
-                        .background(if (ui.isDark) Color(0xFFF2EBDD) else Color.White)
-                        .size(40.dp, 24.dp)
-                )
-            }
+            // 亚克力/安全模式：实色滑块 + 轻阴影，无 RenderEffect（原样保留）
+            Box(
+                thumbBase
+                    .shadow(4.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.22f))
+                    .clip(RoundedCornerShape(50))
+                    .background(if (ui.isDark) Color(0xFFF2EBDD) else Color.White)
+                    .size(40.dp, 24.dp)
+            )
         } else {
             Box(
                 thumbBase
@@ -890,74 +807,21 @@ fun GlassToggle(
             .then(dampedDragAnimation.modifier)
 
         if (!glassActive) {
-            if (GlassRuntime.mode == GlassRuntime.MODE_GOOEY) {
-                // 果冻：滑块拉伸融合——主 blob + 速度拖尾液滴，goo 层比圆钮大一圈
-                // （独立 gooThumbBase：glass 路径的 thumbBase 一行不动；
-                //   goo 层左缘比圆钮左缘外扩 margin → translationX 同步补偿）
-                val reduced = rememberReducedMotion()
-                val gooMargin = with(density) { 8f.dp.toPx() }
-                val gooThumbBase = Modifier
-                    .graphicsLayer {
-                        val f = dampedDragAnimation.value
-                        val pad = 2f.dp.toPx()
-                        translationX =
-                            (if (isLtr) lerp(pad, pad + dragWidth, f)
-                            else lerp(-pad, -(pad + dragWidth), f)) - gooMargin
-                    }
-                    .then(dampedDragAnimation.modifier)
-                Box(gooThumbBase.size(56f.dp, 40f.dp)) {
-                    GooeyContainer(
-                        modifier = Modifier.matchParentSize(),
-                        enabled = !reduced
-                    ) {
-                        // 拖尾液滴：切换速度反向偏移，追上时融合
-                        GooeyItem(
-                            Modifier
-                                .align(Alignment.Center)
-                                .size(13.dp)
-                                .graphicsLayer {
-                                    val v = dampedDragAnimation.velocity
-                                    translationX = -(v * 3f).coerceIn(-11f, 11f)
-                                }
-                                .background(Color(0xFFF2EBDD), CircleShape)
-                        )
-                        // 主圆钮：拖动中拉伸，颜色随开合过渡（与安全模式同色逻辑）
-                        GooeyItem(
-                            Modifier
-                                .align(Alignment.Center)
-                                .size(40f.dp, 24f.dp)
-                                .graphicsLayer {
-                                    val v = dampedDragAnimation.velocity
-                                    scaleX = 1f + (abs(v) * 0.06f).coerceIn(0f, 0.2f)
-                                }
-                                .clip(RoundedCornerShape(50))
-                                .drawBehind {
-                                    drawRect(
-                                        if (ui.isDark) lerp(
-                                            Color(0xFFF2EBDD), Color(0xFF2B2620),
-                                            dampedDragAnimation.value
-                                        ) else Color.White
-                                    )
-                                }
+            // 亚克力/安全模式：实色圆钮 + 轻阴影（无 goo 拉伸融合，v2.11.2 起）
+            Box(
+                thumbBase
+                    .shadow(2.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.2f))
+                    .clip(RoundedCornerShape(50))
+                    .drawBehind {
+                        // 深色下开启态轨道为奶色，钮身同步转深保持对比
+                        // （此前白钮贴奶轨几乎看不出差异）；浅色维持白钮
+                        drawRect(
+                            if (ui.isDark) lerp(Color(0xFFF2EBDD), Color(0xFF2B2620), dampedDragAnimation.value)
+                            else Color.White
                         )
                     }
-                }
-            } else {
-                Box(
-                    thumbBase
-                        .shadow(2.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.2f))
-                        .clip(RoundedCornerShape(50))
-                        .drawBehind {
-                            // 深色下开启态轨道为奶色，钮身同步转深保持对比
-                            // （此前白钮贴奶轨几乎看不出差异）；浅色维持白钮
-                            drawRect(
-                                if (ui.isDark) lerp(Color(0xFFF2EBDD), Color(0xFF2B2620), dampedDragAnimation.value)
-                                else Color.White
-                            )
-                        }
-                        .size(40f.dp, 24f.dp)
-                )
-            }
+                    .size(40f.dp, 24f.dp)
+            )
         } else {
             Box(
                 thumbBase
