@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * v2.11.1：外部「其他应用打开」预解析结果。
+ * AppRoot 的 ExternalImportHost 读完 URI 后打包传入 BankImportSheet，
+ * 直接进入预览确认态（导入报告 + 命名 + 确认），跳过选文件步骤。
+ */
+data class ExternalBankFile(
+    val preview: ImportPreview,
+    val images: Map<String, ByteArray>,
+    val fileName: String
+)
+
+/**
  * 题库导入底部弹窗。
  * v2.8.0：JSON / CSV 双通道；v2.8.5：改为 CSV / ZIP 双通道（JSON 下线），
  * ZIP 支持题目 CSV + 图片文件夹；「查看示例」改为「复制 Agent 提示词」。
@@ -65,7 +77,8 @@ fun BankImportSheet(
     visible: Boolean,
     backdrop: Backdrop,
     onDismiss: () -> Unit,
-    onImported: (bankId: String, name: String, count: Int) -> Unit
+    onImported: (bankId: String, name: String, count: Int) -> Unit,
+    external: ExternalBankFile? = null
 ) {
     val ui = LocalUi.current
     val scope = rememberCoroutineScope()
@@ -83,6 +96,18 @@ fun BankImportSheet(
 
     fun reset() {
         preview = null; zipImages = emptyMap(); sourceName = ""; nameDraft = ""; importMsg = null
+    }
+
+    // v2.11.1：外部「其他应用打开」预解析结果 → 预置进入预览确认态。
+    // external 为稳定引用：AppRoot 每次消费新 Uri 都产生新实例，以此触发重导入。
+    LaunchedEffect(external) {
+        if (external != null) {
+            preview = external.preview
+            zipImages = external.images
+            sourceName = external.fileName.substringBeforeLast('.')
+            nameDraft = sourceName
+            importMsg = null
+        }
     }
 
     fun handleParsed(p: ImportPreview, fileName: String, images: Map<String, ByteArray> = emptyMap()) {

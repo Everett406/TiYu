@@ -192,6 +192,10 @@ must = [
     ("latestPracticeSession", "继续刷题接续最近会话(v2.11.0)"),
     ("clearAllPracticeSessions", "题库升级/清空数据全清会话(v2.11.0)"),
     ("purgeBankSessions", "删题库清会话槽(v2.11.0)"),
+    ("ImportBus", "外部「其他应用打开」导入中继(v2.11.1)"),
+    ("ExternalBankImporter", "外部打开读流+PK头嗅探解析器(v2.11.1)"),
+    ("ExternalBankFile", "外部打开预解析 DTO·直接进预览态(v2.11.1)"),
+    ("ExternalImportHost", "外部导入全局宿主·复用导入弹窗(v2.11.1)"),
 ]
 for pat, desc in must:
     if not grep_hits(pat):
@@ -252,6 +256,17 @@ for pat, desc in [
 ]:
     for h in grep_hits(pat):
         print(f"[FAIL] 旧单槽会话 API 残留（{desc}）: {h}"); fail = True
+
+# 3.8) 外部「其他应用打开」导入链路（v2.11.1）：intent-filter 缺失 = 系统分享列表里
+#      题屿消失（微信/文件管理器无法看到入口，只能回应用内手动选文件）；
+#      octet-stream/text/plain 是微信对 zip/csv MIME 推断不准时的兜底类型，缺一个就少一类入口。
+_manifest_xml = load(_repo_root + "/app/src/main/AndroidManifest.xml")
+if "android.intent.action.VIEW" not in _manifest_xml:
+    print("[FAIL] Manifest 缺 ACTION_VIEW intent-filter（外部打开导入入口消失）"); fail = True
+for _mime in ["application/zip", "application/x-zip-compressed", "application/octet-stream",
+              "text/csv", "application/csv", "text/comma-separated-values", "text/plain"]:
+    if f'android:mimeType="{_mime}"' not in _manifest_xml:
+        print(f"[FAIL] Manifest VIEW intent-filter 缺 mimeType {_mime}（微信/文件管理器兜底类型）"); fail = True
 
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

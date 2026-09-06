@@ -66,6 +66,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.drone.quiz.LauncherBus
+import com.drone.quiz.ImportBus
 import com.drone.quiz.R
 import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.settings.RootSettings
@@ -74,6 +75,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.drone.quiz.screens.BankImportSheet
 import com.drone.quiz.screens.ExamConfigScreen
 import com.drone.quiz.screens.ExamResultScreen
 import com.drone.quiz.screens.ExamScreen
@@ -83,6 +85,7 @@ import com.drone.quiz.screens.PracticeRunScreen
 import com.drone.quiz.screens.SearchScreen
 import com.drone.quiz.screens.SettingsScreen
 import com.drone.quiz.screens.WrongBookScreen
+import com.drone.quiz.screens.ExternalBankFile
 import com.drone.quiz.screens.common.LocalNavAnimatedVisibilityScope
 import com.drone.quiz.screens.common.LocalSharedTransitionScope
 import com.drone.quiz.ui.glass.AppIcons
@@ -90,6 +93,7 @@ import com.drone.quiz.ui.glass.GlassBottomSheet
 import com.drone.quiz.ui.glass.GlassBottomTabs
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassOverlayPortal
+import com.drone.quiz.ui.glass.GlassPromptDialog
 import com.drone.quiz.ui.glass.LocalBgBackdrop
 import com.drone.quiz.ui.glass.LocalContentBackdrop
 import com.drone.quiz.ui.glass.OverlayBlur
@@ -97,6 +101,7 @@ import com.drone.quiz.ui.glass.TabIconSlot
 import com.drone.quiz.ui.onboarding.OnboardingBus
 import com.drone.quiz.ui.onboarding.TourHost
 import com.drone.quiz.ui.theme.LocalUi
+import com.drone.quiz.util.ExternalBankImporter
 import com.drone.quiz.util.GallerySave
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -530,6 +535,9 @@ fun AppRoot(settings: RootSettings) {
         // v2.8.8：不再从根级传 RootSettings（usageMs 每分钟变化会拖动全根重组）
         SupportPromptHost(backdrop = bgBackdrop, currentRoute = route)
 
+        // 层 5.5：外部「其他应用打开」导入宿主（v2.11.1）——微信/文件管理器打开题库 ZIP/CSV 直达
+        ExternalImportHost(backdrop = bgBackdrop, navController = navController)
+
         // 层 6：首启功能引导（v2.9.0，用户口径：页面高亮气泡带着逛一圈）。
         // 首启（onboarding_done=false）自动开演，跳过/翻完即落标记不再弹；
         // 设置页「使用引导」入口随时重看（OnboardingBus.start(replay=true)）。
@@ -560,6 +568,81 @@ private fun PortalHost() {
     GlassOverlayPortal.entries.forEach { entry ->
         // key 稳定槽位：列表增减时不串位、不丢 remember 状态
         key(entry.id) { entry.content() }
+    }
+}
+
+// ==================== 外部「其他应用打开」导入（v2.11.1） ====================
+
+/**
+ * 微信/文件管理器「从其他应用打开」题库 ZIP/CSV 的全局宿主：
+ * 消费 ImportBus（singleTask 冷/热启动双路汇入）→ 读流 + PK 头嗅探解析 →
+ * 弹 BankImportSheet 预览确认态（复用应用内导入的报告/命名/确认 UI）；
+ * 确认后自动切换当前题库并弹成功提示（可一键去刷题）；解析失败弹玻璃错误窗。
+ */
+@Composable
+private fun ExternalImportHost(
+    backdrop: Backdrop,
+    navController: NavHostController
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var external by remember { mutableStateOf<ExternalBankFile?>(null) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var successMsg by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { ImportBus.pending }.collect { uri ->
+            if (uri == null) return@collect
+            ImportBus.pending = null
+            ExternalBankImporter.read(context, uri)
+                .onSuccess { external = it }
+                .onFailure { errorMsg = it.message ?: "文件格式不正确" }
+        }
+    }
+
+    BankImportSheet(
+        visible = external != null,
+        backdrop = backdrop,
+        external = external,
+        onDismiss = { external = null },
+        onImported = { bankId, name, cnt ->
+            scope.launch {
+                runCatching { ServiceLocator.settings.setCurrentBank(bankId) }
+                external = null
+                successMsg = "「$name」已导入（$cnt 题）并切换为当前题库"
+            }
+        }
+    )
+
+    errorMsg?.let { err ->
+        GlassPromptDialog(
+            backdrop = backdrop,
+            title = "无法导入该文件",
+            hint = "题屿支持题库 CSV，或「CSV + images 图片文件夹」打包的 ZIP",
+            body = err,
+            confirmText = "知道了",
+            dismissText = "关闭",
+            onConfirm = { errorMsg = null },
+            onDismiss = { errorMsg = null }
+        )
+    }
+
+    successMsg?.let { msg ->
+        GlassPromptDialog(
+            backdrop = backdrop,
+            title = "导入成功",
+            hint = msg,
+            body = "新题库已设为当前题库，题目与图片随题库保存；随时可在 设置 → 题库管理 中切换或删除。",
+            confirmText = "开始刷题",
+            dismissText = "知道了",
+            onConfirm = {
+                successMsg = null
+                navController.navigate("practiceRun?src=all&type=all&cat=all&resume=false") {
+                    launchSingleTop = true
+                }
+            },
+            onDismiss = { successMsg = null }
+        )
     }
 }
 

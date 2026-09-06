@@ -80,6 +80,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeNavIntent(intent: Intent?) {
+        // v2.11.1：系统「其他应用打开」（微信/文件管理器 → 题库 ZIP/CSV）
+        if (intent?.action == Intent.ACTION_VIEW) {
+            intent.data?.let { ImportBus.push(it) }
+            return
+        }
         val target = intent?.getStringExtra(LauncherBus.EXTRA_NAV) ?: return
         LauncherBus.push(target)
     }
@@ -389,6 +394,20 @@ private fun CrashReportScreen(report: String, onClose: () -> Unit) {
             ) { Text("清除并继续") }
         }
         Spacer(Modifier.height(10.dp))
+    }
+}
+
+/**
+ * 「其他应用打开」导入中继（v2.11.1）：微信/文件管理器以 ACTION_VIEW 打开题库 ZIP/CSV 时，
+ * MainActivity（singleTask）冷启动 onCreate / 热启动 onNewIntent 把 data Uri 写进来，
+ * AppRoot 的 ExternalImportHost 消费后读流、内容嗅探解析并弹出导入预览。
+ * mutableStateOf 保证组合内可观察；pending 保留到被消费，冷启动早期写入不丢失。
+ */
+object ImportBus {
+    var pending by androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
+
+    fun push(uri: android.net.Uri) {
+        pending = uri
     }
 }
 

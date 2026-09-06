@@ -3,6 +3,39 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.11.1] - 2026-09-06
+
+### 新功能 —— 系统「其他应用打开」导入题库（第四十轮）
+
+- **场景**：微信收到题库文件（ZIP 或 CSV）——点开文件 → 右上角「…」→
+  「从其他应用打开」→ 选择题屿，即可直达导入流程；文件管理器、QQ 等
+  任何出现「打开方式」的入口同样可用。不再需要先存文件、再进应用手动选。
+- **支持格式**：题库 CSV；「CSV + images 图片文件夹」打包的 ZIP（带图题目）。
+- **格式智能识别**：不信任来源应用标记的 MIME（微信常把 zip/csv 标成
+  未知文件/纯文本），改为内容嗅探（PK 头判 ZIP、其余按 CSV 解析）——
+  csv 被当 zip 发、zip 被当纯文本发都能正确解析；选错文件给出可读失败原因。
+- **直达预览**：打开即弹导入预览（成功 N 题 / 失败行明细 / 图片数），
+  确认后自动设为当前题库，可一键「开始刷题」。128MB 大小上限。
+- 实现：Manifest `ACTION_VIEW` intent-filter（标准 zip/csv + octet-stream/
+  text/plain 兜底 MIME）→ MainActivity 冷/热启动双路汇入 `ImportBus` →
+  AppRoot `ExternalImportHost` 读流嗅探解析（`ExternalBankImporter`，
+  DISPLAY_NAME 兜底题库名、128MB 读流上限防 OOM）→ 复用 `BankImportSheet`
+  预览确认态（`external` 参数直接进入预览）；static_check 3.8 节锁
+  intent-filter 与 MIME 白名单防回归。
+
+### 撤销 —— 随机选项功能（v2.11.0 回退）
+
+- v2.11.0 的随机选项整体 revert：现有题库的答案解析多按固定选项字母书写
+  （如「选 C，因为…」），选项打乱后解析与实际选项错位，功能不达预期；
+  刷题/模考/错题本行为回到 v2.10.3 口径。
+- **数据无损**：`AppDatabase` 保持 version = 5，保留 `MIGRATION_4_5` 与
+  `exam_records.optSalt` 冗余列（不再写入非零值）——v2.11.0 装机的设备
+  schema identity hash 与 v2.10.3 升级链路双向兼容，升级/回装均不触发
+  Room 迁移失败或 `fallbackToDestructiveMigration` 清库。
+- OptionsShuffle 相关：`OptionShuffle.kt`、`OptionShuffleTest.kt`、
+  SettingsStore 双开关、DB v6 命名（当时误标）等随 revert 清除；
+  static_check 必备断言表新增 v2.11.1 外部导入四项。
+
 
 ## [2.10.3] - 2026-09-05
 

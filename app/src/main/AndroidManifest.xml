@@ -28,6 +28,23 @@
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
+            <!-- v2.11.1：系统「其他应用打开」导入题库——微信/文件管理器里对题库 ZIP/CSV
+                 点「从其他应用打开」即可直达导入流程。MIME 覆盖三类来源：
+                 ① 标准 zip/csv 类型；② application/octet-stream（微信等对文件类型
+                 推断不准确的兜底）；③ text/plain（csv 常被当作纯文本分享）。
+                 格式真伪由 ExternalBankImporter 内容嗅探（PK 头）判定，不信任 MIME。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="application/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <!-- v2.10.0：桌面小组件 ×4（RemoteViews 零新依赖） -->
