@@ -452,8 +452,7 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         counts: Map<String, Int>,
         durationSec: Int,
         typeOrder: List<String>,
-        passLine: Int = 60, // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
-        optSalt: Long = 0   // v2.11.0：选项乱序会话盐（0 = 不打乱），随记录落库供恢复还原
+        passLine: Int = 60 // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
     ): Pair<Long, List<Question>> = withContext(Dispatchers.IO) {
         val order = typeOrder.filter { it in QuestionTypes.canonicalOrder }
             .ifEmpty { QuestionTypes.canonicalOrder }
@@ -481,7 +480,6 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
                     durationSec = durationSec,
                     bankId = bankId,
                     passLine = passLine.coerceIn(1, 100),
-                    optSalt = optSalt,
                     extraCounts = json.encodeToString(
                         mapOf(
                             QuestionTypes.MULTI to qs.count { it.type == QuestionTypes.MULTI },

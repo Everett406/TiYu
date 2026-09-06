@@ -37,10 +37,7 @@ data class PracticeSession(
     // v2.8.6 顺序循环补漏：本轮周期内已覆盖题目的累计集合（不含当前会话的 answers）。
     // 会话刷到末题即视为本轮结束，下轮只挑「总题单 - covered - answers」的题；全刷完则开完整新一轮。
     // 新字段带默认值：老版本快照 JSON 无此键也能照常反序列化（ignoreUnknownKeys）。
-    val covered: List<Long> = emptyList(),
-    // v2.11.0 随机选项：本会话的选项乱序盐（0 = 未打乱）。恢复会话依此还原与上次相同的选项顺序；
-    // answers/details 里的 picked 恒为原始下标/位掩码，与选项顺序无关。
-    val optSalt: Long = 0L
+    val covered: List<Long> = emptyList()
 )
 
 /**
@@ -61,8 +58,7 @@ data class SessionSlots(val entries: Map<String, PracticeSession> = emptyMap())
 data class ExamQuickConfig(
     val counts: Map<String, Int> = emptyMap(), // 题型 → 题数
     val durationMin: Int = 60,                 // 考试时长（分钟）
-    val typeOrder: List<String> = emptyList(), // 题型顺序（空 = 规范序）
-    val shuffleOptions: Boolean = false        // v2.11.0：随机选项（开考时按它生成会话盐）
+    val typeOrder: List<String> = emptyList()  // 题型顺序（空 = 规范序）
 )
 
 data class AppSettings(
@@ -88,8 +84,6 @@ data class AppSettings(
     val examIncludeShort: Boolean = false, // 模考高级选项：含简答题（默认关）
     val examTypeOrder: List<String> = emptyList(), // 模考题型顺序（空 = 单选→多选→填空→判断→简答）
     val examAutoMix: Boolean = true, // 模考题型构成：自动按题库各题型占比配比（关 = 手动拖比例，v2.8.3）
-    val shuffleOptions: Boolean = false, // v2.11.0 刷题随机选项：每次开刷选项乱序（答案映射不受影响；判断题不打乱）
-    val examShuffleOptions: Boolean = false, // v2.11.0 模考随机选项开关（每次开考生成会话盐）
     val eyeCareReminder: Boolean = false, // v2.8.6 护眼提醒：连续刷题 20 分钟弹窗提醒休息（考试不受影响）
     val onboardingDone: Boolean = false, // v2.9.0 首启功能引导已完成/已跳过（跳过即不再自动弹）
     // v2.10.0 桌面小组件 / 成绩分享卡
@@ -141,9 +135,6 @@ class SettingsStore(private val context: Context) {
         val examIncludeShort = booleanPreferencesKey("exam_include_short")
         val examTypeOrder = stringPreferencesKey("exam_type_order")
         val examAutoMix = booleanPreferencesKey("exam_auto_mix")
-        // v2.11.0 随机选项
-        val shuffleOptions = booleanPreferencesKey("shuffle_options")
-        val examShuffleOptions = booleanPreferencesKey("exam_shuffle_options")
         // v2.8.6 护眼提醒
         val eyeCareReminder = booleanPreferencesKey("eye_care_reminder")
         // v2.9.0 首启功能引导
@@ -192,8 +183,6 @@ class SettingsStore(private val context: Context) {
                 runCatching { json.decodeFromString<List<String>>(raw) }.getOrNull()
             } ?: emptyList(),
             examAutoMix = p[K.examAutoMix] ?: true,
-            shuffleOptions = p[K.shuffleOptions] ?: false,
-            examShuffleOptions = p[K.examShuffleOptions] ?: false,
             eyeCareReminder = p[K.eyeCareReminder] ?: false,
             onboardingDone = p[K.onboardingDone] ?: false,
             dailyGoal = p[K.dailyGoal] ?: 30,
@@ -390,12 +379,6 @@ class SettingsStore(private val context: Context) {
 
     /** 模考题型构成：自动配比开关（v2.8.3） */
     suspend fun setExamAutoMix(v: Boolean) = context.dataStore.edit { it[K.examAutoMix] = v }
-
-    /** 刷题随机选项开关（v2.11.0）：每次开刷选项乱序，答案映射不受影响 */
-    suspend fun setShuffleOptions(v: Boolean) = context.dataStore.edit { it[K.shuffleOptions] = v }
-
-    /** 模考随机选项开关（v2.11.0） */
-    suspend fun setExamShuffleOptions(v: Boolean) = context.dataStore.edit { it[K.examShuffleOptions] = v }
 
     suspend fun setExamTypeOrder(list: List<String>) {
         context.dataStore.edit { p ->

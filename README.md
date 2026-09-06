@@ -578,7 +578,6 @@ python3 scripts/convert_bank.py <题库.csv> [-o app/src/main/assets/questions.j
 | v2.10.1 | 39 | **成绩卡体验修复**：预览加投影+细描边（深色主题卡片轮廓一眼可辨，与主题区间距加大）；修复署名/标语输入框占位提示不显示（decorationBox 改标准 Box 叠加）+ 可见光标 + 边框对比度提高；移除设置页「每日目标」滑杆（统计卡/小组件目标照常按默认 30 题） |
 | v2.10.2 | 40 | **修复 ColorOS/一加「载入窗口小部件时出现问题」**：四款小组件布局收敛到 RemoteViews 最保守子集——统计卡进度环矢量改预渲染 PNG（0~100% 十档×深浅 22 张，PIL 超采样），ImageView 切档；移除 ProgressBar 主题属性引用与 letterSpacing |
 | v2.10.3 | 41 | **修复切题库/换题型范围后刷题进度被清零**：会话快照升级多槽存储（题库×模式×题型范围各自占槽，LRU 上限 10），切库/换范围互不覆盖、切回原样接续；旧进度无损迁移；「继续刷题」接最近一份；static_check 修正 widget 禁令路径 + 旧单槽写法即 FAIL |
-| v2.11.0 | 42 | **随机选项**（刷题/模考可开关、错题本恒原序、判断题不打乱）：视图层乱序+数据层原始空间（OptionShuffle 双射 perm + uaToOriginal 换算落库，judgeAnswer/统计零改动）；盐随快照/DB v5 落库，接续恢复同顺序、重开重新洗；快速模考沿用配置；OptionShuffleTest 穷举验证选对必判对/选错必判错；static_check 防删除断言 |
 
 完整变更明细见 [CHANGELOG.md](CHANGELOG.md)。
 

@@ -65,7 +65,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.repo.Question
-import com.drone.quiz.data.repo.OptionShuffle
 import com.drone.quiz.data.repo.QuestionTypes
 import com.drone.quiz.data.repo.Repo
 import com.drone.quiz.data.repo.UserAnswer
@@ -119,8 +118,6 @@ object ExamSessionHolder {
     var questions: List<Question> = emptyList()
     var durationSec: Int = 0
     var outcome: Repo.ExamOutcome? = null
-    // v2.11.0 随机选项：本场的选项乱序盐（开考时生成/恢复时从 DB 读回）
-    var optSalt: Long = 0
 }
 
 // ==================== 配置页 ====================
@@ -147,8 +144,6 @@ fun ExamConfigScreen(
     var bankTypeCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var showAdvanced by remember { mutableStateOf(false) }
     var includeShort by remember { mutableStateOf(settings.examIncludeShort) }
-    // v2.11.0 随机选项开关（随配置持久化，开考时生成会话盐）
-    var shuffleOpts by remember { mutableStateOf(settings.examShuffleOptions) }
     var typeOrder by remember { mutableStateOf<List<String>>(emptyList()) }
     // v2.8.3 题型构成：自动按库内占比 / 手动拖比例滑杆（百分比，联动让出份额）
     var autoMix by remember { mutableStateOf(true) }
@@ -169,7 +164,6 @@ fun ExamConfigScreen(
             bankTypeCounts = ServiceLocator.repo.bankTypeCounts(bank)
             typeOrder = st.examTypeOrder.ifEmpty { QuestionTypes.canonicalOrder }
             includeShort = st.examIncludeShort
-            shuffleOpts = st.examShuffleOptions
             autoMix = st.examAutoMix
             ratios = autoRatios(types, bankTypeCounts)
         }
@@ -564,30 +558,6 @@ fun ExamConfigScreen(
                                         )
                                     }
                                 }
-                                // v2.11.0 随机选项：所有题型组合均可见（内置库只有单选/判断也能开）
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("随机选项", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                        Text(
-                                            "本场考试选项顺序打乱，答案判定不受影响（判断题不打乱）",
-                                            color = ui.textSub, fontSize = 11.sp,
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        )
-                                    }
-                                    GlassToggle(
-                                        checked = { shuffleOpts },
-                                        onCheckedChange = { v ->
-                                            shuffleOpts = v
-                                            scope.launch { ServiceLocator.settings.setExamShuffleOptions(v) }
-                                        },
-                                        backdrop = backdrop
-                                    )
-                                }
                                 Text(
                                     "题型顺序 · 长按拖动调整（先做哪种题型）",
                                     color = ui.textSub, fontSize = 11.sp,
@@ -618,15 +588,12 @@ fun ExamConfigScreen(
                         starting = true
                         scope.launch {
                             val st = ServiceLocator.settings.settings.first()
-                            // v2.11.0 随机选项：开考时生成会话盐，随记录落库供恢复还原
-                            val salt = if (shuffleOpts) OptionShuffle.newSalt() else 0L
                             val (id, qs) = ServiceLocator.repo.startExam(
                                 bankId = st.currentBank,
                                 counts = plannedCounts,
                                 durationSec = durationMin * 60,
                                 typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder },
-                                passLine = st.passScore, // v2.8.6：开考时定格合格线，成绩单回显
-                                optSalt = salt
+                                passLine = st.passScore // v2.8.6：开考时定格合格线，成绩单回显
                             )
                             // v2.10.0：落盘本次组卷配置（快捷方式/小组件「快速模考」直落复用）
                             runCatching {
@@ -634,8 +601,7 @@ fun ExamConfigScreen(
                                     com.drone.quiz.data.settings.ExamQuickConfig(
                                         counts = plannedCounts,
                                         durationMin = durationMin,
-                                        typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder },
-                                        shuffleOptions = shuffleOpts
+                                        typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder }
                                     )
                                 )
                             }
@@ -643,7 +609,6 @@ fun ExamConfigScreen(
                             ExamSessionHolder.questions = qs
                             ExamSessionHolder.durationSec = durationMin * 60
                             ExamSessionHolder.outcome = null
-                            ExamSessionHolder.optSalt = salt
                             onStart(id)
                         }
                     }
@@ -974,8 +939,6 @@ fun ExamScreen(
                 ExamSessionHolder.questions = qs
                 ExamSessionHolder.durationSec = exam.durationSec
                 ExamSessionHolder.outcome = null
-                // v2.11.0：从 DB 读回开考时的选项乱序盐（0 = 未打乱，旧记录天然兼容）
-                ExamSessionHolder.optSalt = exam.optSalt
                 questions = qs
                 uas.forEach { (k, v) ->
                     details[k] = v
@@ -1089,19 +1052,12 @@ fun ExamScreen(
             key = { questions[it].id }
         ) { page ->
             val q = questions[page]
-            // v2.11.0 随机选项：视图层乱序——UI 只看显示题目/显示作答；
-            // onAnswer 先把 UserAnswer 换算回原始空间再落库（judgeAnswer/交卷判分/错题本零改动）
-            val salt = ExamSessionHolder.optSalt
-            val perm = remember(q.id, salt) { OptionShuffle.permOf(q, salt) }
-            val qDisp = remember(q.id, salt) { perm?.let { OptionShuffle.display(q, it) } ?: q }
             ExamQuestionCard(
-                q = qDisp,
+                q = q,
                 index = page + 1,
-                ua = OptionShuffle.uaToDisplay(details[q.id], q, perm),
+                ua = details[q.id],
                 backdrop = backdrop,
-                onAnswer = { uaDisp ->
-                    // 入参恒非空 → 换算结果必非空（?: 仅编译器兜底，不可达）
-                    val ua = OptionShuffle.uaToOriginal(uaDisp, q, perm) ?: uaDisp
+                onAnswer = { ua ->
                     details[q.id] = ua
                     answers[q.id] = ua.picked
                         ?: if (ua.texts.isNotEmpty() || ua.text.isNotBlank()) 1 else 0

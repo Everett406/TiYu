@@ -192,18 +192,13 @@ fun AppRoot(settings: RootSettings) {
                         navigateTab(2)
                         return@launch
                     }
-                    // v2.11.0：随机选项随快速模考配置沿用，开考时生成会话盐随记录落库
-                    val salt = if (cfg.shuffleOptions) {
-                        com.drone.quiz.data.repo.OptionShuffle.newSalt()
-                    } else 0L
                     val started = runCatching {
                         ServiceLocator.repo.startExam(
                             bankId = st.currentBank,
                             counts = cfg.counts,
                             durationSec = cfg.durationMin * 60,
                             typeOrder = cfg.typeOrder,
-                            passLine = st.passScore,
-                            optSalt = salt
+                            passLine = st.passScore
                         )
                     }.getOrNull()
                     val id = started?.first ?: 0L
@@ -216,7 +211,6 @@ fun AppRoot(settings: RootSettings) {
                     ExamSessionHolder.questions = qs
                     ExamSessionHolder.durationSec = cfg.durationMin * 60
                     ExamSessionHolder.outcome = null
-                    ExamSessionHolder.optSalt = salt
                     navController.navigate("examRun/$id") { launchSingleTop = true }
                 }
             }

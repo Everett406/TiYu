@@ -53,7 +53,6 @@ import com.drone.quiz.ui.glass.BounceContainer
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.GlassConfirmDialog
-import com.drone.quiz.ui.glass.GlassToggle
 import com.drone.quiz.ui.theme.LocalUi
 import com.drone.quiz.ui.theme.readableSubColor
 import com.kyant.backdrop.Backdrop
@@ -232,29 +231,6 @@ fun PracticeConfigScreen(
                             .fillMaxWidth()
                             .padding(top = 12.dp)
                     )
-                    // v2.11.0 随机选项：与「题目顺序」同卡分区展示（打乱的是选项顺序，非题目顺序）
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("随机选项", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(
-                                "每次开刷选项顺序打乱，答案判定不受影响（判断题不打乱）",
-                                color = ui.textSub, fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                        GlassToggle(
-                            checked = { settings.shuffleOptions },
-                            onCheckedChange = { v ->
-                                scope.launch { ServiceLocator.settings.setShuffleOptions(v) }
-                            },
-                            backdrop = backdrop
-                        )
-                    }
                 }
             }
 

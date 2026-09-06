@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.repo.Question
-import com.drone.quiz.data.repo.OptionShuffle
 import com.drone.quiz.data.repo.QuestionTypes
 import com.drone.quiz.data.repo.UserAnswer
 import com.drone.quiz.data.repo.judgeAnswer
@@ -158,9 +157,6 @@ fun PracticeRunScreen(
     var sessionBank by remember { mutableStateOf("drone") }
     // v2.8.6 循环补漏：本轮周期内已覆盖题目累计（不含本轮 answers），随快照落盘
     var roundCovered by remember { mutableStateOf<List<Long>>(emptyList()) }
-    // v2.11.0 随机选项：本会话的选项乱序盐（0 = 不打乱）。
-    // 新会话按开关生成；恢复会话读快照还原与上次相同的顺序；错题特训恒 0（用户口径：不随机）
-    var sessionSalt by remember { mutableStateOf(0L) }
 
     val pagerState = rememberPagerState { questions.size }
 
@@ -212,16 +208,12 @@ fun PracticeRunScreen(
         val bank = st.currentBank
         sessionOrder = order
         sessionBank = bank
-        // v2.11.0 随机选项：新会话按开关生成盐（错题特训不打乱——用户口径）；
-        // 恢复路径在分支内读快照 optSalt，同一轮刷题顺序保持不变
-        val freshSalt = if (st.shuffleOptions && src != "wrong") OptionShuffle.newSalt() else 0L
         val result = withTimeoutOrNull(10_000) {
             runCatching {
                 if (src == "random" && limit > 0) {
                     // v2.10.0 随机小练（快捷方式）：随机抽 N 道新题，
                     // 不恢复/不补漏/不落盘快照（内存会话，退出即止，不污染顺序/随机双槽）
                     sessionMode = false
-                    sessionSalt = freshSalt
                     answers.clear(); details.clear()
                     roundCovered = emptyList()
                     ServiceLocator.repo.loadPractice(bank, null, null, random = true, limit = limit)
@@ -233,7 +225,6 @@ fun PracticeRunScreen(
                         sessionMode = true
                         restoring = true
                         roundCovered = s.covered
-                        sessionSalt = s.optSalt   // v2.11.0：恢复快照盐，选项顺序与上次一致
                         val qs = ServiceLocator.repo.loadPracticeByIds(s.ids)
                         answers.clear(); details.clear()
                         s.answers.forEach { (k, v) -> k.toLongOrNull()?.let { answers[it] = v } }
@@ -249,7 +240,6 @@ fun PracticeRunScreen(
                     } else {
                         // 无会话可恢复 / 已切库 / 上轮已刷到末题：退化为按参数新开
                         sessionMode = false
-                        sessionSalt = freshSalt
                         answers.clear(); details.clear()
                         // v2.8.6 循环补漏：上轮已刷到末题 → 新一轮只挑没刷过的题
                         val catchUp = loadCatchUpRound(bank, src, type, cat, order, s)
@@ -278,7 +268,6 @@ fun PracticeRunScreen(
                             sessionMode = true
                             restoring = true
                             roundCovered = snap.covered
-                            sessionSalt = snap.optSalt   // v2.11.0：接续快照盐
                             snap.answers.forEach { (k, v) -> k.toLongOrNull()?.let { answers[it] = v } }
                             snap.details.forEach { (k, v) ->
                                 k.toLongOrNull()?.let { id ->
@@ -291,19 +280,16 @@ fun PracticeRunScreen(
                             qs
                         } else {
                             roundCovered = emptyList()
-                            sessionSalt = freshSalt
                             loadByFilter(bank, src, type, cat, order == 1)
                         }
                     } else {
                         // v2.8.6 循环补漏：无快照/参数变化 → 整单新开；上轮已刷到末题 → 只挑没刷过的题
-                        sessionSalt = freshSalt   // v2.11.0：catchUp/新开都是新一轮会话
                         val catchUp = loadCatchUpRound(bank, src, type, cat, order, snap)
                         if (catchUp != null) {
                             roundCovered = catchUp.covered
                             catchUp.questions
                         } else {
                             roundCovered = emptyList()
-                            sessionSalt = freshSalt
                             loadByFilter(bank, src, type, cat, order == 1)
                         }
                     }
@@ -330,7 +316,7 @@ fun PracticeRunScreen(
         if (questions.isNotEmpty() && !sessionSeeded && !sessionMode) {
             sessionSeeded = true
             pagerState.scrollToPage(0)
-            persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, 0, roundCovered, sessionSalt)
+            persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, 0, roundCovered)
         }
     }
 
@@ -340,7 +326,7 @@ fun PracticeRunScreen(
         snapshotFlow { pagerState.currentPage }
             .collectLatest { page ->
                 if (!loading && !restoring) {
-                    persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, page, roundCovered, sessionSalt)
+                    persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, page, roundCovered)
                 }
             }
     }
@@ -369,7 +355,7 @@ fun PracticeRunScreen(
                 }
             }
         }
-        persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, pagerState.currentPage, roundCovered, sessionSalt)
+        persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, pagerState.currentPage, roundCovered)
         if (correct == true && q.type != QuestionTypes.SHORT &&
             autoNext && pagerState.currentPage < questions.size - 1
         ) {
@@ -472,10 +458,6 @@ fun PracticeRunScreen(
                     key = { questions[it].id }
                 ) { page ->
                     val q = questions[page]
-                    // v2.11.0 随机选项：视图层乱序——UI 只看显示题目/显示作答；
-                    // onCommit 把 UserAnswer 换算回原始空间后再记账/落盘（judgeAnswer/错题本/统计零改动）
-                    val perm = remember(q.id, sessionSalt) { OptionShuffle.permOf(q, sessionSalt) }
-                    val qDisp = remember(q.id, sessionSalt) { perm?.let { OptionShuffle.display(q, it) } ?: q }
                     // 切页纵深感：离场页轻微后缩（v2.5.1 简化）
                     Box(
                         Modifier.graphicsLayer {
@@ -487,14 +469,11 @@ fun PracticeRunScreen(
                         }
                     ) {
                         QuestionCard(
-                            q = qDisp,
-                            ua = OptionShuffle.uaToDisplay(details[q.id], q, perm),
+                            q = q,
+                            ua = details[q.id],
                             index = page + 1,
                             backdrop = backdrop,
-                            onCommit = { uaDisp ->
-                                // 入参恒非空 → 换算结果必非空（?: 仅编译器兜底，不可达）
-                                onCommit(q, OptionShuffle.uaToOriginal(uaDisp, q, perm) ?: uaDisp)
-                            }
+                            onCommit = { onCommit(q, it) }
                         )
                     }
                 }
@@ -717,8 +696,7 @@ internal fun persistSession(
     answers: Map<Long, Int>,
     details: Map<Long, UserAnswer>,
     index: Int,
-    covered: List<Long> = emptyList(),
-    optSalt: Long = 0L   // v2.11.0：选项乱序会话盐随快照落盘，恢复时还原同顺序
+    covered: List<Long> = emptyList()
 ) {
     if (questions.isEmpty() || src == "wrong" || src == "random") return
     ServiceLocator.appScope.launch {
@@ -733,8 +711,7 @@ internal fun persistSession(
                     details = details.entries.associate { it.key.toString() to answerJson.encodeToString(it.value) },
                     index = index,
                     bankId = bankId,
-                    covered = covered,
-                    optSalt = optSalt
+                    covered = covered
                 ),
                 bankId, order, type, cat
             )
