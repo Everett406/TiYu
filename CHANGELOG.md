@@ -3,7 +3,19 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
-## [2.11.3] - 2026-09-06
+## [2.11.4] - 2026-09-08
+
+### 修复 —— 底栏液态高亮恢复棱镜色散（第四十三轮）
+
+- 用户对比参照（酷安底栏）发现：底栏 tab 按压时膨胀的液态玻璃高亮缺少
+  「色散」——玻璃边缘的棱镜彩虹折射边，观感偏「白边玻璃」而非「彩边玻璃」。
+- 根因：vendored backdrop 库 AGSL shader 原生支持色散（chromaticAberration，
+  7 次光谱采样），GlassButton/GlassSlider 一直常开；唯底栏选中块在 v2.5.1
+  修「栏外圆环伪影」时被一并关闭，v2.7.0 恢复大鼓包时也未恢复。
+- 恢复后色散只随按压出现（progress=0 时 lens 全透传，静止态观感不变）；
+  当年伪影的两个伴生条件已不存在（底栏 Modifier.blur 方框已移除、鼓包参数
+  已收敛），GlassButton 同结构常开多版本无伪影。
+- static_check 新增 3.12 节：底栏色散回退（chromaticAberration = false）即 FAIL。
 
 ### 新功能 —— 答对震动（第四十二轮）
 

@@ -318,5 +318,13 @@ for h in grep_hits("VibrateFeedback.onCorrect"):
     if "ExamScreens" in h or "exam" in h.lower():
         print(f"[FAIL] 考试路径不得接入答对震动（整卷提交无即时判定）: {h}"); fail = True
 
+# 3.12) 底栏选中块色散（v2.11.4）：v2.5.1 误当"栏外彩圈"元凶关闭，v2.11.4 依用户
+#       对比参照（酷安底栏棱镜彩虹边）恢复，与 GlassButton 同口径。回退即 FAIL。
+_gbb_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/GlassBottomBar.kt")
+if "chromaticAberration = true" not in _gbb_src:
+    print("[FAIL] 底栏选中块色散未开启（v2.11.4 已恢复，勿再误关）"); fail = True
+if "chromaticAberration = false" in _gbb_src:
+    print("[FAIL] 底栏存在 chromaticAberration = false 回退写法"); fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

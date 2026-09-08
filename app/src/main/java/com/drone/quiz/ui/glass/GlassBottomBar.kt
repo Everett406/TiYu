@@ -262,8 +262,8 @@ fun GlassBottomTabs(
                 initialScale = 1f,
                 // 恢复官方大鼓包（v2.7.0，用户对比反馈"液体没有凸出来"）：
                 // 按压/拖动时选中块鼓出栏体上下各约 11dp，液态凸起感回归。
-                // v2.5.1 曾收敛到 62/56——当时误判圆环伪影源于凸出本身，
-                // 实际元凶是色散（chromaticAberration），已同步关闭（见下方 lens）
+                // v2.5.1 曾收敛到 62/56——当时误判圆环伪影源于凸出本身，并同步关闭了
+                // 色散；v2.11.4 已恢复色散（见下方 lens），凸出与色散并存观感正常
                 pressedScale = 78f / 56f,
                 onDragStarted = {},
                 onDragStopped = {
@@ -402,9 +402,12 @@ fun GlassBottomTabs(
                         lens(
                             8.dp.toPx() * progress,
                             11.dp.toPx() * progress,
-                            // 色散是 v2.5.1"圆环/方框伪影"的真正元凶（RGB 边缘分离在凸出
-                            // 边界画彩圈）；凸出鼓包本身无碍，关闭色散后液滴干净且可安全凸出
-                            chromaticAberration = false
+                            // v2.11.4 恢复色散（v2.5.1 误关）：用户对比参照（酷安底栏）要求
+                            // 按压膨胀液滴带棱镜彩虹边。当年「栏外彩圈」的两个伴生条件已
+                            // 不存在——底栏 Modifier.blur 方框已移除（v2.5.1 同轮）、鼓包
+                            // 参数已收敛且色散只随按压出现（progress=0 时 lens 全透传）；
+                            // GlassButton 同结构 chromaticAberration = true 常开无伪影。
+                            chromaticAberration = true
                         )
                     },
                     highlight = {
