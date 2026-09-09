@@ -367,13 +367,19 @@ fun PracticeRunScreen(
             }
         }
         persistSession(src, type, cat, sessionOrder, sessionBank, questions, answers, details, pagerState.currentPage, roundCovered)
-        if (correct == true && q.type != QuestionTypes.SHORT &&
-            autoNext && pagerState.currentPage < questions.size - 1
-        ) {
-            scope.launch {
-                delay(700)
-                val target = pagerState.currentPage + 1
-                pagerState.animateScrollToPage(target)
+        if (correct == true && q.type != QuestionTypes.SHORT && autoNext) {
+            // v2.11.5 末题续轮：做完本轮最后一题且本轮还有没刷过的题 → 自动跳到第一个未答的题。
+            // 原先是停在末题不动，用户须退出重进才触发补漏轮，观感像进度丢失；
+            // 当场续轮后快照 index 跟着翻页更新，重进也能正常恢复「第 X / 总数」。target 在提交时刻
+            // 预计算（与原先 target 预计算口径一致，delay 期间用户手动翻页不被覆盖）。
+            val cur = pagerState.currentPage
+            val target = if (cur < questions.size - 1) cur + 1
+            else questions.indices.firstOrNull { questions[it].id !in answers }
+            if (target != null && target != cur) {
+                scope.launch {
+                    delay(700)
+                    pagerState.animateScrollToPage(target)
+                }
             }
         }
     }
@@ -409,8 +415,13 @@ fun PracticeRunScreen(
                 )
                 Text(
                     if (questions.isEmpty()) "加载中…"
-                    else "第 ${pagerState.currentPage + 1} / ${questions.size} 题" +
-                        if (src == "wrong" || cat == "all") "" else " · $cat",
+                    else "第 ${pagerState.currentPage + 1} / ${questions.size} 题" + when {
+                        // v2.11.5 补漏轮标识：补漏轮只装此前没刷过的题（roundCovered=历轮已答累计），
+                        // 标明口径防止「总题数变少、从头开始」被误解为进度丢失（作答记录一直在 DB）
+                        roundCovered.isNotEmpty() -> " · 补漏轮 · 此前已刷 ${roundCovered.size} 题"
+                        src == "wrong" || cat == "all" -> ""
+                        else -> " · $cat"
+                    },
                     color = ui.textSub,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 2.dp)
@@ -524,9 +535,12 @@ fun PracticeRunScreen(
                     GlassIconButton(
                         onClick = {
                             scope.launch {
-                                pagerState.animateScrollToPage(
-                                    (pagerState.currentPage + 1).coerceAtMost(questions.size - 1)
-                                )
+                                // v2.11.5 末题续轮（手动）：末题点「下一题」→ 跳到本轮第一个未答的题
+                                //（答错停在末题、看完解析后手动续刷；本轮全部刷完则停住不动）
+                                val cur = pagerState.currentPage
+                                val target = if (cur < questions.size - 1) cur + 1
+                                else questions.indices.firstOrNull { questions[it].id !in answers }
+                                if (target != null) pagerState.animateScrollToPage(target)
                             }
                         },
                         backdrop = backdrop,

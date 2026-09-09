@@ -326,5 +326,17 @@ if "chromaticAberration = true" not in _gbb_src:
 if "chromaticAberration = false" in _gbb_src:
     print("[FAIL] 底栏存在 chromaticAberration = false 回退写法"); fail = True
 
+# 3.13) 顺序刷题末题续轮（v2.11.5）：做完本轮末题（答对自动切题/手动「下一题」）应跳到
+#       本轮第一个未答的题，不得回退为「停在末题不动」（老行为须退出重进才触发补漏轮，
+#       观感像进度丢失：总题数 800→743、从第 1 题重新开始）。补漏轮副标题须带口径标识。
+_ps_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt")
+_catch_up = "questions.indices.firstOrNull { questions[it].id !in answers }"
+if _ps_src.count(_catch_up) != 2:
+    print(f"[FAIL] 末题续轮逻辑应恰好出现 2 处（onCommit 自动 + 手动下一题按钮）: 实际 {_ps_src.count(_catch_up)} 处"); fail = True
+if "补漏轮 · 此前已刷" not in _ps_src:
+    print("[FAIL] 补漏轮副标题口径标识缺失（防止总题数变少被误解为进度丢失）"); fail = True
+if "autoNext && pagerState.currentPage < questions.size - 1" in _ps_src:
+    print("[FAIL] onCommit 翻页条件回退为旧写法（末题停在原地不续轮）"); fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)
