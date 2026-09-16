@@ -174,7 +174,7 @@ fun PhotoSearchScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(AppIcons.Camera, null, tint = ui.textSub, modifier = Modifier.size(40.dp))
                     Text(
-                        "正在识别题目…\n全离线处理，约 1~3 秒",
+                        "正在识别题目…\n斜拍会自动矫正，约 1~5 秒",
                         color = ui.textSub, fontSize = 13.sp,
                         lineHeight = 20.sp,
                         modifier = Modifier.padding(top = 12.dp)

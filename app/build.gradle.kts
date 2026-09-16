@@ -16,8 +16,8 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 49
-        versionName = "2.12.1"
+        versionCode = 50
+        versionName = "2.13.0"
         // v2.12.1：ML Kit bundled 携带的 x86/x86_64（模拟器）ABI 无真机价值，
         // 只留 ARM 双架构——单 APK 体积显著下降；真实 ARM 手机全覆盖
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
@@ -106,4 +106,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     // 拍照 EXIF 方向读取
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    // v2.13.0 拍照搜题自建相机页：CameraX 取景框引导（比系统相机随手拍识别率显著更高）
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
 }

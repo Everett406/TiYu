@@ -80,6 +80,7 @@ import com.drone.quiz.screens.ExamConfigScreen
 import com.drone.quiz.screens.ExamResultScreen
 import com.drone.quiz.screens.ExamScreen
 import com.drone.quiz.screens.HomeScreen
+import com.drone.quiz.screens.PhotoCaptureScreen
 import com.drone.quiz.screens.PhotoSearchScreen
 import com.drone.quiz.screens.PracticeConfigScreen
 import com.drone.quiz.screens.PracticeRunScreen
@@ -122,6 +123,7 @@ object Routes {
     const val WRONG = "wrong"
     const val SETTINGS = "settings"
     const val SEARCH = "search"
+    const val PHOTO_CAPTURE = "photoCapture"
     // v2.12.0：搜索页带初始关键词（拍照搜题未命中 → 引导文字搜索），
     // destination 改 pattern 形式；navigate("search") 仍可匹配（参数默认空）
     const val SEARCH_PATTERN = "search?init={init}"
@@ -385,10 +387,25 @@ fun AppRoot(settings: RootSettings) {
                         backdrop = bgBackdrop,
                         initialQuery = initQuery,
                         onBack = { navController.popBackStack() },
-                        onOpenPhoto = { uri ->
+                        onOpenCapture = {
+                            navController.navigate(Routes.PHOTO_CAPTURE) { launchSingleTop = true }
+                        }
+                    )
+                    }
+                }
+                // 拍照搜题自建相机页（v2.13.0：CameraX 取景框引导 + 斜拍自动矫正前置）
+                composable(Routes.PHOTO_CAPTURE) {
+                    CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                    PhotoCaptureScreen(
+                        onBack = { navController.popBackStack() },
+                        onCaptured = { uri ->
                             navController.navigate(
                                 "photoSearch?uri=" + android.net.Uri.encode(uri.toString())
-                            ) { launchSingleTop = true }
+                            ) {
+                                // 拍完弹掉相机页：返回键从结果页直接回搜索页
+                                popUpTo(Routes.PHOTO_CAPTURE) { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
                     )
                     }

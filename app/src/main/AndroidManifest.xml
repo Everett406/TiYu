@@ -6,6 +6,11 @@
     <!-- v2.8.8：检查更新（查 GitHub Releases 最新版 + 浏览器打开发布页）；题库功能仍完全离线 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- v2.13.0：拍照搜题自建相机页（CameraX 取景框引导）需要运行时申请的 CAMERA 权限；
+         无相机设备（部分平板/Chromebook）不因 uses-feature 被拒装 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <application
         android:name=".QuizApp"
         android:allowBackup="true"
