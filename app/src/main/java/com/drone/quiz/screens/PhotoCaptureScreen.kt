@@ -172,7 +172,7 @@ fun PhotoCaptureScreen(
                 Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                     Text("拍照搜题", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "把整页题目放进框内，正对拍摄",
+                        "框内对一道题，拍整页也行",
                         color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp
                     )
                 }
@@ -196,7 +196,7 @@ fun PhotoCaptureScreen(
             ) {
                 Text(
                     if (cameraError != null) cameraError!!
-                    else "斜着拍也能自动矫正 · 光线充足识别更准",
+                    else "对准一道题放进框内 · 横握手机也可以，会自动摆正",
                     color = if (cameraError != null) Color(0xFFFF8A8A)
                     else Color.White.copy(alpha = 0.72f),
                     fontSize = 12.sp,
@@ -303,8 +303,8 @@ private fun CameraCircleButton(
 }
 
 /**
- * 取景框 overlay：中央横放一页题比例的框（宽 86%，高约 0.62 倍框宽，整体略偏上），
- * 框外四块半透明压暗 + 白色圆头四角 L 线。
+ * 取景框 overlay：中央横向长条框（宽 86%，高约 0.45 倍框宽——一道题的典型比例，
+ * v2.14.0 单题导向），框外四块半透明压暗 + 白色圆头四角 L 线。
  */
 @Composable
 private fun ViewfinderOverlay(modifier: Modifier) {
@@ -312,9 +312,9 @@ private fun ViewfinderOverlay(modifier: Modifier) {
         val w = size.width
         val h = size.height
         val fw = w * 0.86f
-        val fh = fw * 0.62f
+        val fh = fw * 0.45f
         val l = (w - fw) / 2f
-        val t = (h - fh) / 2.5f
+        val t = (h - fh) / 2.2f
         val r = l + fw
         val b = t + fh
 

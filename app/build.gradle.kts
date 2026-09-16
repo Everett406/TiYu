@@ -16,8 +16,8 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 50
-        versionName = "2.13.0"
+        versionCode = 51
+        versionName = "2.14.0"
         // v2.12.1：ML Kit bundled 携带的 x86/x86_64（模拟器）ABI 无真机价值，
         // 只留 ARM 双架构——单 APK 体积显著下降；真实 ARM 手机全覆盖
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }

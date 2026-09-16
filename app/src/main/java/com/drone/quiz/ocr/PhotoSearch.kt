@@ -220,6 +220,22 @@ fun segmentQuestions(lines: List<OcrItem>): List<PhotoQuestion> {
     return out
 }
 
+/**
+ * 框选区域内的 OCR 行（v2.14.0 手动框选单题）：行与区域相交面积 ≥ 行自身面积 40%
+ * 视为框内行，交由 [segmentQuestions] 重切后匹配——手框兜底一切自动切题的漏题/连体。
+ */
+fun linesInRegion(lines: List<OcrItem>, region: PhotoBox): List<OcrItem> {
+    fun ov(a1: Int, a2: Int, b1: Int, b2: Int): Float {
+        val lo = maxOf(a1, b1); val hi = minOf(a2, b2)
+        return if (hi <= lo) 0f else (hi - lo).toFloat()
+    }
+    return lines.filter { l ->
+        val area = ((l.right - l.left) * (l.bottom - l.top)).coerceAtLeast(1)
+        ov(l.left, l.right, region.left, region.right) *
+            ov(l.top, l.bottom, region.top, region.bottom) / area >= 0.4f
+    }
+}
+
 // ---------- 匹配 ----------
 
 const val HIT_SOLID = 0.62f   // 高置信命中

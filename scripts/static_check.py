@@ -367,5 +367,19 @@ _ps_src2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PhotoSea
 if "PhotoBoxOverlay" not in _ps_src2:
     print("[FAIL] 拍照搜题框选 overlay 缺失（用户口径：直接做框选）"); fail = True
 
+# 3.15) 拍照搜题单题模式（v2.14.0，用户口径：默认单体单体搜，手动框兜底漏题）：
+#       结果页默认 singleMode=true（单题优先，整页退居可选切换）；手动框选链路完整
+#       （linesInRegion 框内行提取 + segmentQuestions 重切 + 拖拽手势 detectDragGestures）；
+#       上下题切换导航存在；相机取景框单题横向长条（0.45 比例）。
+for _needle in ("singleMode", "detectDragGestures", "applyRegion", "上一题", "下一题"):
+    if _needle not in _ps_src2:
+        print(f"[FAIL] 拍照搜题单题模式不完整：缺 {_needle}"); fail = True
+if "singleMode by remember { mutableStateOf(true) }" not in _ps_src2:
+    print("[FAIL] 单题模式必须为默认开启（用户口径：默认单体单体搜）"); fail = True
+if "linesInRegion" not in _ocr_src:
+    print("[FAIL] 手动框选行提取 linesInRegion 缺失"); fail = True
+if "0.45f" not in _capture_src:
+    print("[FAIL] 取景框应改为单题横向长条（0.45 比例）"); fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

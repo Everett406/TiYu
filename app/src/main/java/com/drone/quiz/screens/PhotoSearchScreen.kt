@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -46,7 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,7 +58,10 @@ import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.repo.Question
 import com.drone.quiz.data.repo.optionLabel
 import com.drone.quiz.ocr.HIT_SOLID
+import com.drone.quiz.ocr.OcrItem
+import com.drone.quiz.ocr.PhotoBox
 import com.drone.quiz.ocr.PhotoMatch
+import com.drone.quiz.ocr.linesInRegion
 import com.drone.quiz.ocr.matchQuestions
 import com.drone.quiz.ocr.recognizeImage
 import com.drone.quiz.ocr.segmentQuestions
@@ -71,12 +77,17 @@ import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
- * 拍照搜题结果页（v2.12.0，全屏非 Tab 页）：
- * 上半 = 原图 + 识别题块框选 overlay（小猿搜题式，点框 ↔ 下方卡片双向联动）；
- * 下半 = 结果卡片列表（命中/疑似/未命中三态）。
- * 识别与匹配在进入本页时一次性执行；图片已是「拍照产物 / 相册选图」的 content uri。
+ * 拍照搜题结果页（v2.14.0，全屏非 Tab 页）。
+ *
+ * v2.14.0 单题模式（默认，用户口径：默认单体单体搜，整页多题列表退居可选）：
+ * - 自动框住一道题（默认选第一个命中的题块），下方只出这一张结果卡（常展开）；
+ * - 「上一题 / 下一题」在自动题块间切换；
+ * - 图上直接拖动手指画框（拖拽手势，与点块点击共存）→ 框内 OCR 行重切 + 匹配，
+ *   手框兜底一切自动切题的漏题/连体（用户实测残留问题）；
+ * - 右上「整页」切回 v2.13 全部框选 + 列表视图。
  */
 @Composable
 fun PhotoSearchScreen(
@@ -93,11 +104,48 @@ fun PhotoSearchScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var matches by remember { mutableStateOf<List<PhotoMatch>>(emptyList()) }
-    // 框 ↔ 卡片联动选中（PhotoQuestion.index）
-    var selected by remember { mutableIntStateOf(-1) }
+    // 手动框选（单题模式）：框区域 + 框内重切匹配结果
+    var allLines by remember { mutableStateOf<List<OcrItem>>(emptyList()) }
+    var bankList by remember { mutableStateOf<List<Question>>(emptyList()) }
+    var manualRegion by remember { mutableStateOf<PhotoBox?>(null) }
+    var manualMatches by remember { mutableStateOf<List<PhotoMatch>>(emptyList()) }
+    var manualBusy by remember { mutableStateOf(false) }
+    // 单题 / 整页模式（默认单题）
+    var singleMode by remember { mutableStateOf(true) }
+    // 自动题块选中（PhotoQuestion.index）；expanded 仅整页模式用
+    var selected by remember { mutableIntStateOf(0) }
     var expanded by remember { mutableIntStateOf(-1) }
 
     val listState = rememberLazyListState()
+
+    val manualActive = singleMode && manualMatches.isNotEmpty()
+
+    fun selectBlock(i: Int) {
+        manualRegion = null
+        manualMatches = emptyList()
+        selected = i.coerceIn(0, (matches.size - 1).coerceAtLeast(0))
+        expanded = selected
+    }
+
+    // 手动框选 → 框内行重切 + 匹配（题库复用缓存，毫秒级）
+    fun applyRegion(region: PhotoBox) {
+        if (allLines.isEmpty()) return
+        scope.launch {
+            manualBusy = true
+            val bank = bankList.ifEmpty {
+                runCatching {
+                    val bankId = ServiceLocator.settings.settings
+                        .firstOrNull()?.currentBank ?: "drone"
+                    ServiceLocator.repo.loadAllQuestions(bankId)
+                }.getOrDefault(emptyList())
+            }
+            bankList = bank
+            val photos = segmentQuestions(linesInRegion(allLines, region))
+            manualMatches = matchQuestions(photos, bank)
+            manualRegion = region
+            manualBusy = false
+        }
+    }
 
     // ---- 识别 + 切题 + 匹配（一次性；失败给错误态可重试） ----
     var runTick by remember { mutableIntStateOf(0) }
@@ -105,7 +153,10 @@ fun PhotoSearchScreen(
         loading = true
         errorMsg = null
         matches = emptyList()
-        selected = -1
+        allLines = emptyList()
+        manualRegion = null
+        manualMatches = emptyList()
+        selected = 0
         expanded = -1
         runCatching {
             val parsed = android.net.Uri.parse(uri)
@@ -116,10 +167,14 @@ fun PhotoSearchScreen(
                     .firstOrNull()?.currentBank ?: "drone"
                 ServiceLocator.repo.loadAllQuestions(bankId)
             }.getOrDefault(emptyList())
+            allLines = outcome.lines
+            bankList = bank
             outcome.bitmap to matchQuestions(photos, bank)
         }.onSuccess { (bmp, ms) ->
             bitmap = bmp
             matches = ms
+            // 自动框住一道题：优先第一个命中的题块，否则第一块
+            selected = ms.indexOfFirst { it.matched != null }.takeIf { it >= 0 } ?: 0
         }.onFailure { e ->
             errorMsg = e.message ?: "识别失败"
         }
@@ -132,7 +187,7 @@ fun PhotoSearchScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        // ---- 顶部：返回 + 标题 + 统计 ----
+        // ---- 顶部：返回 + 标题 + 统计 + 重试 ----
         Row(
             Modifier
                 .fillMaxWidth()
@@ -147,6 +202,15 @@ fun PhotoSearchScreen(
                         loading -> "正在识别题目…"
                         errorMsg != null -> "识别失败"
                         matches.isEmpty() -> "没有识别出题目"
+                        manualBusy -> "正在搜框选区域…"
+                        manualActive -> "手选区域 · ${manualMatches.size} 题结果"
+                        singleMode -> {
+                            val m = matches.getOrNull(selected)
+                            val hit = matches.count { it.matched != null }
+                            "第 ${selected + 1}/${matches.size} 题" +
+                                (m?.let { if (it.matched != null) " · 相似度 ${(it.score * 100).toInt()}%" else " · 未匹配到" } ?: "") +
+                                " · 命中 $hit"
+                        }
                         else -> {
                             val hit = matches.count { it.matched != null }
                             "识别 ${matches.size} 题 · 命中 $hit 题"
@@ -156,12 +220,71 @@ fun PhotoSearchScreen(
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
-            // 重新识别（换一张时先返回搜索页重选，这里兜底重试）
             if (!loading && matches.isNotEmpty()) {
                 GlassIconButton(
                     onClick = { runTick++ },
                     backdrop = backdrop,
                     icon = AppIcons.Refresh
+                )
+            }
+        }
+
+        // ---- 模式切换（单题默认 / 整页）+ 操作提示 ----
+        if (!loading && matches.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(ui.ink.copy(alpha = 0.06f))
+                ) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (singleMode) ui.accent else Color.Transparent)
+                            .clickable(
+                                interactionSource = null, indication = null
+                            ) {
+                                singleMode = true
+                            }
+                            .padding(horizontal = 14.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            "单题",
+                            color = if (singleMode) Color.White else ui.textSub,
+                            fontSize = 12.sp,
+                            fontWeight = if (singleMode) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (!singleMode) ui.accent else Color.Transparent)
+                            .clickable(
+                                interactionSource = null, indication = null
+                            ) {
+                                singleMode = false
+                                manualRegion = null
+                                manualMatches = emptyList()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            "整页",
+                            color = if (!singleMode) Color.White else ui.textSub,
+                            fontSize = 12.sp,
+                            fontWeight = if (!singleMode) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (singleMode) "拖动图片可手动框题" else "点框看对应题",
+                    color = ui.textSub.copy(alpha = 0.8f), fontSize = 11.sp
                 )
             }
         }
@@ -208,25 +331,92 @@ fun PhotoSearchScreen(
                 )
             }
             else -> {
-                // ---- 原图 + 框选 overlay（点框滚动到对应卡片） ----
+                // ---- 原图 + 框选 overlay（单题：拖画框；两模式都可点块选择） ----
                 val bmp = bitmap
                 if (bmp != null) {
                     PhotoBoxOverlay(
                         backdrop = backdrop,
                         bitmap = bmp,
                         matches = matches,
-                        selected = selected,
+                        selected = if (singleMode) selected else -1,
+                        singleMode = singleMode,
+                        manualRegion = manualRegion,
                         onSelect = { i ->
-                            selected = i
-                            expanded = i
-                            scope.launch {
-                                // 列表结构：item(提示条) + items(matches) → 卡片位 = i + 1
-                                listState.animateScrollToItem((i + 1).coerceAtLeast(0))
+                            if (singleMode) selectBlock(i)
+                            else {
+                                selected = i
+                                expanded = i
+                                scope.launch {
+                                    listState.animateScrollToItem((i + 1).coerceAtLeast(0))
+                                }
                             }
-                        }
+                        },
+                        onRegionDone = { region -> applyRegion(region) }
                     )
                 }
-                // ---- 结果列表 ----
+                // ---- 单题模式导航条：上一题 / 计数 / 下一题；手框时显示清除 ----
+                if (singleMode) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (manualActive) {
+                            Text(
+                                "框选了 ${manualMatches.size} 题（单题请框小一点）",
+                                color = ui.textSub, fontSize = 12.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "清除手选",
+                                color = ui.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable(
+                                        interactionSource = null, indication = null
+                                    ) {
+                                        manualRegion = null
+                                        manualMatches = emptyList()
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        } else {
+                            Text(
+                                "‹ 上一题",
+                                color = if (selected > 0) ui.text else ui.textSub.copy(alpha = 0.35f),
+                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable(
+                                        interactionSource = null, indication = null,
+                                        enabled = selected > 0
+                                    ) { selectBlock(selected - 1) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                            Text(
+                                "${selected + 1} / ${matches.size}",
+                                color = ui.textSub, fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Text(
+                                "下一题 ›",
+                                color = if (selected < matches.size - 1) ui.text else ui.textSub.copy(alpha = 0.35f),
+                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable(
+                                        interactionSource = null, indication = null,
+                                        enabled = selected < matches.size - 1
+                                    ) { selectBlock(selected + 1) }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+                // ---- 结果列表：单题模式一张卡（手框优先）；整页模式全部 ----
+                val displayList: List<PhotoMatch> =
+                    if (manualActive) manualMatches
+                    else if (singleMode) listOfNotNull(matches.getOrNull(selected))
+                    else matches
                 LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
                     item {
                         Row(
@@ -236,22 +426,29 @@ fun PhotoSearchScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                if (matches.any { it.matched != null })
-                                    "纸质卷选项顺序可能与题库不同，认内容不认字母"
-                                else "没有在当前题库找到匹配的题目",
+                                when {
+                                    displayList.isEmpty() && manualActive ->
+                                        "这个区域没有识别出题目，试着框住完整的一道题（含选项）"
+                                    displayList.any { it.matched != null } ->
+                                        "纸质卷选项顺序可能与题库不同，认内容不认字母"
+                                    manualActive -> "没有在当前题库找到匹配的题目"
+                                    else -> "没有在当前题库找到匹配的题目"
+                                },
                                 color = ui.textSub, fontSize = 12.sp
                             )
                         }
                     }
-                    items(matches, key = { it.question.index }) { m ->
+                    items(displayList) { m ->
                         PhotoMatchCard(
                             match = m,
-                            selected = selected == m.question.index,
-                            expanded = expanded == m.question.index,
+                            selected = singleMode || selected == m.question.index,
+                            expanded = singleMode || expanded == m.question.index,
                             backdrop = backdrop,
                             onClick = {
-                                selected = m.question.index
-                                expanded = if (expanded == m.question.index) -1 else m.question.index
+                                if (!singleMode) {
+                                    selected = m.question.index
+                                    expanded = if (expanded == m.question.index) -1 else m.question.index
+                                }
                             },
                             onTextSearch = onTextSearch
                         )
@@ -265,7 +462,10 @@ fun PhotoSearchScreen(
 
 /**
  * 原图 + 框选 overlay：图按 ContentScale.Fit 居中显示（高上限 300dp），
- * 框坐标 = 像素坐标 × fit 缩放 + 居中偏移。点框回调 onSelect(index)。
+ * 框坐标 = 像素坐标 × fit 缩放 + 居中偏移。
+ * - 整页模式：全部题块正常框选，点块回调 onSelect(index)；
+ * - 单题模式：非选中块淡显、选中块高亮；整图拖拽画框（touch slop 与点块点击自然区分），
+ *   松手若框足够大回调 onRegionDone（bitmap 像素坐标）。
  */
 @Composable
 private fun PhotoBoxOverlay(
@@ -273,9 +473,13 @@ private fun PhotoBoxOverlay(
     bitmap: android.graphics.Bitmap,
     matches: List<PhotoMatch>,
     selected: Int,
-    onSelect: (Int) -> Unit
+    singleMode: Boolean,
+    manualRegion: PhotoBox?,
+    onSelect: (Int) -> Unit,
+    onRegionDone: (PhotoBox) -> Unit
 ) {
     val ui = LocalUi.current
+    val density = LocalDensity.current.density
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -290,7 +494,44 @@ private fun PhotoBoxOverlay(
         val dx = (boxW - dw) / 2f
         val dy = (boxH - dh) / 2f
 
-        Box(Modifier.fillMaxSize()) {
+        // 拖拽画框状态（dp 坐标，overlay 容器内）
+        var dragStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+        var dragCur by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(
+                    if (singleMode) Modifier.pointerInput(matches) {
+                        detectDragGestures(
+                            onDragStart = { dragStart = it; dragCur = it },
+                            onDrag = { ch, _ -> dragCur = ch.position },
+                            onDragEnd = {
+                                val s = dragStart
+                                val e = dragCur
+                                dragStart = null
+                                dragCur = null
+                                if (s != null && e != null) {
+                                    val l = min(s.x, e.x) / density
+                                    val r = maxOf(s.x, e.x) / density
+                                    val t = min(s.y, e.y) / density
+                                    val b = maxOf(s.y, e.y) / density
+                                    val region = PhotoBox(
+                                        ((l - dx) / scale).roundToInt().coerceIn(0, bitmap.width),
+                                        ((t - dy) / scale).roundToInt().coerceIn(0, bitmap.height),
+                                        ((r - dx) / scale).roundToInt().coerceIn(0, bitmap.width),
+                                        ((b - dy) / scale).roundToInt().coerceIn(0, bitmap.height)
+                                    )
+                                    if (region.width >= 30 && region.height >= 30) {
+                                        onRegionDone(region)
+                                    }
+                                }
+                            },
+                            onDragCancel = { dragStart = null; dragCur = null }
+                        )
+                    } else Modifier
+                )
+        ) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = null,
@@ -302,6 +543,8 @@ private fun PhotoBoxOverlay(
             )
             matches.forEach { m ->
                 val isSel = selected == m.question.index
+                // 单题模式：非选中块淡显（给手框/选中块让视觉焦点）
+                val dimmed = singleMode && !isSel
                 val borderColor = when {
                     isSel -> ui.accent
                     m.matched == null -> ui.textSub.copy(alpha = 0.8f)
@@ -315,29 +558,65 @@ private fun PhotoBoxOverlay(
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isSel) ui.accent.copy(alpha = 0.12f) else Color.Transparent)
                         .border(
-                            if (isSel) 2.5.dp else 1.5.dp,
-                            borderColor,
+                            when {
+                                isSel -> 2.5.dp
+                                dimmed -> 1.dp
+                                else -> 1.5.dp
+                            },
+                            borderColor.copy(alpha = if (dimmed) 0.4f else 1f),
                             RoundedCornerShape(6.dp)
                         )
                         .clickable(interactionSource = null, indication = null) { onSelect(m.question.index) }
                 ) {
-                    // 编号角标（左上角）
-                    Row(
-                        Modifier
-                            .align(Alignment.TopStart)
-                            .padding(2.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(borderColor.copy(alpha = 0.92f))
-                            .padding(horizontal = 7.dp, vertical = 1.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "${m.question.number ?: m.question.index + 1}",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    if (!dimmed) {
+                        // 编号角标（左上角；淡显块不标避免视觉噪音）
+                        Row(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .padding(2.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(borderColor.copy(alpha = 0.92f))
+                                .padding(horizontal = 7.dp, vertical = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "${m.question.number ?: m.question.index + 1}",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
+                }
+            }
+            // 手动框（bitmap 像素 → dp 显示）
+            manualRegion?.let { mr ->
+                Box(
+                    Modifier
+                        .offset((dx + mr.left * scale).dp, (dy + mr.top * scale).dp)
+                        .size((mr.width * scale).dp, (mr.height * scale).dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(ui.accent.copy(alpha = 0.10f))
+                        .border(2.5.dp, ui.accent, RoundedCornerShape(6.dp))
+                )
+            }
+            // 拖拽中的实时框
+            val ds = dragStart
+            val dc = dragCur
+            if (ds != null && dc != null) {
+                val l = min(ds.x, dc.x)
+                val t = min(ds.y, dc.y)
+                val w = kotlin.math.abs(ds.x - dc.x)
+                val h = kotlin.math.abs(ds.y - dc.y)
+                if (w > 4f && h > 4f) {
+                    Box(
+                        Modifier
+                            .offset(l.dp, t.dp)
+                            .size(w.dp, h.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ui.accent.copy(alpha = 0.08f))
+                            .border(1.5.dp, ui.accent, RoundedCornerShape(6.dp))
+                    )
                 }
             }
         }
