@@ -489,4 +489,38 @@ object AppIcons {
             close()
         }
     }
+
+    /** 相机（v2.12.0 拍照搜题）：机身 + 镜头圆环（EvenOdd 挖空），Material camera_alt 口径。 */
+    val Camera: ImageVector by lazy {
+        filledIcon("AppCamera", evenOdd = true) {
+            // 机身（含顶部凸起的快门舱）
+            moveTo(9f, 2f)
+            lineTo(7.17f, 4f)
+            lineTo(4f, 4f)
+            curveTo(2.9f, 4f, 2f, 4.9f, 2f, 6f)
+            lineTo(2f, 18f)
+            curveTo(2f, 19.1f, 2.9f, 20f, 4f, 20f)
+            lineTo(20f, 20f)
+            curveTo(21.1f, 20f, 22f, 19.1f, 22f, 18f)
+            lineTo(22f, 6f)
+            curveTo(22f, 4.9f, 21.1f, 4f, 20f, 4f)
+            lineTo(16.83f, 4f)
+            lineTo(15f, 2f)
+            close()
+            // 镜头外圈
+            moveTo(12f, 17f)
+            curveTo(9.24f, 17f, 7f, 14.76f, 7f, 12f)
+            curveTo(7f, 9.24f, 9.24f, 7f, 12f, 7f)
+            curveTo(14.76f, 7f, 17f, 9.24f, 17f, 12f)
+            curveTo(17f, 14.76f, 14.76f, 17f, 12f, 17f)
+            close()
+            // 镜头内圈（挖空）
+            moveTo(12f, 9f)
+            curveTo(10.34f, 9f, 9f, 10.34f, 9f, 12f)
+            curveTo(9f, 13.66f, 10.34f, 15f, 12f, 15f)
+            curveTo(13.66f, 15f, 15f, 13.66f, 15f, 12f)
+            curveTo(15f, 10.34f, 13.66f, 9f, 12f, 9f)
+            close()
+        }
+    }
 }

@@ -21,6 +21,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.animation.AnimatedVisibility
@@ -56,33 +60,68 @@ import com.drone.quiz.screens.common.heroSearchField
 import com.drone.quiz.screens.common.scrolledFromTopPx
 import com.drone.quiz.screens.common.softTopFade
 import com.drone.quiz.ui.glass.AppIcons
+import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.GlassIconButton
+import com.drone.quiz.ui.glass.GlassBottomSheet
 import com.drone.quiz.ui.theme.LocalReadingFont
 import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * 题目搜索页：题干 / 选项 / 解析 全文检索（防抖 300ms，最多返回 80 条）。
  * 结果点开可看全部选项、正确答案与解析。
+ * v2.12.0：搜索框旁新增「拍照搜题」入口（拍照/相册 → OCR → 本地题库匹配）。
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     backdrop: Backdrop,
-    onBack: () -> Unit
+    initialQuery: String = "",
+    onBack: () -> Unit,
+    onOpenPhoto: (android.net.Uri) -> Unit
 ) {
     val ui = LocalUi.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val settings by ServiceLocator.settings.settings.collectAsState(
         initial = com.drone.quiz.data.settings.AppSettings()
     )
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(initialQuery) }
     var results by remember { mutableStateOf<List<Question>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var expandedId by remember { mutableStateOf<Long?>(null) }
+
+    // v2.12.0 拍照搜题：底部弹层选拍照/相册；系统相机产物落 FileProvider 的
+    // cache/photo_search/（无 CAMERA 权限要求），相册走 PhotoPicker（无读图权限）
+    var showPhotoSheet by remember { mutableStateOf(false) }
+    var pendingCameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { ok ->
+        val u = pendingCameraUri
+        pendingCameraUri = null
+        showPhotoSheet = false
+        if (ok && u != null) onOpenPhoto(u)
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { u ->
+        showPhotoSheet = false
+        if (u != null) onOpenPhoto(u)
+    }
+    fun launchCamera() {
+        runCatching {
+            val dir = File(context.cacheDir, "photo_search").apply { mkdirs() }
+            val f = File(dir, "capture_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
+            pendingCameraUri = uri
+            cameraLauncher.launch(uri)
+        }.onFailure { showPhotoSheet = false }
+    }
 
     // 输入防抖搜索（有结果时记入搜索历史）
     LaunchedEffect(query) {
@@ -173,6 +212,12 @@ fun SearchScreen(
                     }
                 }
             }
+            // v2.12.0 拍照搜题入口：搜索的另一种输入方式（拍照 → 本地题库匹配）
+            GlassIconButton(
+                onClick = { showPhotoSheet = true },
+                backdrop = backdrop,
+                icon = AppIcons.Camera
+            )
         }
 
         // ---- 结果列表 ----
@@ -266,6 +311,69 @@ fun SearchScreen(
             item { Spacer(Modifier.height(130.dp)) }
         }
 
+    }
+
+    // ---- 拍照搜题来源选择弹层（v2.12.0） ----
+    GlassBottomSheet(
+        visible = showPhotoSheet,
+        backdrop = backdrop,
+        onDismiss = { showPhotoSheet = false }
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "拍照搜题",
+                color = ui.text, fontSize = 17.sp, fontWeight = FontWeight.Bold
+            )
+            Text(
+                "拍一页题目，自动在本题库里找到原题（含答案与解析）",
+                color = ui.textSub, fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                GlassButton(
+                    onClick = { launchCamera() },
+                    backdrop = backdrop,
+                    heightDp = 52.dp,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(AppIcons.Camera, null, tint = ui.text, modifier = Modifier.size(18.dp))
+                        Text(
+                            "拍照", color = ui.text,
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
+                }
+                GlassButton(
+                    onClick = {
+                        showPhotoSheet = false
+                        galleryLauncher.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    },
+                    backdrop = backdrop,
+                    heightDp = 52.dp,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(AppIcons.Import, null, tint = ui.text, modifier = Modifier.size(18.dp))
+                        Text(
+                            "相册", color = ui.text,
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+        }
     }
 }
 

@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- FileProvider 分享路径（v2.8.2）：仅暴露 cache/share/ 下的临时分享文件 -->
+<!-- FileProvider 暴露路径：cache/share/ 系统分享（v2.8.2）+ cache/photo_search/ 拍照搜题临时照片（v2.12.0） -->
 <paths>
     <cache-path
         name="share"
         path="share/" />
+    <cache-path
+        name="photo_search"
+        path="photo_search/" />
 </paths>

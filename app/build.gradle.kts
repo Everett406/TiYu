@@ -16,8 +16,8 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 47
-        versionName = "2.11.5"
+        versionCode = 48
+        versionName = "2.12.0"
     }
 
     // 固定签名：本地（环境变量 DQ_KS_PATH/DQ_KS_STORE_PASS）与 GitHub Actions（secrets）共用同一 keystore，
@@ -96,4 +96,11 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // v2.12.0 拍照搜题：ML Kit Text Recognition v2 中文 bundled 打包版——模型随 APK、
+    // 运行时零 GMS 依赖、完全离线，国产机可用；勿换 unbundled 版（需 GMS，static_check 3.14 禁令）
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
+    // gms Task.await() 桥接协程（与 coroutines 同版本）
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+    // 拍照 EXIF 方向读取
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

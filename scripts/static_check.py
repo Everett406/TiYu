@@ -338,5 +338,24 @@ if "补漏轮 · 此前已刷" not in _ps_src:
 if "autoNext && pagerState.currentPage < questions.size - 1" in _ps_src:
     print("[FAIL] onCommit 翻页条件回退为旧写法（末题停在原地不续轮）"); fail = True
 
+# 3.14) 拍照搜题（v2.12.0）：OCR 必须用 ML Kit bundled 打包版（模型随 APK、零 GMS 依赖），
+#       禁止换成 play-services-mlkit unbundled 版（国行机无 GMS 直接不可用）；
+#       拍照走系统相机 TakePicture（不得声明 CAMERA 权限——声明了反而要运行时权限流程）；
+#       核心链路（切题/匹配/框选 overlay）文件完整。
+_gradle_src = load(_repo_root + "/app/build.gradle.kts")
+if "com.google.mlkit:text-recognition-chinese" not in _gradle_src:
+    print("[FAIL] 拍照搜题 OCR 依赖缺失（text-recognition-chinese bundled）"); fail = True
+if "play-services-mlkit" in _gradle_src:
+    print("[FAIL] 禁用 ML Kit unbundled 版（需 GMS，国行机不可用）"); fail = True
+_manifest_src = load(_repo_root + "/app/src/main/AndroidManifest.xml")
+if "android.permission.CAMERA" in _manifest_src:
+    print("[FAIL] 拍照搜题不得声明 CAMERA 权限（系统相机 TakePicture 零权限）"); fail = True
+_ocr_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ocr/PhotoSearch.kt")
+if "ChineseTextRecognizerOptions" not in _ocr_src or "segmentQuestions" not in _ocr_src or "matchQuestions" not in _ocr_src:
+    print("[FAIL] 拍照搜题核心链路（OCR/切题/匹配）不完整"); fail = True
+_ps_src2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PhotoSearchScreen.kt")
+if "PhotoBoxOverlay" not in _ps_src2:
+    print("[FAIL] 拍照搜题框选 overlay 缺失（用户口径：直接做框选）"); fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)

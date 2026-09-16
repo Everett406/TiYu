@@ -352,6 +352,18 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         ids.mapNotNull { map[it]?.toQuestion() }
     }
 
+    /** 拍照搜题（v2.12.0）：当前题库全量题。分批取规避 SQLite IN 参数上限，保题号序。 */
+    suspend fun loadAllQuestions(bankId: String): List<Question> = withContext(Dispatchers.IO) {
+        val ids = qDao.idsByFilter(bankId, null, null)
+        if (ids.isEmpty()) return@withContext emptyList()
+        val out = ArrayList<Question>(ids.size)
+        ids.chunked(500).forEach { chunk ->
+            val map = qDao.byIds(chunk).associateBy { it.id }
+            chunk.forEach { id -> map[id]?.let { out += it.toQuestion() } }
+        }
+        out
+    }
+
     /** 题目搜索：限定当前题库（题干 / 选项 / 解析 / 参考答案 全文 LIKE）。 */
     suspend fun searchQuestions(bankId: String, query: String): List<Question> = withContext(Dispatchers.IO) {
         val q = query.trim()

@@ -3,6 +3,31 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.12.0] - 2026-09-09
+
+### 新功能 —— 拍照搜题（第四十五轮，AskUserQuestion 四项设计确认）
+
+- 用户诉求：笔试纸质卷（选项常被打乱、题目顺序不定）拍一页 → 自动识别每道题
+  → 在自己的题库里找到原题看答案解析（对标小猿搜题，但只搜本地题库）。
+  四项拍板：入口=搜索页相机按钮；MVP 直接带框选；OCR 由我调研拍板；直接干并发版。
+- OCR 选型（调研结论）：ML Kit Text Recognition v2 中文 bundled 打包版
+  `com.google.mlkit:text-recognition-chinese:16.0.0`——模型随 APK、运行时零 GMS
+  依赖、完全离线、国产机可用；排除项：unbundled 版需 GMS（与 PK 探讨同逻辑）、
+  PaddleOCR 需 NDK/JNI 集成工期翻倍、Tesseract 拍照场景质量差、云 API 要 key 要钱。
+  引擎 API 全部封装在 `ocr/PhotoSearch.kt`，后续换引擎只动一个文件。
+- 核心链路：EXIF 摆正 + 下采样（≤2048）识别 → 行流切题（题号正则 + 递增校验
+  防「2024.」「3.14」误切；选项行行内字母递增再切）→ 题库匹配（NFKC 归一 +
+  字符 bigram Dice；主分=题干，兜底=选项串×0.9；≥0.62 命中/0.42~0.62 疑似）。
+- UI：搜索框旁相机按钮 → 底部弹层（拍照/相册）→ 结果页上半原图框选 overlay
+  （三色框：命中绿/疑似黄/未命中灰 + 编号角标，点框 ↔ 卡片双向联动），
+  下半结果卡片（题库原题+正确项绿高亮+解析折叠；未命中显 OCR 原文+
+  一键转文字搜索——SEARCH route 改带 init 参数 pattern）。
+- 选项打乱口径：匹配靠题干不受打乱影响；卡片固定提示「认内容不认字母」；
+  选项精确映射（纸质卷 A=题库 C 式标注）留二期。
+- 权限零增量：拍照走系统相机 TakePicture + FileProvider cache/photo_search/
+  （file_paths.xml 增 cache-path），相册走 PhotoPicker；static_check 3.14 锁
+  bundled 依赖存在 + unbundled/CAMERA 禁令 + 核心链路完整（禁令字面量勿写进注释——教训复现已规避）。
+
 ## [2.11.5] - 2026-09-09
 
 ### 修复 —— 顺序刷题末题续轮（第四十四轮）

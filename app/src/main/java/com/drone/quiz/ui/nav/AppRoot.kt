@@ -80,6 +80,7 @@ import com.drone.quiz.screens.ExamConfigScreen
 import com.drone.quiz.screens.ExamResultScreen
 import com.drone.quiz.screens.ExamScreen
 import com.drone.quiz.screens.HomeScreen
+import com.drone.quiz.screens.PhotoSearchScreen
 import com.drone.quiz.screens.PracticeConfigScreen
 import com.drone.quiz.screens.PracticeRunScreen
 import com.drone.quiz.screens.SearchScreen
@@ -121,6 +122,10 @@ object Routes {
     const val WRONG = "wrong"
     const val SETTINGS = "settings"
     const val SEARCH = "search"
+    // v2.12.0：搜索页带初始关键词（拍照搜题未命中 → 引导文字搜索），
+    // destination 改 pattern 形式；navigate("search") 仍可匹配（参数默认空）
+    const val SEARCH_PATTERN = "search?init={init}"
+    const val PHOTO_SEARCH_PATTERN = "photoSearch?uri={uri}"
 
     /** Tab 页对应的 destination route（practice 的 destination route 是 pattern 形式） */
     val tabDestinations = listOf(HOME, PRACTICE_PATTERN, EXAM_CONFIG, WRONG, SETTINGS)
@@ -369,12 +374,42 @@ fun AppRoot(settings: RootSettings) {
                     )
                     }
                 }
-                // 题目搜索（题干/选项/解析全文检索）
-                composable(Routes.SEARCH) {
+                // 题目搜索（题干/选项/解析全文检索；v2.12.0 支持带初始关键词进入）
+                composable(
+                    Routes.SEARCH_PATTERN,
+                    arguments = listOf(navArgument("init") { defaultValue = "" })
+                ) { entry ->
+                    val initQuery = android.net.Uri.decode(entry.arguments?.getString("init") ?: "")
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                     SearchScreen(
                         backdrop = bgBackdrop,
-                        onBack = { navController.popBackStack() }
+                        initialQuery = initQuery,
+                        onBack = { navController.popBackStack() },
+                        onOpenPhoto = { uri ->
+                            navController.navigate(
+                                "photoSearch?uri=" + android.net.Uri.encode(uri.toString())
+                            ) { launchSingleTop = true }
+                        }
+                    )
+                    }
+                }
+                // 拍照搜题结果页（v2.12.0，非 Tab 全屏；未命中题可引导回文字搜索）
+                composable(
+                    Routes.PHOTO_SEARCH_PATTERN,
+                    arguments = listOf(navArgument("uri") { defaultValue = "" })
+                ) { entry ->
+                    val photoUri = android.net.Uri.decode(entry.arguments?.getString("uri") ?: "")
+                    CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                    PhotoSearchScreen(
+                        backdrop = bgBackdrop,
+                        uri = photoUri,
+                        onBack = { navController.popBackStack() },
+                        onTextSearch = { text ->
+                            navController.navigate("search?init=" + android.net.Uri.encode(text)) {
+                                popUpTo(Routes.SEARCH) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
                     )
                     }
                 }
