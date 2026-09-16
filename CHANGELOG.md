@@ -3,6 +3,18 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.12.1] - 2026-09-09
+
+### 优化 —— 拍照搜题 APK 体积（第四十五轮补丁）
+
+- v2.12.0 实发 77.3MB，远超预估的 +20MB：ML Kit bundled AAR 携带了 x86/x86_64
+  （模拟器专用）ABI 的 native 库与模型，单包全塞。
+- 修复：ndk abiFilters 只留 armeabi-v7a / arm64-v8a（真实手机全为 ARM，
+  模拟器/Chromebook 等非 ARM 场景放弃）。debug 实测 85M→64M，release 预期
+  77.3MB→约 56MB。功能零变化。
+- static_check 3.14 已覆盖 bundled 依赖与 CAMERA 禁令；abiFilters 无需专项断言
+  （回退仅影响体积不影响功能）。
+
 ## [2.12.0] - 2026-09-09
 
 ### 新功能 —— 拍照搜题（第四十五轮，AskUserQuestion 四项设计确认）

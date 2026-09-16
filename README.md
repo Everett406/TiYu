@@ -585,6 +585,7 @@ python3 scripts/convert_bank.py <题库.csv> [-o app/src/main/assets/questions.j
 | v2.11.4 | 46 | **底栏液态高亮恢复棱镜色散**：tab 按压膨胀液滴边缘重现彩虹折射边（AGSL chromaticAberration，与 GlassButton 同口径；v2.5.1 误关）；色散随按压出现，静止态不变；static_check 3.12 防回退 |
 | v2.11.5 | 47 | **顺序刷题末题续轮**：做完末题答对自动跳到本轮第一个未答的题（手动「下一题」同口径），不再原地停留；补漏轮副标题加「此前已刷 N 题」口径标识，总题数变化不再被误解为进度丢失（作答记录一直在 DB）；static_check 3.13 防回退 |
 | v2.12.0 | 48 | **新功能：拍照搜题**——搜索页相机入口，拍一页纸质题自动切题并在本题库找原题（答案+解析）；原图框选 overlay 点框↔卡片联动；匹配靠题干不怕选项打乱（「认内容不认字母」）；ML Kit 中文离线打包版（零 GMS 依赖国产机可用、零新增权限），APK +20MB；static_check 3.14 防回退 |
+| v2.12.1 | 49 | **拍照搜题体积优化**：abiFilters 砍掉模拟器专用 x86/x86_64 架构（真实手机全 ARM），APK 77MB→约 56MB，功能零变化 |
 
 完整变更明细见 [CHANGELOG.md](CHANGELOG.md)。
 

@@ -16,8 +16,11 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 48
-        versionName = "2.12.0"
+        versionCode = 49
+        versionName = "2.12.1"
+        // v2.12.1：ML Kit bundled 携带的 x86/x86_64（模拟器）ABI 无真机价值，
+        // 只留 ARM 双架构——单 APK 体积显著下降；真实 ARM 手机全覆盖
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
     // 固定签名：本地（环境变量 DQ_KS_PATH/DQ_KS_STORE_PASS）与 GitHub Actions（secrets）共用同一 keystore，
