@@ -16,8 +16,8 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 51
-        versionName = "2.14.0"
+        versionCode = 52
+        versionName = "2.15.0"
         // v2.12.1：ML Kit bundled 携带的 x86/x86_64（模拟器）ABI 无真机价值，
         // 只留 ARM 双架构——单 APK 体积显著下降；真实 ARM 手机全覆盖
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
@@ -95,7 +95,8 @@ dependencies {
     ksp("androidx.room:room-compiler:2.8.4")
 
     implementation("androidx.datastore:datastore-preferences:1.1.7")
-    implementation("androidx.work:work-runtime-ktx:2.10.5")
+    // v2.15.0：移除 work-runtime——每日提醒调度引擎换 AlarmManager 精确闹钟，
+    // WorkManager OneTime 自续在 ROM 杀后台下蒸发（「打开 APP 才通知」根因），全仓已无 androidx.work 引用
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

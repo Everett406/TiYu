@@ -259,20 +259,12 @@ private fun fadeMaskBrush(): Brush = Brush.verticalGradient(
 )
 
 /**
- * 顶部柔化 —— 已砍除（v2.7.2，用户裁定）。
- *
- * 五版迭代（布尔蒙版 → draw 直读 → 雾条 → 动态离屏 → 生长式蒙版）后用户实测：
- * "还是失败了……要不然就砍掉这个吧"。功能下线，函数保留签名作历史占位——
- * 六个调用点（首页/设置/刷题配置/模考/错题本/搜索）的滚动容器
- * （BounceLazyColumn / BounceContainer / LazyColumn）均自带固定边界裁剪，
- * 内容滚出即在容器上缘干净直切，无蒙版、无离屏、无渐变。
- *
- * 答题卡/题号网格的 softVerticalEdges 不受影响（纯色格子无玻璃互作，无此问题）。
+ * 顶部柔化 —— 旧蒙版方案（v2.6.0–v2.7.2 五版迭代后用户裁定砍除）已整体移除。
+ * v2.15.0 由渐进式模糊（ProgressiveBlur.kt，AGSL 双 pass 可变半径 RenderEffect）
+ * 重新实现该处体验：机制完全不同——不在容器上盖蒙版/雾条，而是滚动容器自身
+ * 图层的可变半径模糊，与弹窗全屏模糊同属 RenderEffect 系（已验证安全）。
+ * 调用点仍为原六个滚动容器位置，函数名 progressiveTopBlur。
  */
-fun Modifier.softTopFade(
-    fadeHeight: Dp = 36.dp,
-    scrolledPx: () -> Float = { Float.MAX_VALUE * 0.5f }
-): Modifier = this
 
 /**
  * 屏幕大标题（每页最顶部）。

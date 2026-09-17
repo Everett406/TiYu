@@ -54,7 +54,7 @@ import com.drone.quiz.screens.common.displayCategory
 import com.drone.quiz.screens.common.rememberBankName
 import com.drone.quiz.screens.common.heroSearchField
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.softTopFade
+import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
@@ -193,7 +193,7 @@ fun SearchScreen(
         LazyColumn(
             Modifier
                 .fillMaxSize()
-                .softTopFade(28.dp) { resultListState.scrolledFromTopPx() },
+                .progressiveTopBlur(zoneHeight = 28.dp) { resultListState.scrolledFromTopPx() },
             state = resultListState
         ) {
             item {

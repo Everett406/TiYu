@@ -46,7 +46,7 @@ import com.drone.quiz.screens.common.SectionLabel
 import com.drone.quiz.screens.common.SegmentedRow
 import com.drone.quiz.screens.common.heroSearchField
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.softTopFade
+import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.onboarding.onboardingAnchor
 import com.drone.quiz.ui.glass.BounceContainer
@@ -166,7 +166,7 @@ fun PracticeConfigScreen(
         BounceContainer(
             Modifier
                 .weight(1f)
-                .softTopFade(36.dp) { cfgScroll.scrolledFromTopPx() }
+                .progressiveTopBlur { cfgScroll.scrolledFromTopPx() }
         ) {
         Column(
             Modifier

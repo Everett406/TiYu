@@ -63,7 +63,7 @@ import com.drone.quiz.ServiceLocator
 import com.drone.quiz.util.AppUpdater
 import com.drone.quiz.screens.common.ScreenTitle
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.softTopFade
+import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.screens.common.SectionLabel
 import com.drone.quiz.screens.common.SegmentedRow
 import com.drone.quiz.ui.glass.AppIcons
@@ -148,6 +148,9 @@ fun SettingsScreen(backdrop: Backdrop) {
                 ServiceLocator.settings.setDailyNotify(true)
                 ReminderScheduler.ensureChannel(context)
                 ReminderScheduler.schedule(context)
+                // v2.15.0：顺手请求「后台运行」（电池优化白名单）——
+                // 通知走系统精确闹钟，白名单后 ROM 一键清后台也拦不住
+                ReminderScheduler.requestRunInBackground(context)
             }
         }
     }
@@ -157,6 +160,7 @@ fun SettingsScreen(backdrop: Backdrop) {
             ServiceLocator.settings.setDailyNotify(true)
             ReminderScheduler.ensureChannel(context)
             ReminderScheduler.schedule(context)
+            ReminderScheduler.requestRunInBackground(context)
         }
     }
 
@@ -219,7 +223,7 @@ fun SettingsScreen(backdrop: Backdrop) {
         BounceContainer(
             Modifier
                 .weight(1f)
-                .softTopFade(36.dp) { scrollState.scrolledFromTopPx() }
+                .progressiveTopBlur { scrollState.scrolledFromTopPx() }
         ) {
         Column(
             Modifier

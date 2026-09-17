@@ -3,6 +3,41 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.15.0] - 2026-09-17
+
+### 标题栏渐进式模糊 + 每日提醒后台保活（第四十八轮）
+
+用户两项体验需求：①标题栏与正文交界处加"渐进式模糊"（progressive blur，
+模糊半径沿轴向渐变的 iOS 风格滚动边缘效果）；②每日提醒不再依赖打开 APP——
+要求后台也能准时发通知。旧 softTopFade（v2.6.0–v2.7.2 五版迭代后用户裁定
+砍除）同期彻底移除，另起炉灶重新调研实现：
+
+- **渐进式模糊（新机制，非旧方案复用）**：上网重调研后确认旧方案病根——
+  alpha 蒙版/雾条/saveLayer 都在"滚动容器上盖东西"，与玻璃卡片离屏渲染互作
+  产生伪影闪烁；业界正解是 AGSL RuntimeShader 可变半径模糊（Haze 1.x 与
+  Compose 1.13 新官方 `Modifier.blur { BlurRadiusSpec }` 同机制族）。新实现
+  `ProgressiveBlur.kt`：水平+垂直双 pass 链式 RenderEffect，半径剖面
+  r(y)=maxR×intensity×t²（交界最强、zone 下缘归零），线性采样优化+常量循环
+  上界+运行时 break 早退，全程 float（防三星 half 精度裁剪），采样坐标 clamp
+  防边缘渗色；`progressiveTopBlur` 挂在滚动容器外层（图层顶缘即交界线，模糊
+  永不溢进标题区），首页/刷题/模考/错题本/设置/搜索/配置 7 处全部生效；
+  强度按滚动像素连续驱动（56dp 内升满、跟手无延迟）并量化 24 步限频重建；
+  卸载走"强度回落到 0 再移除"，无 null 硬切换闪烁；交界顶端 18% zone
+  premultiplied 熔化渐隐，内容先虚化再溶入标题区；API<33 原样回退硬裁切。
+- **每日提醒调度引擎重写**：WorkManager OneTime 自续 → AlarmManager 精确
+  闹钟（setExactAndAllowWhileIdle，Doze 也准时）——job 随进程蒸发的
+  "打开 APP 才通知"根因根治。ReminderReceiver 直接触发：发通知+排明天
+  （goAsync 短事务）；开机/覆盖安装自动重排（BOOT_COMPLETED /
+  MY_PACKAGE_REPLACED，受保护广播 exported=true 无仿冒风险）；开启提醒时
+  请求电池优化白名单（系统"后台运行"弹窗，requestRunInBackground，已加白
+  静默跳过）；APP 每次打开自愈式补排（schedule 幂等）。精确权限双保险：
+  SCHEDULE_EXACT_ALARM（31–32 默认授予）+ USE_EXACT_ALARM（33+ 安装即授予），
+  被收回时降级 setAndAllowWhileIdle。不驻留前台服务（省电且不受 Android 14
+  FGS 限制）。智能时刻口径不变（10 天首次刷题时刻中位数，夹 10:00–21:30）。
+- work-runtime-ktx 依赖移除（全仓无 androidx.work 残留引用）；
+  static_check 新增 3.16 节（渐进模糊符号/6 调用点/softTopFade 禁令/闹钟
+  符号/manifest 权限与 Receiver/WorkManager 移除断言）。
+
 ## [2.14.0] - 2026-09-16
 
 ### 拍照搜题「单题模式」—— 自动框一题 + 手指拖画框（第四十七轮）

@@ -83,7 +83,7 @@ import com.drone.quiz.screens.common.rememberBankName
 import com.drone.quiz.screens.common.WrongAnswerBlock
 import com.drone.quiz.screens.common.remainingBottomPx
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.softTopFade
+import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.screens.common.softVerticalEdges
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.onboarding.onboardingAnchor
@@ -240,7 +240,7 @@ fun ExamConfigScreen(
         BounceContainer(
             Modifier
                 .weight(1f)
-                .softTopFade(36.dp) { scrollState.scrolledFromTopPx() }
+                .progressiveTopBlur { scrollState.scrolledFromTopPx() }
         ) {
         Column(
             Modifier

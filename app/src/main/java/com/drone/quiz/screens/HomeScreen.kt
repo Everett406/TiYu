@@ -54,7 +54,7 @@ import com.drone.quiz.data.repo.Repo
 import com.drone.quiz.data.db.BankEntity
 import com.drone.quiz.data.settings.AppSettings
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.softTopFade
+import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.onboarding.onboardingAnchor
 import com.drone.quiz.ui.glass.GlassAnchorMenu
@@ -194,13 +194,13 @@ fun HomeScreen(
             )
         }
 
-        // 标题柔化：内容滚入标题下方时渐隐蒙版（saveLayer 方案，见 Common.softTopFade）
-        // 滚离顶部才渐显，停在顶部时无蒙版、进度环等首屏内容不被遮挡
+        // 标题柔化：内容滚入标题下方时渐进虚化（AGSL 双 pass 渐进模糊，见 ProgressiveBlur.kt）
+        // 滚离顶部才渐显，停在顶部时无效果、进度环等首屏内容不被遮挡
         val homeListState = rememberLazyListState()
         BounceLazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .softTopFade(36.dp) { homeListState.scrolledFromTopPx() },
+                .progressiveTopBlur { homeListState.scrolledFromTopPx() },
             listState = homeListState
         ) {
             // ---- 总览：进度环 + 预估通过率 ----

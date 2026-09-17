@@ -49,6 +49,7 @@ import com.drone.quiz.screens.common.UsageSignals
 import com.drone.quiz.ui.glass.GlassRuntime
 import com.drone.quiz.ui.nav.AppRoot
 import com.drone.quiz.ui.theme.DroneTheme
+import com.drone.quiz.work.ReminderScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -95,6 +96,17 @@ class MainActivity : ComponentActivity() {
         BootGuard.log(this, "activity", "MainActivity.onCreate")
         enableEdgeToEdge()
         consumeNavIntent(intent)
+        // v2.15.0：打开 APP 自愈式补排每日提醒——精确闹钟本不依赖进程存活，
+        // 但部分 ROM 会私下清闹钟；开关仍开时补排一次（schedule 幂等：时刻未到不变化）
+        lifecycleScope.launch {
+            val enabled = runCatching {
+                ServiceLocator.settings.settings.first().dailyNotify
+            }.getOrDefault(false)
+            if (enabled) {
+                ReminderScheduler.ensureChannel(this@MainActivity)
+                runCatching { ReminderScheduler.schedule(this@MainActivity) }
+            }
+        }
         setContent {
             // v2.8.6 性能收敛：根组合只订阅它真正响应的字段（去重后）。
             // 完整 settings flow 对 DataStore 任意 key 写入都会重发——刷题会话快照

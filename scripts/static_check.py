@@ -381,5 +381,46 @@ if "linesInRegion" not in _ocr_src:
 if "0.45f" not in _capture_src:
     print("[FAIL] 取景框应改为单题横向长条（0.45 比例）"); fail = True
 
+# 3.16) 渐进式模糊 + 每日提醒后台保活（v2.15.0）：
+#       A. 旧 softTopFade 必须彻底移除（用户裁定不復用旧蒙版方案）；新实现 progressiveTopBlur
+#          （AGSL 双 pass 可变半径 RenderEffect）须存在于 6 个滚动容器调用点 + ProgressiveBlur.kt；
+#       B. 每日提醒调度引擎必须为 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
+#          电池白名单请求 + Receiver 注册 + 权限齐全。
+_blur_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/ProgressiveBlur.kt")
+for _needle in ("progressiveTopBlur", "createRuntimeShaderEffect", "createChainEffect",
+                "uContent", "uZonePx"):
+    if _needle not in _blur_src:
+        print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}"); fail = True
+_softfade_hits = grep_hits("softTopFade")
+if _softfade_hits:
+    print(f"[FAIL] 旧顶部柔化函数必须彻底移除（v2.7.2 已裁定砍除，v2.15.0 换 AGSL 渐进模糊），残留 {_softfade_hits}"); fail = True
+_prog_files = set(h.split(":")[0] for h in grep_hits("progressiveTopBlur")
+                  if "/screens/" in h and "common/ProgressiveBlur.kt" not in h)
+if len(_prog_files) < 6:
+    print(f"[FAIL] progressiveTopBlur 调用页应 ≥6（首页/模考/设置/错题/搜索/配置），实际 {sorted(_prog_files)}"); fail = True
+_notify_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/work/Notify.kt")
+for _needle in ("setExactAndAllowWhileIdle", "setAndAllowWhileIdle", "canScheduleExactAlarms",
+                "isIgnoringBatteryOptimizations", "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+                "ACTION_BOOT_COMPLETED", "MY_PACKAGE_REPLACED", "goAsync", "RTC_WAKEUP"):
+    if _needle not in _notify_src:
+        print(f"[FAIL] 每日提醒闹钟引擎不完整：缺 {_needle}"); fail = True
+if "androidx.work" in _notify_src:
+    print("[FAIL] Notify.kt 不得再引用 WorkManager（调度引擎已换 AlarmManager）"); fail = True
+_work_hits = grep_hits("androidx.work")
+if _work_hits:
+    print(f"[FAIL] WorkManager 引用残留（依赖已移除）：{_work_hits}"); fail = True
+for _perm in ("RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
+              "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"):
+    if _perm not in _manifest_src:
+        print(f"[FAIL] manifest 缺每日提醒后台保活权限：{_perm}"); fail = True
+if "ReminderReceiver" not in _manifest_src or "android.intent.action.BOOT_COMPLETED" not in _manifest_src:
+    print("[FAIL] manifest 缺 ReminderReceiver 注册（开机/升级重排失效）"); fail = True
+_settings_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SettingsScreen.kt")
+if "requestRunInBackground" not in _settings_src:
+    print("[FAIL] 设置页开启每日提醒须请求后台运行（电池优化白名单弹窗）"); fail = True
+_main_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/MainActivity.kt")
+if "ReminderScheduler.schedule" not in _main_src:
+    print("[FAIL] MainActivity 打开须自愈式补排每日提醒"); fail = True
+
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)
