@@ -338,15 +338,20 @@ if "补漏轮 · 此前已刷" not in _ps_src:
 if "autoNext && pagerState.currentPage < questions.size - 1" in _ps_src:
     print("[FAIL] onCommit 翻页条件回退为旧写法（末题停在原地不续轮）"); fail = True
 
-# 3.14) 拍照搜题（v2.12.0 引入 / v2.13.0 升级）：OCR 必须用 ML Kit bundled 打包版（模型随 APK、
-#       零 GMS 依赖），禁止换成 play-services-mlkit unbundled 版（国行机无 GMS 直接不可用）；
-#       v2.13.0 起拍照走自建 CameraX 页（取景框引导），须声明 CAMERA 权限 + 运行时申请 +
-#       uses-feature 不强制（无相机设备不拒装）；核心链路（矫正/切题/匹配/框选 overlay）文件完整。
+# 3.14) 拍照搜题（v2.12.0 引入 / v2.16.0 引擎重写）：OCR = PaddleOCR PP-OCRv4 mobile（det+rec）
+#       + MNN 推理（libdroneocr.so 薄封装 + vendor libMNN.so）；模型文件不随 APK 分发，
+#       首次使用拍照搜题时由 OcrModels 走国内线路（ModelScope）按需下载（filesDir 落地 +
+#       字节数/SHA-256 双校验 + 双 URL 线路互备 + 可取消/重试）——体积瘦身核心；
+#       ML Kit bundled 依赖必须移除（v2.16.0 前 APK 体积大头），unbundled 版照旧禁令（需 GMS）；
+#       v2.13.0 起拍照走自建 CameraX 页（CAMERA 权限 + uses-feature 不强制）；
+#       切题/匹配链路（segmentQuestions/matchQuestions）保持文件内完整。
 _gradle_src = load(_repo_root + "/app/build.gradle.kts")
-if "com.google.mlkit:text-recognition-chinese" not in _gradle_src:
-    print("[FAIL] 拍照搜题 OCR 依赖缺失（text-recognition-chinese bundled）"); fail = True
+if "com.google.mlkit:text-recognition-chinese" in _gradle_src:
+    print("[FAIL] ML Kit bundled 中文识别依赖必须移除（v2.16.0 换 PaddleOCR+MNN 模型按需下载，APK 瘦身）"); fail = True
 if "play-services-mlkit" in _gradle_src:
     print("[FAIL] 禁用 ML Kit unbundled 版（需 GMS，国行机不可用）"); fail = True
+if "externalNativeBuild" not in _gradle_src or "cmake" not in _gradle_src:
+    print("[FAIL] gradle 缺 externalNativeBuild/cmake 配置（libdroneocr.so 编不进来）"); fail = True
 if "androidx.camera:camera-camera2" not in _gradle_src or "androidx.camera:camera-view" not in _gradle_src:
     print("[FAIL] v2.13.0 自建相机页 CameraX 依赖缺失"); fail = True
 _manifest_src = load(_repo_root + "/app/src/main/AndroidManifest.xml")
@@ -354,11 +359,39 @@ if "android.permission.CAMERA" not in _manifest_src:
     print("[FAIL] 自建相机页必须声明 CAMERA 权限（v2.13.0 起弃用系统相机 TakePicture）"); fail = True
 if "android.hardware.camera.any" not in _manifest_src:
     print("[FAIL] 缺 uses-feature camera.any required=false（无相机设备会被拒装）"); fail = True
+_models_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ocr/OcrModels.kt")
+for _needle in ("modelscope.cn", "isReady", "ensure", "sha256Of", "detFile", "recFile",
+                "MessageDigest", "filesDir"):
+    if _needle not in _models_src:
+        print(f"[FAIL] 模型按需下载管理器不完整：缺 {_needle}（国内线路/校验/落地 防回归）"); fail = True
+_paddle_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ocr/PaddleOcr.kt")
+for _needle in ("PP-OCRv4", "nativeRun", "dbPostprocess", "mergeLines", "recognizeLine",
+                "ppocr_keys_v1.txt", "detPtr", "recPtr"):
+    if _needle not in _paddle_src:
+        print(f"[FAIL] PaddleOCR 推理流水线不完整：缺 {_needle}"); fail = True
+_onative_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ocr/OcrNative.kt")
+for _needle in ("nativeCreate", "nativeRun", "nativeClose", "droneocr"):
+    if _needle not in _onative_src:
+        print(f"[FAIL] MNN JNI 封装不完整：缺 {_needle}"); fail = True
+_cpp_src = load(_repo_root + "/app/src/main/cpp/ocr_mnn.cpp")
+for _needle in ("createFromFile", "resizeSession", "runSession", "copyFromHostTensor"):
+    if _needle not in _cpp_src:
+        print(f"[FAIL] OCR native 胶水层不完整：缺 {_needle}"); fail = True
+_cmake_src = load(_repo_root + "/app/src/main/cpp/CMakeLists.txt")
+for _needle in ("droneocr", "libMNN.so", "max-page-size=16384"):
+    if _needle not in _cmake_src:
+        print(f"[FAIL] CMake 配置不完整：缺 {_needle}"); fail = True
+import os as _os
+for _lib in ("app/src/main/jniLibs/arm64-v8a/libMNN.so",
+             "app/src/main/jniLibs/armeabi-v7a/libMNN.so",
+             "app/src/main/assets/ocr/ppocr_keys_v1.txt"):
+    if not _os.path.exists(_repo_root + "/" + _lib):
+        print(f"[FAIL] OCR 运行时资源缺失：{_lib}"); fail = True
 _ocr_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ocr/PhotoSearch.kt")
-for _needle in ("ChineseTextRecognizerOptions", "segmentQuestions", "matchQuestions",
-                "medianSkew", "containOf", "matchSegments", "isPageChrome", "stemLines"):
+for _needle in ("PaddleOcr.recognize", "OcrItem", "segmentQuestions", "matchQuestions",
+                "containOf", "matchSegments", "isPageChrome", "stemLines"):
     if _needle not in _ocr_src:
-        print(f"[FAIL] 拍照搜题核心链路不完整：缺 {_needle}（斜拍矫正/段级匹配/页脚丢弃/连体强拆 防回归）"); fail = True
+        print(f"[FAIL] 拍照搜题核心链路不完整：缺 {_needle}（段级匹配/页脚丢弃/连体强拆 防回归）"); fail = True
 _capture_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PhotoCaptureScreen.kt")
 for _needle in ("ProcessCameraProvider", "takePicture", "RequestPermission", "ViewfinderOverlay"):
     if _needle not in _capture_src:
@@ -381,23 +414,24 @@ if "linesInRegion" not in _ocr_src:
 if "0.45f" not in _capture_src:
     print("[FAIL] 取景框应改为单题横向长条（0.45 比例）"); fail = True
 
-# 3.16) 渐进式模糊 + 每日提醒后台保活（v2.15.0）：
-#       A. 旧 softTopFade 必须彻底移除（用户裁定不復用旧蒙版方案）；新实现 progressiveTopBlur
-#          （AGSL 双 pass 可变半径 RenderEffect）须存在于 6 个滚动容器调用点 + ProgressiveBlur.kt；
-#       B. 每日提醒调度引擎必须为 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
+# 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持）+ 渐进式模糊整体撤除（v2.16.0 用户裁定）：
+#       A. 渐进式模糊必须不存在：ProgressiveBlur.kt 文件删除 + 全仓 0 命中（含注释）——
+#          v2.15.0 曾上架，v2.16.0 起整体回撤（用户实测后裁定撤除），保留即半拆状态；
+#       B. 每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
 #          电池白名单请求 + Receiver 注册 + 权限齐全。
-_blur_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/ProgressiveBlur.kt")
-for _needle in ("progressiveTopBlur", "createRuntimeShaderEffect", "createChainEffect",
-                "uContent", "uZonePx"):
-    if _needle not in _blur_src:
-        print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}"); fail = True
+if _os.path.exists(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/ProgressiveBlur.kt"):
+    print("[FAIL] ProgressiveBlur.kt 必须删除（v2.16.0 用户裁定整体撤除渐进式模糊）"); fail = True
+if grep_hits("progressiveTopBlur"):
+    print("[FAIL] 渐进式模糊 API 残留（v2.16.0 已整体撤除）"); fail = True
+# createRuntimeShaderEffect/createChainEffect 仅在业务层（screens/）禁用——
+# vendored com.kyant.backdrop 库内部链式 RenderEffect 属正当使用，不在此列
+for _banned in ("createRuntimeShaderEffect", "createChainEffect"):
+    _banned_hits = [h for h in grep_hits(_banned) if "/screens/" in h]
+    if _banned_hits:
+        print(f"[FAIL] 渐进式模糊符号残留（v2.16.0 已整体撤除）：{_banned_hits}"); fail = True
 _softfade_hits = grep_hits("softTopFade")
 if _softfade_hits:
-    print(f"[FAIL] 旧顶部柔化函数必须彻底移除（v2.7.2 已裁定砍除，v2.15.0 换 AGSL 渐进模糊），残留 {_softfade_hits}"); fail = True
-_prog_files = set(h.split(":")[0] for h in grep_hits("progressiveTopBlur")
-                  if "/screens/" in h and "common/ProgressiveBlur.kt" not in h)
-if len(_prog_files) < 6:
-    print(f"[FAIL] progressiveTopBlur 调用页应 ≥6（首页/模考/设置/错题/搜索/配置），实际 {sorted(_prog_files)}"); fail = True
+    print(f"[FAIL] 旧顶部柔化函数必须彻底移除（v2.7.2 已裁定砍除），残留 {_softfade_hits}"); fail = True
 _notify_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/work/Notify.kt")
 for _needle in ("setExactAndAllowWhileIdle", "setAndAllowWhileIdle", "canScheduleExactAlarms",
                 "isIgnoringBatteryOptimizations", "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",

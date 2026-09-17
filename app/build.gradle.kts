@@ -16,11 +16,12 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 52
-        versionName = "2.15.0"
-        // v2.12.1：ML Kit bundled 携带的 x86/x86_64（模拟器）ABI 无真机价值，
-        // 只留 ARM 双架构——单 APK 体积显著下降；真实 ARM 手机全覆盖
+        versionCode = 53
+        versionName = "2.16.0"
+        // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）；
+        // v2.16.0：ML Kit bundled 移除后，native 库仅剩 jniLibs 里的 MNN 推理库
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+        ndkVersion = "27.2.12479018"
     }
 
     // 固定签名：本地（环境变量 DQ_KS_PATH/DQ_KS_STORE_PASS）与 GitHub Actions（secrets）共用同一 keystore，
@@ -66,6 +67,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // v2.16.0 拍照搜题 OCR：MNN 推理薄封装（预/后处理在 Kotlin），
+    // 模型文件不随 APK 分发，首次使用时按需下载（OcrModels）
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 dependencies {
@@ -100,11 +110,9 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    // v2.12.0 拍照搜题：ML Kit Text Recognition v2 中文 bundled 打包版——模型随 APK、
-    // 运行时零 GMS 依赖、完全离线，国产机可用；勿换 unbundled 版（需 GMS，static_check 3.14 禁令）
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
-    // gms Task.await() 桥接协程（与 coroutines 同版本）
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+    // v2.16.0：ML Kit text-recognition-chinese bundled（约 18MB：双 ABI 引擎库+内置模型）
+    // 与 gms Task 桥接库一并移除——OCR 换 PaddleOCR PP-OCRv4 + MNN（模型首用按需下载），
+    // APK 从 60.9MB 减至约 44MB。详见 ocr/OcrModels.kt 与 static_check 3.14 节
     // 拍照 EXIF 方向读取
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     // v2.13.0 拍照搜题自建相机页：CameraX 取景框引导（比系统相机随手拍识别率显著更高）

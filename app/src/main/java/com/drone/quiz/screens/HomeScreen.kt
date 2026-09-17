@@ -54,7 +54,6 @@ import com.drone.quiz.data.repo.Repo
 import com.drone.quiz.data.db.BankEntity
 import com.drone.quiz.data.settings.AppSettings
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.onboarding.onboardingAnchor
 import com.drone.quiz.ui.glass.GlassAnchorMenu
@@ -194,13 +193,11 @@ fun HomeScreen(
             )
         }
 
-        // 标题柔化：内容滚入标题下方时渐进虚化（AGSL 双 pass 渐进模糊，见 ProgressiveBlur.kt）
         // 滚离顶部才渐显，停在顶部时无效果、进度环等首屏内容不被遮挡
         val homeListState = rememberLazyListState()
         BounceLazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .progressiveTopBlur { homeListState.scrolledFromTopPx() },
+                .fillMaxSize(),
             listState = homeListState
         ) {
             // ---- 总览：进度环 + 预估通过率 ----

@@ -63,7 +63,6 @@ import com.drone.quiz.ServiceLocator
 import com.drone.quiz.util.AppUpdater
 import com.drone.quiz.screens.common.ScreenTitle
 import com.drone.quiz.screens.common.scrolledFromTopPx
-import com.drone.quiz.screens.common.progressiveTopBlur
 import com.drone.quiz.screens.common.SectionLabel
 import com.drone.quiz.screens.common.SegmentedRow
 import com.drone.quiz.ui.glass.AppIcons
@@ -223,7 +222,6 @@ fun SettingsScreen(backdrop: Backdrop) {
         BounceContainer(
             Modifier
                 .weight(1f)
-                .progressiveTopBlur { scrollState.scrolledFromTopPx() }
         ) {
         Column(
             Modifier

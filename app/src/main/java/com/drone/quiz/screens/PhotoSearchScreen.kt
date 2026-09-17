@@ -59,6 +59,7 @@ import com.drone.quiz.data.repo.Question
 import com.drone.quiz.data.repo.optionLabel
 import com.drone.quiz.ocr.HIT_SOLID
 import com.drone.quiz.ocr.OcrItem
+import com.drone.quiz.ocr.OcrModels
 import com.drone.quiz.ocr.PhotoBox
 import com.drone.quiz.ocr.PhotoMatch
 import com.drone.quiz.ocr.linesInRegion
@@ -71,9 +72,12 @@ import com.drone.quiz.screens.common.rememberBankName
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
+import com.drone.quiz.ui.glass.GlassContentDialog
 import com.drone.quiz.ui.glass.GlassIconButton
 import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlin.math.min
@@ -115,6 +119,11 @@ fun PhotoSearchScreen(
     // 自动题块选中（PhotoQuestion.index）；expanded 仅整页模式用
     var selected by remember { mutableIntStateOf(0) }
     var expanded by remember { mutableIntStateOf(-1) }
+    // v2.16.0 模型按需下载（首次使用拍照搜题触发；phase: 0 无/1 下载中/2 失败）
+    var modelPhase by remember { mutableIntStateOf(0) }
+    var modelProgress by remember { mutableStateOf<OcrModels.Progress?>(null) }
+    var modelError by remember { mutableStateOf<String?>(null) }
+    var modelJob by remember { mutableStateOf<Job?>(null) }
 
     val listState = rememberLazyListState()
 
@@ -160,6 +169,34 @@ fun PhotoSearchScreen(
         expanded = -1
         runCatching {
             val parsed = android.net.Uri.parse(uri)
+            // v2.16.0 首次使用：按需下载 OCR 模型（国内线路，仅一次，约 15MB）
+            if (!OcrModels.isReady(context)) {
+                modelPhase = 1
+                modelProgress = null
+                modelError = null
+                val job = launch {
+                    try {
+                        OcrModels.ensure(context) { modelProgress = it }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        modelError = e.message ?: "模型下载失败"
+                    }
+                }
+                modelJob = job
+                job.join()
+                if (job.isCancelled) {
+                    // 用户取消：不出错误态，留在空页（可点重试重新进入）
+                    loading = false
+                    return@LaunchedEffect
+                }
+                if (modelError != null || !OcrModels.isReady(context)) {
+                    modelPhase = 2
+                    loading = false
+                    return@LaunchedEffect
+                }
+                modelPhase = 0
+            }
             val outcome = recognizeImage(context, parsed)
             val photos = segmentQuestions(outcome.lines)
             val bank = runCatching {
@@ -179,6 +216,26 @@ fun PhotoSearchScreen(
             errorMsg = e.message ?: "识别失败"
         }
         loading = false
+    }
+
+    // v2.16.0 模型下载弹层（下载中可取消 / 失败可重试）；仅拍照搜题入口触发，不入设置页
+    if (modelPhase == 1 || modelPhase == 2) {
+        OcrModelDownloadDialog(
+            backdrop = backdrop,
+            downloading = modelPhase == 1,
+            progress = modelProgress,
+            error = modelError,
+            onCancel = {
+                modelJob?.cancel()
+                modelJob = null
+                modelPhase = 0
+            },
+            onRetry = {
+                modelPhase = 0
+                modelError = null
+                runTick += 1
+            }
+        )
     }
 
     Column(
@@ -787,6 +844,79 @@ private fun PhotoMatchCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * v2.16.0 OCR 模型下载弹层：仅在首次进入拍照搜题时出现（不入设置页）。
+ * 下载中显示整体进度 + 可取消；失败显示原因 + 可重试。
+ */
+@Composable
+private fun OcrModelDownloadDialog(
+    backdrop: Backdrop,
+    downloading: Boolean,
+    progress: OcrModels.Progress?,
+    error: String?,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val ui = LocalUi.current
+    GlassContentDialog(
+        backdrop = backdrop,
+        title = if (downloading) "下载识别模型" else "模型下载失败",
+        dismissText = if (downloading) "取消" else "取消",
+        confirmText = if (downloading) null else "重试",
+        onDismiss = onCancel,
+        onConfirm = onRetry
+    ) {
+        if (downloading) {
+            Text(
+                "首次使用拍照搜题需要下载 OCR 模型（约 15MB，仅下载一次，国内线路直连）。",
+                color = ui.textSub,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            val frac = progress?.let { p ->
+                if (p.total > 0) (p.bytes.toFloat() / p.total).coerceIn(0f, 1f) else 0f
+            } ?: 0f
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(ui.text.copy(alpha = 0.12f))
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(if (frac <= 0.02f) 0.02f else frac)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(ui.ink)
+                )
+            }
+            val fileLabel = progress?.let {
+                "${if (it.fileIndex == 0) "检测模型" else "识别模型"} ${it.fileIndex + 1}/${it.fileCount}"
+            } ?: "准备下载…"
+            Text(
+                "$fileLabel · " + "%.1f / %.1f MB".format(
+                    (progress?.bytes ?: 0) / 1048576.0,
+                    (progress?.total ?: OcrModels.TOTAL_BYTES) / 1048576.0
+                ),
+                color = ui.textSub,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        } else {
+            Text(
+                (error ?: "网络异常，下载未完成") + "\n\n可检查网络后重试；模型下载一次后离线可用。",
+                color = ui.textSub,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }

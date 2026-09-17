@@ -3,6 +3,43 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.16.0] - 2026-09-17
+
+### 安装包瘦身：OCR 模型按需下载（第四十九轮）
+
+用户裁定：v2.15.0 的标题栏渐进式模糊实测后撤除（"又不行了"），安装包体积太大
+（58.1MB），怀疑大头是 OCR 模型——实测确认 ML Kit 中文识别 bundled AAR
+（双 ABI 引擎库+内置模型）约占 14MB。本版把模型从包里拆出来，改为首次使用
+拍照搜题时按需下载：
+
+- **OCR 引擎重写（PaddleOCR PP-OCRv4 mobile + MNN）**：ML Kit bundled 依赖整体
+  移除（unbundled 版仍禁令——需 GMS 国行不可用）；换 PP-OCRv4 det（4.5MB）+
+  rec（10.3MB）双模型，MNN 3.6.1 CPU 推理（官方 Android SDK vendor libMNN.so
+  双 ABI，16KB 页对齐），预/后处理全部在 Kotlin 层：det max 边 960 内缩放 →
+  DB 概率图（阈值 0.3+1px 膨胀+连通域得分+矩形 unclip）→ y 投影分带行合并
+  （空隙 ≥2 行切开+带内 x 间隙拆分）→ rec 高 48 等比缩放 CTC 贪心解码
+  （blank=0，字典 1..6623，置信度 <0.5 丢弃）；斜拍矫正口径不变（宽扁组件
+  PCA 主轴角中位数，|角度| ∈[1.2°,12°] 转正重跑 det）；流水线与沙箱验证脚本
+  逐行同构（合成试题图 10/10 行全对）。
+- **模型按需下载（OcrModels）**：来源 RapidAI/RapidOCR 官方模型仓（ModelScope
+  托管，阿里 CDN 国内直连，同仓 API/resolve 两种 URL 形态互为备份）；落地
+  filesDir/ocr/，字节数 + SHA-256 双校验、损坏自动重下、两次尝试×双线路；
+  下载进度回调（文件级+字节级）驱动 UI；不下载方向分类器 cls（试卷照片
+  EXIF/桌面摆正已覆盖）。
+- **触发链路（用户口径：不入设置页）**：点击拍照搜题 → 模型缺失 → 玻璃弹层
+  「下载识别模型」（进度条+当前文件+字节进度，可取消）→ 完成自动继续识别；
+  失败显示原因可重试；取消留在空页可再次进入。GlassOverlays 新增
+  GlassContentDialog（自定义内容槽玻璃对话框）。
+- **native 构建**：gradle 新增 externalNativeBuild/cmake（3.22.1）编
+  libdroneocr.so（JNI 三入口：create/run/close，单会话互斥锁双保险），
+  ndkVersion 锁 27.2.12479018，16KB 显式对齐；APK 58.1MB → 约 44MB。
+- **渐进式模糊整体撤除**：ProgressiveBlur.kt 删除 + 6 页调用点清除 +
+  Common.kt 清理，界面回到 v2.14 样式；每日提醒 AlarmManager 保活维持
+  v2.15.0 口径不变。
+- static_check 3.14 重写（ML Kit 移除断言反转 + OcrModels/PaddleOcr/
+  OcrNative/cpp/CMake/jniLibs/字典文件全链路断言 + unbundled 禁令维持）+
+  3.16 改向（渐进模糊符号/文件 0 残留断言 + 闹钟保活断言维持）。
+
 ## [2.15.0] - 2026-09-17
 
 ### 标题栏渐进式模糊 + 每日提醒后台保活（第四十八轮）

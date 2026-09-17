@@ -690,3 +690,82 @@ fun GlassConfirmDialog(
         }
     }
 }
+
+/**
+ * iOS 26 风玻璃内容对话框（v2.16.0）：标题 + 自定义内容槽 + 可选双按钮。
+ * 与 [GlassConfirmDialog] 同构，区别是 body 换成任意 Composable 内容
+ * （模型下载进度条等），确认/取消按钮可分别隐藏。
+ */
+@Composable
+fun GlassContentDialog(
+    backdrop: Backdrop,
+    title: String,
+    dismissText: String,
+    confirmText: String? = null,
+    onDismiss: () -> Unit = {},
+    onConfirm: () -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit
+) {
+    GlassOverlayRegistration(visible = true, onDismiss = onDismiss) {
+        var shown by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { shown = true }
+        AnimatedVisibility(
+            visible = shown,
+            enter = overlayEnter(160, 0.92f, 420f),
+            exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.95f, animationSpec = tween(140))
+        ) {
+            val ui = LocalUi.current
+            GlassOverlayPanel(
+                scrimColor = Color.Black.copy(alpha = if (ui.isDark) 0.22f else 0.10f),
+                contentAlignment = Alignment.Center,
+                panelShape = RoundedCornerShape(26.dp),
+                panelModifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
+                backdrop = backdrop,
+                onDismiss = onDismiss
+            ) {
+                Column(Modifier.padding(horizontal = 22.dp, vertical = 22.dp)) {
+                    Text(
+                        title,
+                        color = ui.text,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    content()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        GlassButton(
+                            onClick = onDismiss,
+                            backdrop = backdrop,
+                            heightDp = 44.dp,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(dismissText, color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (confirmText != null) {
+                            GlassButton(
+                                onClick = onConfirm,
+                                backdrop = backdrop,
+                                surfaceColor = ui.ink.copy(alpha = 0.92f),
+                                heightDp = 44.dp,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    confirmText,
+                                    color = ui.onInk,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

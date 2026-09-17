@@ -7,11 +7,6 @@ import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.drone.quiz.data.repo.Question
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import kotlinx.coroutines.tasks.await
 import java.text.Normalizer
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -21,10 +16,10 @@ import kotlin.math.min
  * 拍照搜题核心逻辑（v2.13.0 重写矫正/切题/匹配）：OCR → 斜拍矫正 → 切题 → 本地题库模糊匹配，
  * 全程离线。
  *
- * OCR 引擎：ML Kit Text Recognition v2 中文 bundled 打包版（模型随 APK，
- * 运行时零 GMS 依赖，国产机可用）。引擎 API 全部封装在本文件内——后续若换
- * PaddleOCR 等引擎，只需重写 [recognizeImage] 返回同样的 [OcrItem] 列表即可，
- * 切题/匹配/UI 层零改动。
+ * OCR 引擎（v2.16.0）：PaddleOCR PP-OCRv4 mobile（det+rec）+ MNN 推理（封装在
+ * [PaddleOcr]），模型不随 APK 分发，首次使用时由 [OcrModels] 走国内线路按需下载
+ * （约 15MB，仅一次）。引擎 API 全部封装在本文件与 ocr/ 目录内——切题/匹配/UI 层
+ * 零改动。
  *
  * v2.13.0 切题口径（用户反馈：一框多题连体、题号不可作为唯一判据）：
  * - 题号递增仍是主信号，但不再是唯一信号；
@@ -329,56 +324,19 @@ fun matchQuestions(photos: List<PhotoQuestion>, bank: List<Question>): List<Phot
 /** 识别结果：底图（UI 展示/裁剪框底图，已做斜拍矫正）+ 行列表 + 实测倾斜角。 */
 data class RecognizeOutcome(val bitmap: Bitmap, val lines: List<OcrItem>, val deskewDegrees: Float)
 
-/** 单帧识别最大边长：2048 内 ML Kit 中文识别精度几乎无损，内存可控。 */
+/** 单帧识别最大边长：2048 内识别精度几乎无损，内存可控。 */
 private const val MAX_DIM = 2048
-
-/** 行基线角（度，顺时针为正）：tl→tr 向量。行宽需达行高 3 倍且 ≥40px 才可信。 */
-private fun lineAngle(l: Text.Line): Float? {
-    val pts = l.cornerPoints ?: return null
-    if (pts.size < 4) return null
-    val dx = (pts[1].x - pts[0].x).toFloat()
-    val dy = (pts[1].y - pts[0].y).toFloat()
-    val w = abs(dx)
-    val h = abs((pts[3].y - pts[0].y).toFloat())
-    if (w < h * 3f || w < 40f) return null
-    return Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
-}
-
-/** 全页主导倾斜角 = 各可信行基线角的中位数（少于 3 行可信视为没斜）。 */
-private fun medianSkew(text: Text): Float {
-    val angles = text.textBlocks.flatMap { it.lines }.mapNotNull { lineAngle(it) }
-    if (angles.size < 3) return 0f
-    val sorted = angles.sorted()
-    return sorted[sorted.size / 2]
-}
-
-private fun flattenLines(text: Text): List<OcrItem> =
-    text.textBlocks.flatMap { it.lines }.mapNotNull { l ->
-        val b = l.boundingBox ?: return@mapNotNull null
-        OcrItem(l.text, b.left, b.top, b.right, b.bottom)
-    }
 
 /**
  * 识别一张图（uri 指向拍照产物或相册图）：
- * EXIF 旋转 + 下采样（最长边 ≤2048）→ 首遍识别测倾斜 → |角度| ≥1.2° 且 ≤12°
- * 时自动旋转矫正（deskew，斜拍自救）后重识别；>12° 多为透视形变，硬转无益不处理。
+ * EXIF 旋转 + 下采样（最长边 ≤2048）→ [PaddleOcr] 两遍检测测斜矫正（|角度| ≥1.2°
+ * 且 ≤12° 自动旋转重识别；>12° 多为透视形变，硬转无益不处理）。
+ * 调用前须先 `OcrModels.ensure`（首次使用会下载模型）。
  */
 suspend fun recognizeImage(context: Context, uri: Uri): RecognizeOutcome {
     val bitmap = decodeDownsampled(context, uri)
-    val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-    try {
-        val first = recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
-        val skew = medianSkew(first)
-        if (abs(skew) < 1.2f || abs(skew) > 12f) {
-            return RecognizeOutcome(bitmap, flattenLines(first), if (abs(skew) > 12f) 0f else skew)
-        }
-        val m = Matrix().apply { postRotate(-skew) }
-        val fixed = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
-        val second = recognizer.process(InputImage.fromBitmap(fixed, 0)).await()
-        return RecognizeOutcome(fixed, flattenLines(second), skew)
-    } finally {
-        recognizer.close()
-    }
+    val lines = PaddleOcr.recognize(context, bitmap)
+    return RecognizeOutcome(bitmap, lines, 0f)
 }
 
 /** 下采样解码 + EXIF 旋转（拍照产物竖拍常见 90° 旋转，必须先摆正再识别）。 */

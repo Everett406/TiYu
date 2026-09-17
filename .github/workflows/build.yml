@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION_NAME: 2.15.0
-  APP_VERSION_TAG: v2.15.0
+  APP_VERSION_NAME: 2.16.0
+  APP_VERSION_TAG: v2.16.0
 
 jobs:
   build:
@@ -38,6 +38,13 @@ jobs:
           echo "DQ_KS_PATH=$RUNNER_TEMP/dronequiz.keystore" >> "$GITHUB_ENV"
           echo "DQ_KS_STORE_PASS=${{ secrets.DQ_KS_STORE_PASS }}" >> "$GITHUB_ENV"
 
+      # v2.16.0 起含 native 构建（externalNativeBuild/cmake，libdroneocr.so）：
+      # 显式装齐 ndkVersion 27.2.12479018 + cmake 3.22.1，不依赖 AGP 在线自动安装
+      - name: Install NDK & CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
+
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace --no-daemon
 
@@ -59,25 +66,27 @@ jobs:
           name: 题屿 TiYu ${{ env.APP_VERSION_TAG }}
           files: dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
           body: |
-            ## 题屿 TiYu v2.15.0
+            ## 题屿 TiYu v2.16.0
 
-            ### 标题栏渐进式模糊 + 每日提醒后台保活（第四十八轮）
+            ### 安装包瘦身：OCR 模型按需下载（第四十九轮）
 
-            **① 标题栏渐进式模糊（Progressive Blur）**
+            **安装包从 58MB 减到约 44MB。**
 
-            页面标题与正文交界处：内容上滚不再生硬截断，而是随滚动逐渐虚化、溶入标题区
-            （模糊半径从 0 渐变到满值，Apple Music / iOS 滚动边缘同款效果）。首页/刷题/
-            模考/错题本/设置/搜索/配置 7 个页面全部生效。全新 AGSL 双 pass 实现，
-            滚动时零重组开销；Android 12/12L 设备自动回退原行为。
+            此前拍照搜题的 OCR 引擎（ML Kit 中文识别）模型内置在安装包里，占了约 14MB。
+            本版把模型从包里拆出来：
 
-            **② 每日提醒后台保活**
+            - **首次点拍照搜题时**才会提示下载识别模型（约 15MB，仅需一次），
+              国内线路（ModelScope 阿里 CDN）直连，下载后离线可用
+            - 下载在弹窗内完成（带进度，可取消/失败重试），不需要去设置页找入口
+            - 识别引擎同步升级为 PaddleOCR PP-OCRv4，斜拍自动矫正、切题、
+              搜题匹配等工作流与上一版完全一致
 
-            - 调度引擎从 WorkManager 换为**系统精确闹钟（AlarmManager）**：进程被杀也准时发通知，
-              修复「每次打开 APP 才会通知」
-            - 开启「每日提醒」时会弹**「后台运行」系统弹窗**（电池优化白名单），建议点允许
-            - 重启手机 / 覆盖安装后自动重排；打开 APP 也会自愈式补排
-            - 智能时刻不变：按你的刷题习惯选时刻，当天刷过不打扰
+            **每日提醒后台保活**（上一版功能，本版继续有效）：进程被杀也准时发通知，
+            重启手机自动重排。
+
+            **回滚说明**：上一版的标题栏滚动虚化效果实测后撤除，界面回到此前样式。
 
             ---
 
-            **安装**：下载下方 `TiYu-2.15.0.apk` 安装覆盖即可，数据自动迁移。
+            **安装**：下载下方 `TiYu-2.16.0.apk` 安装覆盖即可，数据自动迁移。
+            已装 v2.15.0 的用户覆盖安装后，首次用拍照搜题会多一次模型下载。
