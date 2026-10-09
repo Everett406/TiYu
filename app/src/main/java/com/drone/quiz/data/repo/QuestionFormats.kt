@@ -30,7 +30,11 @@ data class UserAnswer(
     val picked: Int? = null,
     val texts: List<String> = emptyList(),  // blank 各空内容
     val text: String = "",                  // short 作答内容
-    val graded: Boolean = false             // short 是否已自评
+    val graded: Boolean = false,            // short 是否已自评
+    // v2.18.0 模考即时判定：多选题的点选是「切换」而非「作答」，
+    // 没有天然提交时刻，故显式记一次确认；单选/判断点一下即答，不需要此标记。
+    // 该字段随 detail JSON 落库，进程重启后判定态不丢。
+    val confirmed: Boolean = false
 )
 
 // ==================== 判分与展示 ====================

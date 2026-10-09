@@ -85,6 +85,9 @@ data class AppSettings(
     val examIncludeShort: Boolean = false, // 模考高级选项：含简答题（默认关）
     val examTypeOrder: List<String> = emptyList(), // 模考题型顺序（空 = 单选→多选→填空→判断→简答）
     val examAutoMix: Boolean = true, // 模考题型构成：自动按题库各题型占比配比（关 = 手动拖比例，v2.8.3）
+    // v2.18.0 模考即时判定：关 = 全卷交后统核正误（传统模考口径，默认）；
+    // 开 = 逐题作答、当场验得失。仅改显示时机，判分与成绩单口径完全不变。
+    val examInstantJudge: Boolean = false,
     val eyeCareReminder: Boolean = false, // v2.8.6 护眼提醒：连续刷题 20 分钟弹窗提醒休息（考试不受影响）
     val onboardingDone: Boolean = false, // v2.9.0 首启功能引导已完成/已跳过（跳过即不再自动弹）
     // v2.10.0 桌面小组件 / 成绩分享卡
@@ -138,6 +141,7 @@ class SettingsStore(private val context: Context) {
         val examIncludeShort = booleanPreferencesKey("exam_include_short")
         val examTypeOrder = stringPreferencesKey("exam_type_order")
         val examAutoMix = booleanPreferencesKey("exam_auto_mix")
+        val examInstantJudge = booleanPreferencesKey("exam_instant_judge")
         // v2.8.6 护眼提醒
         val eyeCareReminder = booleanPreferencesKey("eye_care_reminder")
         // v2.9.0 首启功能引导
@@ -187,6 +191,7 @@ class SettingsStore(private val context: Context) {
                 runCatching { json.decodeFromString<List<String>>(raw) }.getOrNull()
             } ?: emptyList(),
             examAutoMix = p[K.examAutoMix] ?: true,
+            examInstantJudge = p[K.examInstantJudge] ?: false,
             eyeCareReminder = p[K.eyeCareReminder] ?: false,
             onboardingDone = p[K.onboardingDone] ?: false,
             dailyGoal = p[K.dailyGoal] ?: 30,
@@ -383,6 +388,9 @@ class SettingsStore(private val context: Context) {
 
     /** 模考题型构成：自动配比开关（v2.8.3） */
     suspend fun setExamAutoMix(v: Boolean) = context.dataStore.edit { it[K.examAutoMix] = v }
+
+    /** v2.18.0：模考即时判定开关（关=全卷交后统核，开=逐题当场验得失）。 */
+    suspend fun setExamInstantJudge(v: Boolean) = context.dataStore.edit { it[K.examInstantJudge] = v }
 
     suspend fun setExamTypeOrder(list: List<String>) {
         context.dataStore.edit { p ->

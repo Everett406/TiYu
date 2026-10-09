@@ -143,6 +143,9 @@ fun ExamConfigScreen(
     var bankTypeCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var showAdvanced by remember { mutableStateOf(false) }
     var includeShort by remember { mutableStateOf(settings.examIncludeShort) }
+    // v2.18.0 模考即时判定（可选制）：默认关闭 = 全卷交后统核正误；
+    // 开启 = 逐题作答当场验得失。仅改显示时机，判分与成绩单口径不变。
+    var instantJudge by remember { mutableStateOf(settings.examInstantJudge) }
     var typeOrder by remember { mutableStateOf<List<String>>(emptyList()) }
     // v2.8.3 题型构成：自动按库内占比 / 手动拖比例滑杆（百分比，联动让出份额）
     var autoMix by remember { mutableStateOf(true) }
@@ -163,6 +166,7 @@ fun ExamConfigScreen(
             bankTypeCounts = ServiceLocator.repo.bankTypeCounts(bank)
             typeOrder = st.examTypeOrder.ifEmpty { QuestionTypes.canonicalOrder }
             includeShort = st.examIncludeShort
+            instantJudge = st.examInstantJudge
             autoMix = st.examAutoMix
             ratios = autoRatios(types, bankTypeCounts)
         }
@@ -530,6 +534,30 @@ fun ExamConfigScreen(
                                             }
                                         }
                                     }
+                                }
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("即时判定", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            if (instantJudge) "逐题作答，当场验正误；已判定的题不再改动"
+                                            else "全卷交卷后统核正误（传统模考口径）",
+                                            color = ui.textSub, fontSize = 11.sp,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                    GlassToggle(
+                                        checked = { instantJudge },
+                                        onCheckedChange = { v ->
+                                            instantJudge = v
+                                            scope.launch { ServiceLocator.settings.setExamInstantJudge(v) }
+                                        },
+                                        backdrop = backdrop
+                                    )
                                 }
                                 if ("short" in bankTypes) {
                                     Row(
@@ -903,6 +931,10 @@ fun ExamScreen(
 ) {
     val ui = LocalUi.current
     val scope = rememberCoroutineScope()
+    // v2.18.0 模考即时判定：开 = 逐题作答当场显示正误；关 = 全卷交后统核（默认）
+    val examSettings by ServiceLocator.settings.settings
+        .collectAsState(initial = com.drone.quiz.data.settings.AppSettings())
+    val instantJudge = examSettings.examInstantJudge
 
     // 会话优先用内存（SessionHolder）；进程重启/从"可继续"进入时从 DB 恢复
     var questions by remember {
@@ -1055,6 +1087,10 @@ fun ExamScreen(
                 index = page + 1,
                 ua = details[q.id],
                 backdrop = backdrop,
+                // 仅在「已作答」且开了即时判定时才当场亮对错
+                // 多选需显式确认（点选是切换不是作答）；单选/判断点一下即答
+                reveal = instantJudge && isAnswered(q, details[q.id]) &&
+                    (q.type != QuestionTypes.MULTI || details[q.id]?.confirmed == true),
                 onAnswer = { ua ->
                     details[q.id] = ua
                     answers[q.id] = ua.picked
@@ -1294,9 +1330,12 @@ private fun ExamQuestionCard(
     index: Int,
     ua: UserAnswer?,
     backdrop: Backdrop,
+    reveal: Boolean = false,
     onAnswer: (UserAnswer) -> Unit
 ) {
     val ui = LocalUi.current
+    // v2.18.0 即时判定：仅显示时机变化，judgeAnswer 与交卷判分是同一套口径
+    val verdict: Boolean? = if (reveal) judgeAnswer(q, ua) else null
     GlassCard(
         backdrop = backdrop,
         modifier = Modifier
@@ -1329,10 +1368,47 @@ private fun ExamQuestionCard(
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
+            // v2.18.0 即时判定横幅：当场亮正误，并给出正解与解析。
+            // 只在开了即时判定且本题已判定时出现；交卷判分口径与之完全一致。
+            if (verdict != null) {
+                val ok = verdict
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background((if (ok) ui.correct else ui.wrong).copy(alpha = 0.12f))
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (ok) "✓" else "✗",
+                        color = if (ok) ui.correct else ui.wrong,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (ok) "回答正确" else "回答错误 · 正确答案 ${q.correctAnswerText()}",
+                        color = ui.text,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (q.explanation.isNotBlank()) {
+                    Text(
+                        q.explanation,
+                        color = ui.textSub,
+                        fontSize = 12.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
             // v2.8.5：题目图片（ZIP 导入的带图题库）——题干后、作答区前，小图点按展开
             QuestionImageStrip(q)
             when (q.type) {
-                QuestionTypes.MULTI -> ExamMultiSection(q, ua, onAnswer)
+                QuestionTypes.MULTI -> ExamMultiSection(q, ua, verdict != null, backdrop, onAnswer)
                 QuestionTypes.BLANK -> ExamBlankSection(q, ua, onAnswer)
                 QuestionTypes.SHORT -> ExamShortSection(q, ua, backdrop, onAnswer)
                 else -> {
@@ -1344,14 +1420,37 @@ private fun ExamQuestionCard(
                     ) {
                         q.optionsOrJudge.forEachIndexed { i, opt ->
                             val selected = ua?.picked == i
+                            // 即时判定态：选中项按对错着色；答错时额外标出正解
+                            val isAnswerKey = q.type == QuestionTypes.SINGLE ||
+                                q.type == QuestionTypes.JUDGE
+                            val right = verdict != null && isAnswerKey && i == q.answer
+                            val pickedRight = verdict == true && selected
+                            val pickedWrong = verdict == false && selected
+                            val bg = when {
+                                pickedRight -> ui.correct.copy(alpha = 0.16f)
+                                pickedWrong -> ui.wrong.copy(alpha = 0.16f)
+                                right -> ui.correct.copy(alpha = 0.10f)
+                                selected -> ui.ink
+                                else -> ui.ink.copy(alpha = 0.05f)
+                            }
                             Row(
                                 Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(if (selected) ui.ink else ui.ink.copy(alpha = 0.05f))
+                                    .background(bg)
+                                    .then(
+                                        if (verdict != null && isAnswerKey && right)
+                                            Modifier.border(
+                                                1.dp, ui.correct.copy(alpha = 0.5f),
+                                                RoundedCornerShape(16.dp)
+                                            )
+                                        else Modifier
+                                    )
                                     .clickable(
                                         interactionSource = null,
-                                        indication = null
+                                        indication = null,
+                                        // 已判定的题不再改动，否则「随验得失」失去意义
+                                        enabled = !(verdict != null && isAnswerKey)
                                     ) { onAnswer(UserAnswer(picked = i)) }
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -1361,26 +1460,47 @@ private fun ExamQuestionCard(
                                         .size(24.dp)
                                         .clip(CircleShape)
                                         .background(
-                                            if (selected) ui.onInk else ui.ink.copy(alpha = 0.08f)
+                                            when {
+                                                pickedRight -> ui.correct
+                                                pickedWrong -> ui.wrong
+                                                selected -> ui.onInk
+                                                else -> ui.ink.copy(alpha = 0.08f)
+                                            }
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         optionLabel(i, q.isJudge),
-                                        color = if (selected) ui.ink else ui.textSub,
+                                        color = when {
+                                            pickedRight || pickedWrong -> Color.White
+                                            selected -> ui.ink
+                                            else -> ui.textSub
+                                        },
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                                 Text(
                                     opt,
-                                    color = if (selected) ui.onInk else ui.text,
+                                    color = when {
+                                        pickedRight || pickedWrong || right -> ui.text
+                                        selected -> ui.onInk
+                                        else -> ui.text
+                                    },
                                     fontSize = 14.sp,
                                     lineHeight = 20.sp,
                                     modifier = Modifier
                                         .weight(1f)
                                         .padding(horizontal = 10.dp)
                                 )
+                                if (pickedRight || pickedWrong) {
+                                    Text(
+                                        if (pickedRight) "✓" else "✗",
+                                        color = if (pickedRight) ui.correct else ui.wrong,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -1391,31 +1511,59 @@ private fun ExamQuestionCard(
 }
 
 @Composable
-private fun ExamMultiSection(q: Question, ua: UserAnswer?, onAnswer: (UserAnswer) -> Unit) {
+private fun ExamMultiSection(
+    q: Question,
+    ua: UserAnswer?,
+    judged: Boolean,
+    backdrop: Backdrop,
+    onAnswer: (UserAnswer) -> Unit
+) {
     val ui = LocalUi.current
     val pickedMask = ua?.picked ?: 0
+    val answerMask = q.answer
+    val hasPick = pickedMask != 0
     Column(
         Modifier
             .fillMaxWidth()
             .padding(top = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("多选题 · 可选多项，交卷时全对才算对", color = ui.textSub, fontSize = 11.sp)
+        Text(
+            if (judged) "多选题 · 本题已判定，不再改动"
+            else "多选题 · 可选多项，全对才算对" + if (hasPick) "（选好后点下方确认）" else "",
+            color = ui.textSub, fontSize = 11.sp
+        )
         q.options.forEachIndexed { i, opt ->
             val selected = pickedMask and (1 shl i) != 0
+            val isKey = judged && answerMask and (1 shl i) != 0
+            val pickedRight = judged && selected && isKey
+            val pickedWrong = judged && selected && !isKey
             Row(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(if (selected) ui.ink.copy(alpha = 0.10f) else ui.ink.copy(alpha = 0.05f))
+                    .background(
+                        when {
+                            pickedRight -> ui.correct.copy(alpha = 0.16f)
+                            pickedWrong -> ui.wrong.copy(alpha = 0.16f)
+                            isKey -> ui.correct.copy(alpha = 0.10f)
+                            selected -> ui.ink.copy(alpha = 0.10f)
+                            else -> ui.ink.copy(alpha = 0.05f)
+                        }
+                    )
                     .border(
                         1.dp,
-                        if (selected) ui.ink.copy(alpha = 0.35f) else ui.ink.copy(alpha = 0.08f),
+                        when {
+                            judged && isKey -> ui.correct.copy(alpha = 0.5f)
+                            selected -> ui.ink.copy(alpha = 0.35f)
+                            else -> ui.ink.copy(alpha = 0.08f)
+                        },
                         RoundedCornerShape(16.dp)
                     )
                     .clickable(
                         interactionSource = null,
-                        indication = null
+                        indication = null,
+                        enabled = !judged
                     ) {
                         // 点选切换（位掩码），每次变更即落库；交卷时按位掩码全等判分
                         onAnswer(UserAnswer(picked = pickedMask xor (1 shl i)))
@@ -1427,12 +1575,23 @@ private fun ExamMultiSection(q: Question, ua: UserAnswer?, onAnswer: (UserAnswer
                         .padding(horizontal = 14.dp, vertical = 12.dp)
                         .size(24.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (selected) ui.ink else ui.ink.copy(alpha = 0.08f))
+                        .background(
+                            when {
+                                pickedRight -> ui.correct
+                                pickedWrong -> ui.wrong
+                                selected -> ui.ink
+                                else -> ui.ink.copy(alpha = 0.08f)
+                            }
+                        )
                         .border(1.dp, ui.ink.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (selected) {
-                        Icon(AppIcons.Check, null, tint = ui.onInk, modifier = Modifier.size(14.dp))
+                        Icon(
+                            AppIcons.Check, null,
+                            tint = if (judged) Color.White else ui.onInk,
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
                 Text(
@@ -1444,6 +1603,27 @@ private fun ExamMultiSection(q: Question, ua: UserAnswer?, onAnswer: (UserAnswer
                         .weight(1f)
                         .padding(end = 14.dp, top = 12.dp, bottom = 12.dp)
                 )
+                if (pickedRight || pickedWrong) {
+                    Text(
+                        if (pickedRight) "✓" else "✗",
+                        color = if (pickedRight) ui.correct else ui.wrong,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+        // 即时判定：多选点选没有天然的提交时刻，给一个显式确认按钮
+        if (!judged && hasPick) {
+            GlassButton(
+                onClick = { onAnswer((ua ?: UserAnswer()).copy(confirmed = true)) },
+                backdrop = backdrop,
+                surfaceColor = ui.ink,
+                heightDp = 44.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+            ) {
+                Icon(AppIcons.Check, null, tint = ui.onInk, modifier = Modifier.size(16.dp))
+                Text("确认本题", color = ui.onInk, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

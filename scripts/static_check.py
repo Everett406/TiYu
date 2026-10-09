@@ -403,12 +403,30 @@ if not _os.path.exists(_prog_src_path):
     print("[FAIL] 渐进式模糊实现文件缺失：ui/glass/ProgressiveBlur.kt（顶栏/底栏渐进模糊的核心）"); fail = True
 else:
     _prog_src = load(_prog_src_path)
-    for _needle in ("drawBackdrop", "blur(", "ProgressiveEdge"):
+    for _needle in ("drawBackdrop", "blur(", "ProgressiveEdge", "DstIn", "verticalGradient"):
         if _needle not in _prog_src:
-            print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}（须走 drawBackdrop + 固定半径 blur 分层）"); fail = True
+            print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}（须走 drawBackdrop + 固定半径 blur + 渐变 alpha）"); fail = True
     for _forbidden in ("createRuntimeShaderEffect", "createChainEffect", "RuntimeShader", "AGSL"):
         if _forbidden in _prog_src:
-            print(f"[FAIL] 渐进式模糊不得自写 shader（老路已证伪）：{_forbidden}"); fail = True
+            print(f"[FAIL] 渐进式模糊不得自写 shader（前两版老路已证伪）：{_forbidden}"); fail = True
+    # v2.18.0 真机实测教训固化：v2.17.0 的「分层 + 层内实色纱」满屏横线，此处三条禁令——
+    #   ① 带内多层叠加（每层各自 shape 裁剪 = 每层一条内部接缝）
+    #   ② onDrawSurface 里画带硬边界的实心形状（v2.17.0 的 10% 实色纱，元凶）
+    #   ③ 用 shape 把过渡带切段（唯一允许的裁剪边界应只有贴栏体那一处）
+    if _prog_src.count("drawBackdrop(") > 1:
+        print("[FAIL] 渐进模糊过渡带只允许单节点：多节点叠加会在每层边界产生横贯全屏的接缝"); fail = True
+    if "RectangleShape" not in _prog_src:
+        print("[FAIL] 过渡带 shape 必须保持整块矩形（切段即产生裁剪接缝）"); fail = True
+    _on_surface_blk = _prog_src.split("onDrawSurface")[-1] if "onDrawSurface" in _prog_src else ""
+    for _bad in ("drawRect(\n", "ui.correct", "ui.wrong"):
+        if _bad in _prog_src:
+            print(f"[FAIL] onDrawSurface 内不得画实色矩形/色块（v2.17.0 满屏横线元凶）：{_bad}"); fail = True
+    # ③ 顶层栏/底栏两处挂载点必须仍在
+    _approot_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/nav/AppRoot.kt")
+    if "ProgressiveEdge(" not in _approot_src:
+        print("[FAIL] AppRoot 缺底栏过渡带挂载（ProgressiveEdge）"); fail = True
+    if "LocalScrollBackdrop provides" not in _approot_src:
+        print("[FAIL] AppRoot 缺 scrollBackdrop 提供（顶栏过渡带的采样源，见 LocalScrollBackdrop 注释）"); fail = True
 # 业务层禁自研 RenderEffect 链（vendored 库内部合法使用，不误伤）
 for _banned in ("createRuntimeShaderEffect", "createChainEffect"):
     _banned_hits = [h for h in grep_hits(_banned)
@@ -448,6 +466,34 @@ if "requestRunInBackground" not in _settings_src:
 _main_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/MainActivity.kt")
 if "ReminderScheduler.schedule" not in _main_src:
     print("[FAIL] MainActivity 打开须自愈式补排每日提醒"); fail = True
+
+# 3.17) 模考即时判定（v2.18.0 新增，可选制）：
+#       「或全卷毕而统核正误，或逐题作而随验得失」——开关落在模考配置页高级选项，
+#       默认关闭保持传统模考口径；开启后选完当场亮对错。
+#       关键约束：**只改显示时机，不改判分口径**——题卡必须复用 judgeAnswer（与交卷同一函数），
+#       不得另写一套判定，否则成绩单与当场反馈会打架。
+_settings2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/settings/SettingsStore.kt")
+for _needle in ("examInstantJudge", "exam_instant_judge", "setExamInstantJudge"):
+    if _needle not in _settings2:
+        print(f"[FAIL] 模考即时判定设置项不完整：SettingsStore 缺 {_needle}"); fail = True
+_exam_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+for _needle in ("即时判定", "setExamInstantJudge", "reveal = instantJudge"):
+    if _needle not in _exam_src:
+        print(f"[FAIL] 模考配置/考试页缺即时判定入口：{_needle}"); fail = True
+if _exam_src.count("judgeAnswer") < 2:
+    print("[FAIL] 题卡当场判定必须复用 judgeAnswer（与交卷判分同口径，禁止另写一套）"); fail = True
+_uf_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
+if "val confirmed: Boolean = false" not in _uf_src:
+    print("[FAIL] UserAnswer 缺 confirmed 字段（多选题点选是切换不是作答，需显式确认时刻）"); fail = True
+# 即时判定不得侵入成绩单口径（submitExam 在 Repo.kt）
+_repo_src2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+_parts = _repo_src2.split("suspend fun submitExam")
+if len(_parts) < 2:
+    print("[FAIL] Repo.kt 找不到 submitExam（判分入口位置异常）"); fail = True
+else:
+    _submit_blk = "suspend fun submitExam".join(_parts[1:])
+    if "examInstantJudge" in _submit_blk or "instantJudge" in _submit_blk:
+        print("[FAIL] 即时判定开关不得影响 submitExam 判分/成绩单口径（仅改显示时机）"); fail = True
 
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)
