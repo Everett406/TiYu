@@ -3,6 +3,102 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.17.0] - 2026-10-09
+
+### 模考组卷丢题型修复 + 拍照搜题整体下线 + 渐进式模糊第三次实现
+
+**① 模考组卷丢题型（真 bug，已复现）**
+
+用户口径：题库里已有多选题，考试选 50 题、单选多选各占一半，实际只抽到 25 道
+单选题；多选比例拉满时还会报错。根因与 v2.8.4 修过的是同一类，但那次**只修了配置页
+那一半**：
+
+- `ExamScreens.kt` 早已把 `examTypeOrder` 当「排序提示」而非白名单，会拿 `bankTypes`
+  把缺失题型补回 `activeTypes`，所以 `plannedCounts` 算对了、按钮也显示「共 50 题」；
+- 但 `Repo.startExam` 收到的仍是原始 `typeOrder`，并**用它当遍历白名单**。
+  `examTypeOrder` 是全局持久化的（`settings.examTypeOrder`）——用户在只有单选+判断
+  的题库里拖过一次排序，存下的 `["single","judge"]` 就跟着带到了任何新题库。
+  不在 order 里的题型，`counts` 再大也永远不会被消费。
+
+复现（题库 200 单选 / 200 多选，只跑数不读内容）：
+
+| 场景 | 计划组卷 | 修复前实际 | 修复后实际 |
+|---|---|---|---|
+| 全新安装（order 为空→规范序） | 单选 25 + 多选 25 | ✅ 一致 | ✅ 一致 |
+| 旧库留 `["single","judge"]` 后切本库 | 单选 25 + 多选 25 | ❌ 只有单选 25 | ✅ 一致 |
+| 多选拉满 100% | 多选 50 | ❌ 空卷 | ✅ 多选 50 |
+
+「多选拉满报错」的机理：计划 50、实抽 0 → `startExam` 走 `0L to emptyList()` 短路 →
+考试页拿到空题目列表，而 `submit` 被 `questions.isNotEmpty()` 拦住 → 空白考试页死局。
+
+修法：`startExam` 改为以 `counts` 的 key 为准（配置页算过什么就抽什么），`order`
+只负责排序、`order` 里没有的题型追加到末尾，保证「计划的」与「抽到的」恒等。
+
+**其他题型同样中招**：用含全部五型的题库对照，`multi / blank / short` 三种新题型
+全被丢弃，只有 `single / judge` 侥幸在旧 order 里。刷题链路不受影响（题型取自
+`bankTypes` 而非持久化值），`resumeExam` 不受影响（按 answers 表重建）。
+两个入口共用同一函数，均已修复：模考配置页、桌面小组件/快捷方式的「快速模考」。
+
+**② 拍照搜题 / OCR 整体下线**
+
+用户裁定关闭该功能，整条链路作废：搜索页相机入口、拍照页、结果页、PaddleOCR +
+MNN 推理、模型按需下载、自建 CameraX 取景页全部移除。
+
+- 删除 `ocr/`（OcrModels / OcrNative / PaddleOcr / PhotoSearch）、
+  `screens/PhotoCaptureScreen.kt`、`screens/PhotoSearchScreen.kt`、
+  `src/main/cpp/`（CMake + ocr_mnn.cpp + MNN 头）、`src/main/jniLibs/`
+  （libMNN 双 ABI + libc++，约 6.6MB）、`assets/ocr/ppocr_keys_v1.txt`；
+- 移除 CameraX×4、exifinterface 依赖，移除 manifest 的 CAMERA 权限与 camera.any 特性；
+- **顺带摘掉 NDK 依赖**：工程自此没有任何 native 代码，`ndkVersion` 与
+  `externalNativeBuild` 一并删除。实测 AGP 在配置期就会强制解析 `ndkVersion`
+  （哪怕没有 native 代码），移除后 `./gradlew` 配置阶段不再报 NDK 缺失，
+  本地与 CI 均不再需要 NDK/CMake（省约 2GB 工具链与一条 CI 安装步骤）；
+- `static_check` 3.14 节由「必备断言」反转为**残留禁令**：任何文件、路由、依赖、
+  权限、资源复活即 FAIL。
+- 应用回到「零联网 OCR / 零 native 代码 / 零相机依赖」的纯离线形态。
+
+**③ 渐进式模糊：第三次实现，换路线**
+
+前两次都栽在同一类问题上，本次把教训固化成实现约束（`static_check` 3.15 节锁死）：
+
+- v2.6.0~v2.7.2：alpha 蒙版 / 雾条 / saveLayer 盖在滚动容器上，与玻璃卡的离屏
+  渲染互作 → 伪影闪烁，五版迭代后砍除；
+- v2.15.0：业务层自写着色器做**连续可变半径**（双 pass 链式 RenderEffect），
+  每像素大量采样吃 GPU、仅 API 33+ 可用、与透明内容层的预乘 alpha 相冲，
+  v2.16.0 上架后经用户实测整体撤除。
+
+**本次走第三条路：不做可变半径，用若干层「固定半径」的背景模糊叠出斜坡。**
+每层一次 `drawBackdrop { blur(r) }`，即 `RenderEffect.createBlurEffect` 硬件路径，
+API 31 起可用，无自研着色器、无 per-pixel 采样循环。这与 Figma 的实现思路一致
+（业界做渐进模糊同样是分层堆固定半径，而非逐像素算半径）。
+
+- 组件：`ui/glass/ProgressiveBlur.kt` 的 `ProgressiveEdge(backdrop, edge, height, maxRadius, bands)`，
+  纯视觉层，不消费任何手势；
+- 几何：第 i 层半径 `rᵢ = maxRadius·(N-i)/N`，层内不透明度由 `1-i/N` 线性插值到
+  `1-(i+1)/N`；相邻两层在交界处共用同一 α，故过渡带全程连续无接缝；
+- 采样正确性：每层节点尺寸是**整条过渡带**而非本层那一小段，靠 `shape` 裁可见区域，
+  避免「窄条里做大半径模糊」的边界钳制发虚；
+- 底栏：全局挂在 AppRoot，采样 `contentBackdrop`（底栏本就在该记录层之外，合法），
+  绘制在底栏之下 → 栏体像素保持锐利，只糊它背后的内容；
+- 顶栏：需要糊滚动内容又不能糊固定标题，而屏内节点采样 `contentBackdrop` 构成
+  「记录层内采样自己」（v2.1.0 首启 SIGSEGV 病灶）。解法是新增第三个记录层
+  `scrollBackdrop`（`LocalScrollBackdrop`）**只包滚动内容**，过渡带在它之外采样，
+  拓扑上与「底栏在 contentBackdrop 之外采样」同构。已在首页接入。
+
+**④ 依赖版本更新（保守档）**
+
+core-ktx 1.16.0→1.17.0、activity-compose 1.12.4→1.13.0、lifecycle 2.9.4→2.10.0、
+navigation-compose 2.9.8→2.10.2、room 2.8.4→2.8.5、datastore 1.1.7→1.2.1。
+
+**Compose BOM 暂不升级**（仍为 2025.06.01 / Compose 1.8.x）。目标 BOM 2026.09.x
+（Compose 1.12.1）本身可用，但官方渐进模糊 API
+`Modifier.blur(BlurRadiusSpec.verticalGradient(...))` 只存在于 **1.13.0-alpha03**
+（至今仍是 alpha），而 Compose 1.13 的库 compileSdk 已抬到 **37.1**，会牵动
+AGP 9 / Gradle 9 / AGP 9 内置 Kotlin 迁移（`org.jetbrains.kotlin.android` 与新
+DSL 不兼容）。为一个视觉效果做整套工具链大迁移不划算，故渐进模糊改走上述分层
+固定半径路线；BOM 升级留作独立一轮，建议在有 Android Studio 的机器上用
+AGP Upgrade Assistant 处理。
+
 ## [2.16.0] - 2026-09-17
 
 ### 安装包瘦身：OCR 模型按需下载（第四十九轮）

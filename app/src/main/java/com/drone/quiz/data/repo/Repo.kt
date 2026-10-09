@@ -466,10 +466,22 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         typeOrder: List<String>,
         passLine: Int = 60 // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
     ): Pair<Long, List<Question>> = withContext(Dispatchers.IO) {
-        val order = typeOrder.filter { it in QuestionTypes.canonicalOrder }
-            .ifEmpty { QuestionTypes.canonicalOrder }
+        // v2.17.0 关键修复：order 是「排序提示」，不是遍历白名单。
+        // 病灶（与 v2.8.4 在 ExamScreens 修的是同一类，但只修了配置页那一半）：
+        // typeOrder 来自 settings.examTypeOrder，全局持久化。用户在只有单选+判断的题库里
+        // 拖过题型排序后，存下的 ["single","judge"] 会带到任何新题库；而配置页的 activeTypes
+        // 已按 bankTypes 补齐缺失题型，plannedCounts 照样算出 multi 的份数、按钮也照样显示
+        // 「共 50 题」，但真正抽题时下面这段只遍历 order —— 不在 order 里的题型，
+        // counts 再大也永远不会被消费。表现为：50 题里单选多选各半 → 只抽出 25 道单选；
+        // 多选拉满 100% → 一道都抽不出，startExam 走 0L to emptyList() 短路，
+        // 考试页拿到空题目列表、submit 又被 questions.isNotEmpty() 拦住 → 空白页死局。
+        // 修法：以 counts 的 key 为准（配置页算过什么就抽什么），order 只负责排序，
+        // order 里没有的题型追加到末尾，保证「计划的」与「抽到的」恒等。
+        val hint = typeOrder.filter { it in QuestionTypes.canonicalOrder }
+        val order = (hint + QuestionTypes.canonicalOrder).distinct()
+        val drawTypes = (counts.keys.filter { it in QuestionTypes.canonicalOrder } + order).distinct()
         val pickedIds = ArrayList<Long>()
-        order.forEach { type ->
+        drawTypes.forEach { type ->
             val want = counts[type] ?: 0
             if (want > 0) {
                 val ids = qDao.idsByFilter(bankId, null, type)

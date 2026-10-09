@@ -6,10 +6,8 @@
     <!-- v2.8.8：检查更新（查 GitHub Releases 最新版 + 浏览器打开发布页）；题库功能仍完全离线 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- v2.13.0：拍照搜题自建相机页（CameraX 取景框引导）需要运行时申请的 CAMERA 权限；
-         无相机设备（部分平板/Chromebook）不因 uses-feature 被拒装 -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- v2.17.0：拍照搜题整体下线 → CAMERA 权限与 camera.any 特性随之移除，
+         应用不再声明任何相机能力，无相机设备/不授予相机的用户零影响 -->
 
     <!-- v2.15.0：每日提醒后台保活——调度引擎换 AlarmManager 精确闹钟（进程死也准时）：
          RECEIVE_BOOT_COMPLETED 开机/升级后重排；SCHEDULE_EXACT_ALARM 管 12/12L（默认授予），

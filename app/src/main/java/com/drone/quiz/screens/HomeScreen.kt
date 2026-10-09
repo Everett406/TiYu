@@ -61,6 +61,9 @@ import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.GlassIconButton
 import com.drone.quiz.ui.glass.BounceLazyColumn
+import com.drone.quiz.ui.glass.LocalScrollBackdrop
+import com.drone.quiz.ui.glass.ProgressiveEdge
+import com.kyant.backdrop.backdrops.layerBackdrop
 import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.combine
@@ -195,6 +198,22 @@ fun HomeScreen(
 
         // 滚离顶部才渐显，停在顶部时无效果、进度环等首屏内容不被遮挡
         val homeListState = rememberLazyListState()
+        val scrollBd = LocalScrollBackdrop.current
+        Box(Modifier.fillMaxSize()) {
+        // v2.17.0 渐进式模糊·顶部过渡带：内容滑到固定问候语下方时逐层加糊。
+        // 采样 scrollBd（只录滚动内容、不含固定头部），标题像素保持锐利。
+        if (scrollBd != null) {
+            ProgressiveEdge(
+                backdrop = scrollBd,
+                edge = ProgressiveEdge.Top,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+        // 滚动内容单独录一层，供上面的过渡带采样；记录层在 Box 之外，无循环采样
+        Box(
+            if (scrollBd != null) Modifier.fillMaxSize().layerBackdrop(scrollBd)
+            else Modifier.fillMaxSize()
+        ) {
         BounceLazyColumn(
             modifier = Modifier
                 .fillMaxSize(),
@@ -602,6 +621,8 @@ fun HomeScreen(
 
         item { Spacer(Modifier.height(130.dp)) }
     }
+        }   // 滚动内容记录层（供顶栏渐进模糊采样）
+        }   // 渐进模糊承载 Box
         }
 }
 

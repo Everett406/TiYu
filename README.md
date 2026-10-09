@@ -123,10 +123,10 @@
 |------|------|------|
 | 语言 | Kotlin（启用 `-Xcontext-parameters`） | 2.2.20 |
 | UI | Jetpack Compose（BOM）+ Material 3 | 2025.06.01 |
-| 导航 | androidx.navigation:navigation-compose | 2.9.8 |
-| 数据库 | Room + KSP | 2.8.4 |
-| 偏好存储 | DataStore Preferences | 1.1.7 |
-| 后台任务 | WorkManager | 2.10.5 |
+| 导航 | androidx.navigation:navigation-compose | 2.9.8（2.10.x 需 AGP 9.1+，见下） |
+| 数据库 | Room + KSP | 2.8.5 |
+| 偏好存储 | DataStore Preferences | 1.2.1 |
+| 后台提醒 | AlarmManager 精确闹钟（v2.15.0 起替换 WorkManager，进程死也准时） | 平台 API |
 | 序列化 | kotlinx-serialization-json | 1.9.0 |
 | 协程 | kotlinx-coroutines-android | 1.10.2 |
 | 构建 | AGP / Gradle | 8.13.2 / 8.14.3 |
@@ -196,6 +196,30 @@ TiYu/
 ├── build.gradle.kts                     # 插件版本集中声明
 └── settings.gradle.kts
 ```
+
+### 渐进式模糊（v2.17.0 第三次实现，交接重点）
+
+`ui/glass/ProgressiveBlur.kt` 的 `ProgressiveEdge(backdrop, edge, height, maxRadius, bands)`。
+效果：内容滑到顶栏/底栏下方时逐层加糊，溶进栏体；栏体自身像素保持锐利。
+
+**前两次为什么都失败——不要再走这两条老路：**
+
+1. v2.6.0~v2.7.2：alpha 蒙版 / 雾条 / `saveLayer` 盖在滚动容器上，与玻璃卡的离屏渲染
+   互作 → 伪影闪烁，五版迭代后砍除；
+2. v2.15.0：业务层自写着色器做**连续可变半径**（双 pass 链式 RenderEffect），每像素
+   大量采样吃 GPU、仅 API 33+ 可用、与透明内容层的预乘 alpha 相冲，v2.16.0 整体撤除。
+
+**当前路线：不做可变半径，用若干层「固定半径」的背景模糊叠出斜坡。** 每层一次
+`drawBackdrop { blur(r) }`，走 `RenderEffect.createBlurEffect` 硬件路径，API 31 起可用。
+第 i 层半径 `maxRadius·(N-i)/N`，层内不透明度由 `1-i/N` 插值到 `1-(i+1)/N`，相邻层在
+交界处共用同一 α，过渡带连续无接缝。每层节点尺寸是**整条过渡带**（不是本层那一段），
+靠 `shape` 裁可见区域，避免窄条里做大半径模糊的边界钳制发虚。
+
+**顶栏为什么需要第三个记录层**：屏内节点采样 `contentBackdrop` 构成「记录层内采样
+自己」，即 v2.1.0 首启 SIGSEGV 病灶；而顶栏要糊滚动内容又不能糊固定标题。故新增
+`scrollBackdrop`（`LocalScrollBackdrop`）**只包滚动内容**，过渡带在它之外采样，拓扑上
+与「底栏在 contentBackdrop 之外采样」同构。底栏过渡带直接挂在 AppRoot，采样
+`contentBackdrop`。`static_check` 3.15 节锁死了这些约束（禁业务层自研 RenderEffect 链）。
 
 ### 液态玻璃实现（交接重点）
 
@@ -372,7 +396,21 @@ sdkmanager "platforms;android-36" "build-tools;35.0.0" "platform-tools"
 
 </details>
 
-> 常见坑：① 只装了 JRE 没有 javac → 换 JDK 21；② shell 里 `ANDROID_HOME` 未导出 → Gradle 找不到 SDK；③ Kotlin `-Xcontext-parameters` 编译器参数已在 `build.gradle.kts` 配置，不要删除，源码中有依赖该特性的写法。
+> 常见坑：① 只装了 JRE 没有 javac → 换 JDK 21；② shell 里 `ANDROID_HOME` 未导出 → Gradle 找不到 SDK；③ Kotlin `-Xcontext-parameters` 编译器参数已在 `build.gradle.kts` 配置，不要删除，源码中有依赖该特性的写法（`com/kyant/backdrop/internal/LayerRecorder.kt` 实际用到 context 参数）。
+
+### 工具链升级边界（v2.17.0 实测）
+
+以下版本在 **AGP 8.13.2 + compileSdk 36** 上会直接构建失败，升级前先规划工具链：
+
+| 依赖 | 卡点 |
+|------|------|
+| `navigation-compose` 2.10.2 | 要求 AGP ≥ 9.1.0 + compileSdk ≥ 37 |
+| `lifecycle` 2.11.0 | 同上（`activity-compose` 1.13.0 会传递引入） |
+| Compose BOM 2026.09.x | 可用，但官方渐进模糊 API `Modifier.blur(BlurRadiusSpec)` 只在 **1.13.0-alpha03**（仍 alpha），且该版库 compileSdk 已抬到 37.1 |
+
+要吃到这几版需连带升级 AGP 9 / Gradle 9 / compileSdk 37，并处理 AGP 9 的内置 Kotlin
+迁移（`org.jetbrains.kotlin.android` 与新 DSL 不兼容）。建议用 Android Studio 的
+AGP Upgrade Assistant 处理，不要手改。
 
 ---
 
@@ -589,6 +627,7 @@ python3 scripts/convert_bank.py <题库.csv> [-o app/src/main/assets/questions.j
 | v2.13.0 | 50 | **拍照搜题大升级**：自建 CameraX 相机页（取景框引导+闪光+相册，需相机权限可拒绝）；斜拍自动矫正（行基线测角→转正重识别）；切题重写（题号回落重开/漏号结构强拆/页脚丢弃，专治连体大框）；匹配重写（整串+逐行+滑窗三级分段+包含率，抗截断抗连体） |
 | v2.14.0 | 51 | **拍照搜题单题模式**：默认自动框住一道题只出一张卡（上一题/下一题切换，整页退居切换项）；手指拖画框框哪道搜哪道（框内行重切+缓存题库即时匹配，兜底漏题连体）；取景框改单题横向长条，横握手机可拍 |
 | v2.15.0 | 52 | **标题栏渐进式模糊**：交界处模糊半径沿轴渐变（AGSL 双 pass 可变半径 RenderEffect，7 页面生效，旧蒙版方案彻底移除）；**每日提醒后台保活**：WorkManager→AlarmManager 精确闹钟（进程死也准时）+ 开机重排 + 电池优化白名单"后台运行"弹窗 + 打开自愈补排 |
+| v2.17.0 | 54 | **模考组卷丢题型修复**（`startExam` 误把持久化题型排序当遍历白名单，多选/填空/简答整类被静默丢弃，`counts` 再大也抽不到；多选拉满直接空卷死局）**拍照搜题/OCR 整体下线**（连带摘掉 NDK 依赖，构建不再需要 2GB 工具链）**渐进式模糊第三次实现**（改走分层固定半径路线，绕开连续可变半径的老路）**依赖保守档升级**（Room 2.8.5 / DataStore 1.2.1 / core-ktx 1.17.0） |
 | v2.16.0 | 53 | **安装包瘦身 58→约 44MB**：OCR 换 PaddleOCR PP-OCRv4 + MNN 推理（libdroneocr.so 薄封装 + vendor libMNN.so 双 ABI），ML Kit bundled 中文识别（约 14MB 模型+引擎）移除；**模型按需下载**：不随 APK 分发，首次点拍照搜题弹窗内下载（ModelScope 国内直连，约 15MB 一次，字节数+SHA-256 双校验、双线路互备、可取消/失败重试，filesDir 离线复用，无设置页入口）；渐进式模糊整体撤除（v2.15.0 实测后裁定），界面回到此前样式 |
 
 完整变更明细见 [CHANGELOG.md](CHANGELOG.md)。

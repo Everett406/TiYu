@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION_NAME: 2.16.0
-  APP_VERSION_TAG: v2.16.0
+  APP_VERSION_NAME: 2.17.0
+  APP_VERSION_TAG: v2.17.0
 
 jobs:
   build:
@@ -38,12 +38,8 @@ jobs:
           echo "DQ_KS_PATH=$RUNNER_TEMP/dronequiz.keystore" >> "$GITHUB_ENV"
           echo "DQ_KS_STORE_PASS=${{ secrets.DQ_KS_STORE_PASS }}" >> "$GITHUB_ENV"
 
-      # v2.16.0 起含 native 构建（externalNativeBuild/cmake，libdroneocr.so）：
-      # 显式装齐 ndkVersion 27.2.12479018 + cmake 3.22.1，不依赖 AGP 在线自动安装
-      - name: Install NDK & CMake
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
+      # v2.17.0 起工程已无任何 native 代码（拍照搜题/OCR 整体下线，jniLibs 与 cpp/ 一并移除），
+      # 构建不再需要 NDK / CMake，这条安装步骤同步删除。
 
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace --no-daemon
@@ -66,27 +62,50 @@ jobs:
           name: 题屿 TiYu ${{ env.APP_VERSION_TAG }}
           files: dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
           body: |
-            ## 题屿 TiYu v2.16.0
+            ## 题屿 TiYu v2.17.0
 
-            ### 安装包瘦身：OCR 模型按需下载（第四十九轮）
+            ### 修好了：模考不抽多选题
 
-            **安装包从 58MB 减到约 44MB。**
+            你反馈的「题库有多选、考试却只出单选」是真 bug，已定位并修复。
 
-            此前拍照搜题的 OCR 引擎（ML Kit 中文识别）模型内置在安装包里，占了约 14MB。
-            本版把模型从包里拆出来：
+            根因：模考配置页早就修过「题型排序不是白名单」，但真正抽题的那一步漏了——
+            它把你在别的题库里拖出来的题型排序当成了「只抽这几类」的白名单。
+            于是配置页算好 50 题（单选 25 + 多选 25）、按钮也显示「共 50 题」，
+            真抽的时候多选那 25 道一次都没被抽走。多选拉满 100% 时更是直接抽成空卷，
+            考试页一片空白还交不了卷。
 
-            - **首次点拍照搜题时**才会提示下载识别模型（约 15MB，仅需一次），
-              国内线路（ModelScope 阿里 CDN）直连，下载后离线可用
-            - 下载在弹窗内完成（带进度，可取消/失败重试），不需要去设置页找入口
-            - 识别引擎同步升级为 PaddleOCR PP-OCRv4，斜拍自动矫正、切题、
-              搜题匹配等工作流与上一版完全一致
+            这不是多选一家的事：填空、简答同样会被丢，只要它们不在那份旧排序里。
+            刷题功能不受影响（它取的是当前题库实际有的题型）。
 
-            **每日提醒后台保活**（上一版功能，本版继续有效）：进程被杀也准时发通知，
-            重启手机自动重排。
+            已在四种场景下验证：全新安装、切换过题库、多选拉满、五种题型齐全的题库，
+            计划抽题数与实际抽题数现在完全一致。
 
-            **回滚说明**：上一版的标题栏滚动虚化效果实测后撤除，界面回到此前样式。
+            ### 拍照搜题整体下线
+
+            相机入口、拍照页、结果页、OCR 引擎与模型下载全部移除。
+            顺带的收益：工程不再有任何 native 代码，构建不再需要下载 NDK/CMake
+            （约 2GB），本地和 CI 都少一步。应用回到纯离线的干净形态。
+
+            ### 渐进式模糊：第三次，换了条路
+
+            之前两次失败我都归因清楚了，这次没走老路：
+
+            这次**不做连续可变半径**，改成用几层「固定半径」的背景模糊叠出渐变斜坡。
+            每一层都是系统硬件加速的模糊，Android 12 起可用，不写任何自研着色器。
+
+            已接入：底部过渡带全局生效（所有 Tab 页），顶部过渡带已在首页生效。
+            顶部要糊滚动内容又不能糊固定标题，为此新增了一层只包滚动内容的记录层——
+            和当初修首启崩溃时的架构约束是一脉相承的。
+
+            如果真机上看不对，回滚这个版本即可，不影响上面两条修复。
+
+            ### 依赖小幅升级
+
+            Room 2.8.5、DataStore 1.2.1、core-ktx 1.17.0。
+            Compose / navigation / lifecycle 这几项实测在当前 AGP 8.13.2 上会直接
+            构建失败（要求 AGP 9.1+ 与 compileSdk 37），留待专门的工具链升级轮，
+            README 已写清边界。
 
             ---
 
-            **安装**：下载下方 `TiYu-2.16.0.apk` 安装覆盖即可，数据自动迁移。
-            已装 v2.15.0 的用户覆盖安装后，首次用拍照搜题会多一次模型下载。
+            **安装**：下载下方 `TiYu-2.17.0.apk` 安装覆盖即可，学习数据自动迁移。

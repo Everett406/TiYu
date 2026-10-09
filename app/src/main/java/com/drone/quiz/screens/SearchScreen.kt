@@ -76,8 +76,7 @@ import kotlinx.coroutines.launch
 fun SearchScreen(
     backdrop: Backdrop,
     initialQuery: String = "",
-    onBack: () -> Unit,
-    onOpenCapture: () -> Unit
+    onBack: () -> Unit
 ) {
     val ui = LocalUi.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -178,12 +177,7 @@ fun SearchScreen(
                     }
                 }
             }
-            // 拍照搜题入口：搜索的另一种输入方式（直连自建相机页，取景框引导）
-            GlassIconButton(
-                onClick = onOpenCapture,
-                backdrop = backdrop,
-                icon = AppIcons.Camera
-            )
+            // v2.17.0：拍照搜题下线，搜索框右侧的相机入口随之移除。
         }
 
         // ---- 结果列表 ----
