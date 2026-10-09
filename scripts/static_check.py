@@ -388,53 +388,42 @@ if "externalNativeBuild" in _gradle_src or "ndkVersion" in _gradle_src:
 if "android.permission.CAMERA" in _manifest_src or "android.hardware.camera.any" in _manifest_src:
     print("[FAIL] 拍照搜题下线后不应再声明 CAMERA 权限 / camera.any 特性（无端索权）"); fail = True
 
-# 3.15) 渐进式模糊（v2.17.0 重新实现，路线与前两次不同）：
-#       前两次失败教训固化在此，禁止走老路：
-#         ① v2.6.0~v2.7.2：alpha 蒙版 / 雾条 / saveLayer 覆盖层 → 与玻璃卡离屏渲染互作，伪影闪烁
-#         ② v2.15.0：业务层自写 AGSL RuntimeShader 做连续可变半径 → 每像素大量采样、
-#            仅 API 33+、且与透明内容层的预乘 alpha 相冲，v2.16.0 整体撤除
-#       新路线：分层「固定半径」背景模糊叠加（drawBackdrop + 渐变遮罩分层），
-#       全部走 RenderEffect.createBlurEffect 硬件路径，API 31+ 可用，无自研 shader。
-#       因此：业务层（screens/ 与 ui/）禁止出现 createRuntimeShaderEffect / createChainEffect
-#       （vendored com.kyant.backdrop 库内部链式 RenderEffect 属正当使用，不在此列）；
-#       渐进模糊的实现文件必须是 ProgressiveBlur.kt，且只能挂在既有 backdrop 基建上。
+# 3.15) 渐进式模糊（v2.19.0 第四次实现，方案取自 newo-ether/Agora 的 GradientBlur）：
+#       前三次全部把模糊做成「贴在栏体上的背景采样层」，在本题库结构下必炸：
+#         ① v2.6.0~v2.7.2 alpha 蒙版/雾条/saveLayer 覆盖滚动容器 → 与玻璃卡离屏渲染互作，伪影闪烁
+#         ② v2.15.0 自写着色器做连续可变半径（稠密 2D 网格 + 每抽头 exp()）→ per-pixel 成本过高
+#         ③ v2.17.0 分层固定半径叠加 → 每层一个裁剪边界，真机满屏横线 + 底栏糊穿
+#       现在：把可变半径 RenderEffect 直接挂在包住滚动区的 Box 上（graphicsLayer{renderEffect}），
+#       模糊的是「滚动内容自己」，栏体是画在其上的独立玻璃件。单层单效果，接缝无处可生，
+#       且完全不做背景采样——绕开「记录层内禁用采样」这条架构红线。
 _prog_src_path = _repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/ProgressiveBlur.kt"
 if not _os.path.exists(_prog_src_path):
-    print("[FAIL] 渐进式模糊实现文件缺失：ui/glass/ProgressiveBlur.kt（顶栏/底栏渐进模糊的核心）"); fail = True
+    print("[FAIL] 渐进式模糊实现文件缺失：ui/glass/ProgressiveBlur.kt"); fail = True
 else:
     _prog_src = load(_prog_src_path)
-    for _needle in ("drawBackdrop", "blur(", "ProgressiveEdge", "DstIn", "verticalGradient"):
+    for _needle in ("gradientBlurEdges", "graphicsLayer", "createChainEffect",
+                    "createRuntimeShaderEffect", "EDGE_BLUR_SHADER", "topRampStartDp"):
         if _needle not in _prog_src:
-            print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}（须走 drawBackdrop + 固定半径 blur + 渐变 alpha）"); fail = True
-    for _forbidden in ("createRuntimeShaderEffect", "createChainEffect", "RuntimeShader", "AGSL"):
-        if _forbidden in _prog_src:
-            print(f"[FAIL] 渐进式模糊不得自写 shader（前两版老路已证伪）：{_forbidden}"); fail = True
-    # v2.18.0 真机实测教训固化：v2.17.0 的「分层 + 层内实色纱」满屏横线，此处三条禁令——
-    #   ① 带内多层叠加（每层各自 shape 裁剪 = 每层一条内部接缝）
-    #   ② onDrawSurface 里画带硬边界的实心形状（v2.17.0 的 10% 实色纱，元凶）
-    #   ③ 用 shape 把过渡带切段（唯一允许的裁剪边界应只有贴栏体那一处）
-    if _prog_src.count("drawBackdrop(") > 1:
-        print("[FAIL] 渐进模糊过渡带只允许单节点：多节点叠加会在每层边界产生横贯全屏的接缝"); fail = True
-    if "RectangleShape" not in _prog_src:
-        print("[FAIL] 过渡带 shape 必须保持整块矩形（切段即产生裁剪接缝）"); fail = True
-    _on_surface_blk = _prog_src.split("onDrawSurface")[-1] if "onDrawSurface" in _prog_src else ""
-    for _bad in ("drawRect(\n", "ui.correct", "ui.wrong"):
-        if _bad in _prog_src:
-            print(f"[FAIL] onDrawSurface 内不得画实色矩形/色块（v2.17.0 满屏横线元凶）：{_bad}"); fail = True
-    # ③ 顶层栏/底栏两处挂载点必须仍在
-    _approot_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/nav/AppRoot.kt")
-    if "ProgressiveEdge(" not in _approot_src:
-        print("[FAIL] AppRoot 缺底栏过渡带挂载（ProgressiveEdge）"); fail = True
-    if "LocalScrollBackdrop provides" not in _approot_src:
-        print("[FAIL] AppRoot 缺 scrollBackdrop 提供（顶栏过渡带的采样源，见 LocalScrollBackdrop 注释）"); fail = True
-# 业务层禁自研 RenderEffect 链（vendored 库内部合法使用，不误伤）
-for _banned in ("createRuntimeShaderEffect", "createChainEffect"):
-    _banned_hits = [h for h in grep_hits(_banned)
-                    if ("/screens/" in h or "/ui/" in h) and "/com/kyant/backdrop/" not in h]
-    if _banned_hits:
-        print(f"[FAIL] 业务层自研 RenderEffect 链（老路已证伪）：{_banned_hits}"); fail = True
-if _os.path.exists(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/ProgressiveBlur.kt"):
-    print("[FAIL] ProgressiveBlur.kt 须位于 ui/glass/（与玻璃组件族同源），旧路径已废弃"); fail = True
+            print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}"); fail = True
+    # 9 抽头可分离核是性能底线（Agora 的关键取舍：稠密网格 + exp() 对滚动列表太贵）
+    if _prog_src.count("content.eval(coord") < 10:
+        print("[FAIL] 渐进模糊必须保留 9 抽头可分离核（横竖两趟 18 次采样），退回稠密网格会拖垮滚动帧率")
+        fail = True
+    if "s < 0.5" not in _prog_src:
+        print("[FAIL] 着色器缺少半径近零早退（过渡带外零成本的关键分支）"); fail = True
+    # 禁止回到背景采样路线：任何 backdrop/drawBackdrop 用在渐进模糊上都不许复活
+    for _banned in ("drawBackdrop", "BlendMode.SrcIn"):
+        if _banned in _prog_src:
+            print(f"[FAIL] 渐进模糊不得走背景采样路线（前三次老路）：{_banned}"); fail = True
+_approot_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/nav/AppRoot.kt")
+if "ProgressiveEdge" in _approot_src:
+    print("[FAIL] AppRoot 不得再挂背景采样式过渡带（v2.19.0 已改为各屏自挂）"); fail = True
+_home_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+if "gradientBlurEdges" not in _home_src:
+    print("[FAIL] 首页滚动区缺 gradientBlurEdges（贴顶/贴底渐进模糊）"); fail = True
+for _needle in ("barBottom", "bottomBarTop", "悬浮顶栏"):
+    if _needle not in _home_src:
+        print(f"[FAIL] 首页悬浮顶栏/斜坡锚点缺失：{_needle}"); fail = True
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +

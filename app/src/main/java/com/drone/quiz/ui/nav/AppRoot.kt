@@ -94,12 +94,10 @@ import com.drone.quiz.ui.glass.GlassBottomTabs
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassOverlayPortal
 import com.drone.quiz.ui.glass.GlassPromptDialog
-import com.drone.quiz.ui.glass.GlassRuntime
 import com.drone.quiz.ui.glass.LocalBgBackdrop
 import com.drone.quiz.ui.glass.LocalContentBackdrop
 import com.drone.quiz.ui.glass.LocalScrollBackdrop
 import com.drone.quiz.ui.glass.OverlayBlur
-import com.drone.quiz.ui.glass.ProgressiveEdge
 import com.drone.quiz.ui.glass.TabIconSlot
 import com.drone.quiz.ui.onboarding.OnboardingBus
 import com.drone.quiz.ui.onboarding.TourHost
@@ -494,22 +492,9 @@ fun AppRoot(settings: RootSettings) {
             }
         }
 
-        // v2.17.0 渐进式模糊·底部过渡带：内容滑到底栏上方时逐层加糊，溶进玻璃栏体。
-        // 放在底栏之前声明 = 绘制在底栏之下，栏体自身像素保持锐利（只糊它背后的内容）。
-        // 与底栏同进退：仅 Tab 页显示，随底栏一起滑入滑出。
-        if (isTabRoute && GlassRuntime.enabled) {
-            ProgressiveEdge(
-                backdrop = contentBackdrop,
-                edge = ProgressiveEdge.Bottom,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        bottom = 10.dp + 64.dp + WindowInsets.navigationBars
-                            .asPaddingValues()
-                            .calculateBottomPadding()
-                    )
-            )
-        }
+        // v2.19.0：底部渐进模糊不再由 AppRoot 挂「背景采样过渡带」，
+        // 改为各屏把可变半径 RenderEffect 挂在自己的滚动区上（见 ui/glass/ProgressiveBlur.kt
+        // 的 gradientBlurEdges）——单层单效果，接缝无处可生，栏体像素自然锐利。
 
         // 浮动玻璃底栏（仅 Tab 页显示；离场下滑独立动画，不与页面转场叠加）
         // 注：不给底栏套 Modifier.blur——方形 blur 层会在胶囊四周留下方框裁剪痕迹，

@@ -1,113 +1,184 @@
 package com.drone.quiz.ui.glass
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.Composable
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
+import android.os.Build
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.isRenderEffectSupported
+
+/** 半径封顶：9 抽头核的最外抽头在 2.4·s 处，实际模糊直径≈2.4×此值。 */
+private const val MAX_GRADIENT_BLUR_DP = 6f
 
 /**
- * v2.18.0 渐进式模糊（Progressive Blur）—— 顶栏 / 底栏下沿的「内容溶入栏体」效果。
+ * v2.19.0 渐进式模糊 —— 第四次实现，方案来自 Agora（newo-ether/Agora）的 GradientBlur。
  *
- * ## 三次尝试的结论（前两次都被真机实测打回，这里把教训写死）
+ * ## 前三次都错在哪
  *
- * ① v2.6.0~v2.7.2：alpha 蒙版 / 雾条 / saveLayer 盖在滚动容器上
- *     → 与玻璃卡的离屏渲染互作，伪影闪烁，五版迭代后砍除。
- * ② v2.15.0：业务层自写着色器做**连续可变半径**（双 pass 链式 RenderEffect）
- *     → 每像素大量采样吃 GPU、仅 API 33+ 可用、且与透明内容层的预乘 alpha 相冲，
- *       v2.16.0 整体撤除。
- * ③ v2.17.0：**分层「固定半径」叠加**（3 层，各自 shape 裁到本层 + 层内渐变 alpha）
- *     → 真机实测**满屏横向接缝 + 底栏被糊穿**，v2.18.0 推翻重写。
+ * ① v2.6.0~v2.7.2 / ② v2.15.0 / ③ v2.17.0：三次全部把模糊做成「贴在栏体上的**背景采样**层」
+ *    （alpha 蒙版 → 自写可变半径着色器 → 分层固定半径叠加）。这条路在本题库的结构下
+ *    必炸：内容层本身在记录层内，屏内采样受限；叠加层越多，裁剪边界越多，
+ *    接缝与闪烁随之而来（v2.17.0 真机满屏横线即如此）。
  *
- * ## v2.17.0 那版错在哪（两条，都是自找的）
+ * ## 这一版换的根本思路
  *
- * ① **在 onDrawSurface 里画了实色矩形当"纱"**——drawBackdrop 节点是 Offscreen 复合层，
- *    在层内画一个全节点尺寸的实色矩形，它的上下边界就是两条硬边；三层叠起来正好六条
- *    横贯全屏的接缝。**层内绝不能画有硬边界的实心形状**。
- * ② **三层各自用 shape 裁到本层**——每层的裁剪边界都落在过渡带内部，
- *    即使 alpha 连续，裁剪本身也断开了采样窗口，接缝照样可见。
+ * **不做背景采样，改成模糊「滚动内容自己」**——把可变半径 RenderEffect 直接挂在
+ * 包住滚动区的 Box 上（`graphicsLayer { renderEffect }`）。于是：
  *
- * ## v2.18.0 的做法：单节点、单次模糊、只有渐变 alpha
+ *   · 全程只有一个离屏层、一条裁剪边界，接缝无处可生；
+ *   · 栏体不是模糊的输入，而是画在这层之上的独立玻璃件，永远锐利；
+ *   · 不需要第三个记录层，也不需要任何 backdrop 采样，绕开了 v2.1.0 那条
+ *     「记录层内禁用采样」的架构红线。
  *
- * 一个节点铺满整条过渡带，一次固定半径模糊，shape 保持整块矩形不切分，
- * 可见性完全由带内的垂直渐变 alpha（DstIn）压出来。
- * 于是：整条带只有**一个**裁剪边界（贴着栏体、被栏体盖住），
- * 带内不存在任何裁剪接缝，也只跑一次背景采样。
+ * ## 着色器：9 抽头可分离核，不是稠密网格
  *
- * 视觉上，靠近栏体处几乎全是模糊副本，越往内模糊副本占比越低、直至原图——
- * 这正是 Figma「渐进模糊」的标准实现（uniform blur + alpha gradient crossfade），
- * 与逐像素算半径的连续可变半径相比，跨层差异在 56dp 的带上肉眼难辨，
- * 却省掉了 per-pixel 采样、N 层离屏合成与全部接缝风险。
+ * 沿用 Agora 的关键取舍（其 GradientBlur.kt 注释原话：先前版本用稠密 2D 网格
+ * 且每个抽头都算 exp()，对滚动列表「太贵了」）。此处横竖两趟串联，每趟 9 个 texel、
+ * 常量高斯权重、无动态循环——每像素 18 次采样，不是几百次。
  *
- * 曲线沿用项目既有口径 smoothstep 五采样（Common.kt 的 fadeMaskBrush）：
- * 线性渐变的"被幕布切"观感主要来自两端斜率突变，smoothstep 消除之。
+ * 半径随到边缘的距离线性爬升：`s = uMaxBlur · max(顶权重, 底权重)`，
+ * 且当 `s < 0.5px` 直接原样返回——过渡带以外的大半个列表几乎零成本。
+ * Android 13(API 33) 起走着色器；以下机型降级为纯 alpha 渐隐（视觉接近，成本近零）。
  */
-enum class ProgressiveEdge { Top, Bottom }
+private val EDGE_BLUR_SHADER = """
+    uniform shader content;
+    uniform float uMaxBlur;    // 边缘处最大模糊（px）
+    uniform float uFade;       // 斜坡长度（px）
+    uniform float uH;          // 容器高度（px）
+    uniform float2 uWeights;   // x = 顶边权重, y = 底边权重
+    uniform float2 uOffsets;   // x = 顶部斜坡起点(px), y = 底部斜坡起点(px, 自底向上量)
+    uniform float2 uDirection; // 横向趟 (1,0)，纵向趟 (0,1)
 
-/** 边缘渐隐曲线：smoothstep 五采样，贴栏体端 1.0 → 带内侧 0.0（Top 反向）。 */
-private fun edgeFadeBrush(edge: ProgressiveEdge): Brush {
-    fun stop(pos: Float, a: Float) =
-        pos to Color.Black.copy(alpha = if (edge == ProgressiveEdge.Top) a else 1f - a)
-    return Brush.verticalGradient(
-        stop(0f, 1f),
-        stop(0.25f, 0.84f),
-        stop(0.5f, 0.5f),
-        stop(0.75f, 0.16f),
-        stop(1f, 0f)
-    )
-}
+    half4 main(float2 coord) {
+        if (uWeights.x <= 0.0 && uWeights.y <= 0.0) return content.eval(coord);
 
-/**
- * 一条贴边的渐进式模糊过渡带。叠在滚动内容之上、栏体之下，
- * 让内容随靠近栏体逐渐糊掉，形成参考图中「溶入玻璃」的手感。
- *
- * 纯视觉层：不消费任何手势（无 pointerInput），滚动与点击照常穿透。
- *
- * @param edge 贴哪条边：Top = 顶栏下沿（越靠上越糊），Bottom = 底栏上沿（越靠下越糊）
- * @param height 过渡带高度
- * @param maxRadius 最大模糊半径。整条带共用这一个半径，靠 alpha 渐变完成过渡
- */
-@Composable
-fun ProgressiveEdge(
-    backdrop: Backdrop,
-    edge: ProgressiveEdge,
-    modifier: Modifier = Modifier,
-    height: Dp = 56.dp,
-    maxRadius: Dp = 20.dp
-) {
-    // 画面特效关闭（安全模式 / 用户手动关）时不叠玻璃
-    if (!GlassRuntime.enabled || !isRenderEffectSupported()) return
+        // 斜坡起点可下移：悬浮顶栏并非贴屏幕顶边，若从 y=0 起爬，
+        // 斜坡会落在栏体上方而不是栏体下缘，视觉上就"没贴顶"。
+        float t = uOffsets.x > 0.0
+            ? saturate(1.0 - (coord.y - uOffsets.x) / uFade) * uWeights.x
+            : 0.0;
+        float b = uOffsets.y > 0.0
+            ? saturate(1.0 - ((uH - coord.y) - uOffsets.y) / uFade) * uWeights.y
+            : 0.0;
+        float s = uMaxBlur * max(t, b);
+        if (s < 0.5) return content.eval(coord);
 
-    val density = LocalDensity.current
-    val radiusPx = with(density) { maxRadius.toPx() }
-    if (radiusPx <= 0f) return
-
-    Box(modifier.height(height)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    // shape 保持整块矩形：带内不做任何切分，杜绝裁剪接缝
-                    shape = { RectangleShape },
-                    effects = { blur(radiusPx) },
-                    onDrawSurface = {
-                        // 只用渐变 alpha 羽化整条带——这是层内唯一允许画的形状，
-                        // 它没有内部边界，不会产生任何横贯全屏的接缝。
-                        drawRect(brush = edgeFadeBrush(edge), blendMode = BlendMode.DstIn)
-                    }
-                )
-        )
+        float2 axis = uDirection * s;
+        half4 accum = half4(content.eval(coord)) * 0.24084130;
+        accum += half4(content.eval(coord + axis * 0.6)) * 0.20116756;
+        accum += half4(content.eval(coord - axis * 0.6)) * 0.20116756;
+        accum += half4(content.eval(coord + axis * 1.2)) * 0.11723004;
+        accum += half4(content.eval(coord - axis * 1.2)) * 0.11723004;
+        accum += half4(content.eval(coord + axis * 1.8)) * 0.04766218;
+        accum += half4(content.eval(coord - axis * 1.8)) * 0.04766218;
+        accum += half4(content.eval(coord + axis * 2.4)) * 0.01351957;
+        accum += half4(content.eval(coord - axis * 2.4)) * 0.01351957;
+        return accum;
     }
+""".trimIndent()
+
+/**
+ * 给「贴边滚动区」加渐进式模糊：靠 [edgeFadeDp] 的距离内从 0 爬到 [maxBlurDp]，
+ * 贴边处最强。整条斜坡随容器固定，**不随内容滚动**。
+ *
+ * 挂在包住滚动区的 Box 上（不是挂在列表本身）：列表内部还有过冲回弹的位移层，
+ * 模糊若挂在列表上会跟着内容一起漂，斜坡就失锚了。
+ *
+ * @param maxBlurDp 贴边处的模糊半径（内部按抽头核封顶到 6dp）
+ * @param edgeFadeDp 从贴边往内的斜坡长度
+ * @param topWeight 顶边权重。1 = 贴顶最糊，0 = 顶边不糊
+ * @param bottomWeight 底边权重。1 = 贴底最糊，0 = 底边不糊
+ * @param topRampStartDp 顶部斜坡起点（距容器顶）。悬浮顶栏内缩时必须设成栏体下缘，
+ *   否则斜坡落在栏体上方，看着就像"没贴顶"
+ * @param bottomRampStartDp 底部斜坡起点（距容器底），同理设成底栏上缘
+ */
+fun Modifier.gradientBlurEdges(
+    maxBlurDp: Float,
+    edgeFadeDp: Float = 56f,
+    topWeight: Float = 1f,
+    bottomWeight: Float = 1f,
+    topRampStartDp: Dp = 0.dp,
+    bottomRampStartDp: Dp = 0.dp
+): Modifier = composed {
+    val tw = topWeight.coerceIn(0f, 1f)
+    val bw = bottomWeight.coerceIn(0f, 1f)
+    if (maxBlurDp <= 0f || (tw <= 0f && bw <= 0f)) return@composed this
+    val topOffPx = topRampStartDp.value * LocalDensity.current.density
+    val botOffPx = bottomRampStartDp.value * LocalDensity.current.density
+
+    val density = LocalDensity.current.density
+    val maxBlurPx = maxBlurDp.coerceAtMost(MAX_GRADIENT_BLUR_DP) * density
+    val fadePx = edgeFadeDp * density
+    var composableHPx by remember { mutableFloatStateOf(0f) }
+
+    val layer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && maxBlurPx > 0f) {
+        val horizontal = remember(maxBlurPx, fadePx, tw, bw, topOffPx, botOffPx, composableHPx) {
+            RuntimeShader(EDGE_BLUR_SHADER).apply {
+                setFloatUniform("uMaxBlur", maxBlurPx)
+                setFloatUniform("uFade", fadePx)
+                setFloatUniform("uH", composableHPx)
+                setFloatUniform("uWeights", tw, bw)
+                setFloatUniform("uOffsets", topOffPx, botOffPx)
+                setFloatUniform("uDirection", 1f, 0f)
+            }
+        }
+        val vertical = remember(maxBlurPx, fadePx, tw, bw, topOffPx, botOffPx, composableHPx) {
+            RuntimeShader(EDGE_BLUR_SHADER).apply {
+                setFloatUniform("uMaxBlur", maxBlurPx)
+                setFloatUniform("uFade", fadePx)
+                setFloatUniform("uH", composableHPx)
+                setFloatUniform("uWeights", tw, bw)
+                setFloatUniform("uOffsets", topOffPx, botOffPx)
+                setFloatUniform("uDirection", 0f, 1f)
+            }
+        }
+        Modifier
+            .onSizeChanged { composableHPx = it.height.toFloat() }
+            .graphicsLayer {
+                renderEffect = RenderEffect
+                    .createChainEffect(
+                        RenderEffect.createRuntimeShaderEffect(vertical, "content"),
+                        RenderEffect.createRuntimeShaderEffect(horizontal, "content")
+                    )
+                    .asComposeRenderEffect()
+            }
+    } else {
+        // API 31/32 无着色器：退化为纯 alpha 渐隐。观感接近，成本近零
+        Modifier
+    }
+
+    val fadePxFinal = fadePx
+    layer
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || maxBlurPx <= 0f) {
+                val h = size.height.coerceAtLeast(1f)
+                val norm = (fadePxFinal / h).coerceIn(0f, 0.5f)
+                val opaque = Color.Black
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to opaque.copy(alpha = 1f - tw),
+                        norm to opaque,
+                        1f - norm to opaque,
+                        1f to opaque.copy(alpha = 1f - bw)
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
+            }
+        }
 }
