@@ -96,6 +96,7 @@ import com.drone.quiz.ui.glass.GlassToggle
 import com.kyant.shapes.Capsule
 import com.drone.quiz.ui.glass.rememberBounceState
 import com.drone.quiz.ui.glass.BounceContainer
+import com.drone.quiz.ui.glass.bottomEdgeBlur
 import com.drone.quiz.ui.theme.LocalUi
 import com.drone.quiz.ui.nav.Routes
 import com.kyant.backdrop.Backdrop
@@ -247,6 +248,7 @@ fun ExamConfigScreen(
         Column(
             Modifier
                 .fillMaxSize()
+                .bottomEdgeBlur()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
         ) {

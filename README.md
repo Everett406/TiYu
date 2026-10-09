@@ -197,13 +197,13 @@ TiYu/
 └── settings.gradle.kts
 ```
 
-### 渐进式模糊（v2.19.0，交接重点）
+### 渐进式模糊（v2.19.2，交接重点）
 
-当前实现见 `ui/glass/ProgressiveBlur.kt` 的 `gradientBlurEdges`。**方案源自
-[newo-ether/Agora](https://github.com/newo-ether/Agora) 的 `util/GradientBlur.kt`。**
+实现见 `ui/glass/ProgressiveBlur.kt`。**方案源自
+[newo-ether/Agora](https://github.com/newoether/Agora) 的 `util/GradientBlur.kt`。**
 
 **核心思路与前三次相反：不做背景采样，模糊「滚动内容自己」。**
-可变半径 RenderEffect 直接挂在包住滚动区的 Box 上（`graphicsLayer { renderEffect }`），
+可变半径 RenderEffect 直接挂在包住滚动区的那一层（`graphicsLayer { renderEffect }`），
 栏体是画在其上的独立玻璃件、永远锐利。全程单层单效果，接缝无处可生；
 不做背景采样也就绕开了「记录层内禁用采样」的架构红线。
 
@@ -212,8 +212,15 @@ TiYu/
 对滚动列表「太贵了」。另有半径近零早退（`s < 0.5` 原样返回），过渡带外近零成本。
 API 33+ 走着色器；31/32 降级纯 alpha 渐隐。
 
-**斜坡锚点**：`topRampStartDp` / `bottomRampStartDp` 让斜坡起点对齐悬浮栏的**内缘**。
-悬浮条都内缩过，从屏幕边缘起爬会让斜坡落在栏体上方，看着就是「没贴顶/贴底」。
+**统一入口 `Modifier.bottomEdgeBlur()`**：5 个 Tab 页（首页 / 练习配置 / 模考配置 /
+错题本 / 设置）都挂它；底栏几何（10dp 下边距 + 64dp 条体 + 导航栏 inset）在此单点维护，
+`static_check` 3.15 节校验。`topWeight = 0f`——顶栏维持历代原样，顶边没有内容穿过。
+
+**挂载位置的坑**（改这几页时务必注意）：效果要挂在**包住滚动区的那一层**，
+**绝不能挂到滚动容器自身**。`BounceLazyColumn` / `BounceContainer` 内部都有回弹位移层
+（`graphicsLayer { translationY = state.offset }`），挂上去斜坡会跟着内容漂移、失去锚点。
+各页结构不同：错题本是 `Box(weight(1f)) { BounceLazyColumn }` → 挂 Box；
+其余三页是 `BounceContainer(weight(1f)) { Column(verticalScroll) }` → 挂 Column 的 Modifier 链。
 
 **前三次为什么都失败——不要再走这三条老路：**
 
@@ -629,6 +636,8 @@ python3 scripts/convert_bank.py <题库.csv> [-o app/src/main/assets/questions.j
 | v2.13.0 | 50 | **拍照搜题大升级**：自建 CameraX 相机页（取景框引导+闪光+相册，需相机权限可拒绝）；斜拍自动矫正（行基线测角→转正重识别）；切题重写（题号回落重开/漏号结构强拆/页脚丢弃，专治连体大框）；匹配重写（整串+逐行+滑窗三级分段+包含率，抗截断抗连体） |
 | v2.14.0 | 51 | **拍照搜题单题模式**：默认自动框住一道题只出一张卡（上一题/下一题切换，整页退居切换项）；手指拖画框框哪道搜哪道（框内行重切+缓存题库即时匹配，兜底漏题连体）；取景框改单题横向长条，横握手机可拍 |
 | v2.15.0 | 52 | **标题栏渐进式模糊**：交界处模糊半径沿轴渐变（AGSL 双 pass 可变半径 RenderEffect，7 页面生效，旧蒙版方案彻底移除）；**每日提醒后台保活**：WorkManager→AlarmManager 精确闹钟（进程死也准时）+ 开机重排 + 电池优化白名单"后台运行"弹窗 + 打开自愈补排 |
+| v2.19.2 | 58 | **底缘模糊铺满全部 5 个 Tab 页**（首页/练习配置/模考配置/错题本/设置统一挂 `Modifier.bottomEdgeBlur()`，底栏几何收口到单点维护） |
+| v2.19.1 | 57 | 顶栏整体还原为原样（用户裁定：不要悬浮、不要胶囊）；顺带撤除 `LocalScrollBackdrop` |
 | v2.19.0 | 56 | **渐进式模糊第四次、换掉整条路线**（参考 newo-ether/Agora 的 GradientBlur：可变半径 RenderEffect 直接挂滚动区，单层单效果零接缝，9 抽头可分离核，不再做背景采样）**顶栏改悬浮玻璃条**（问候语+题库切换+设置浮于内容之上，滚动区铺满整屏从底下穿过） |
 | v2.18.0 | 55 | **渐进式模糊重做**（v2.17.0 分层叠加真机实测满屏横线+底栏糊穿，本版推翻：单节点单次模糊+渐变 alpha，带内零裁剪接缝）**模考即时判定**（可选制：模考配置页高级选项新增开关，关=全卷交后统核，开=逐题当场验得失，判分口径不变） |
 | v2.17.0 | 54 | **模考组卷丢题型修复**（`startExam` 误把持久化题型排序当遍历白名单，多选/填空/简答整类被静默丢弃，`counts` 再大也抽不到；多选拉满直接空卷死局）**拍照搜题/OCR 整体下线**（连带摘掉 NDK 依赖，构建不再需要 2GB 工具链）**渐进式模糊第三次实现**（改走分层固定半径路线，绕开连续可变半径的老路）**依赖保守档升级**（Room 2.8.5 / DataStore 1.2.1 / core-ktx 1.17.0） |

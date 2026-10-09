@@ -49,6 +49,7 @@ import com.drone.quiz.screens.common.scrolledFromTopPx
 import com.drone.quiz.ui.glass.AppIcons
 import com.drone.quiz.ui.onboarding.onboardingAnchor
 import com.drone.quiz.ui.glass.BounceContainer
+import com.drone.quiz.ui.glass.bottomEdgeBlur
 import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.GlassConfirmDialog
@@ -169,6 +170,7 @@ fun PracticeConfigScreen(
         Column(
             Modifier
                 .fillMaxSize()
+                .bottomEdgeBlur()
                 .verticalScroll(cfgScroll)
                 .padding(horizontal = 20.dp)
         ) {

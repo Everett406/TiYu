@@ -3,6 +3,38 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.2] - 2026-10-10
+
+### 底缘模糊铺满全部 5 个 Tab 页
+
+**用户反馈**：翻了其他页面才发现只有主页有模糊，其余页面底栏上方是「硬切」的。
+
+现在 5 个 Tab 页的滚动区**统一**挂 `Modifier.bottomEdgeBlur()`：首页、练习配置、
+模考配置、错题本、设置。`PracticeRunScreen`、`SearchScreen`、答题/交卷页不是 Tab 路由、
+底下没有底栏，不涉及。
+
+**斜坡锚点统一收口**：新增 `ui/glass/ProgressiveBlur.kt` 的
+`Modifier.bottomEdgeBlur()`（Composable 扩展），把底栏几何（10dp 下边距 + 64dp 条体 +
+导航栏 inset）收到**单点**维护，`static_check` 会校验这处几何不许被拆散或漏改。
+此前每页各写一份 `bottomRampStartDp`，改底栏尺寸就得改五处。
+
+**挂载位置的坑**（这几页结构不同，值得记）：错题本是
+`Box(weight(1f)) { BounceLazyColumn }` → 挂在 Box 上；其余三页是
+`BounceContainer(weight(1f)) { Column(verticalScroll) }` → 挂在 Column 的 Modifier 链上。
+**都不能挂到滚动容器自身**——BounceLazyColumn / BounceContainer 内部都有回弹位移层
+（`graphicsLayer { translationY = state.offset }`），效果挂上去斜坡会跟着内容一起漂，
+锚点就没了。所以统一挂在「包住滚动区的那一层」。
+
+### 2.19.1 顶栏整体还原为原样
+
+**用户裁定**：顶栏不要悬浮、不要胶囊，恢复历代原样的固定标题行。
+于是首页整屏重构回退：顶栏回到 `Column.statusBarsPadding` + 固定标题 `Row`，
+滚动区不再满屏铺开；顶边也因此没有任何内容穿过——**顶边不设模糊**，
+`bottomEdgeBlur()` 里 `topWeight = 0f`。底栏维持现状。
+
+顺带彻底撤除 `LocalScrollBackdrop` 及其 CompositionLocal 注入（v2.17.0 引入、
+v2.19.0 已无人使用），`GlassOverlays` 与 `AppRoot` 里的定义/注入一并删除。
+
 ## [2.19.0] - 2026-10-09
 
 ### 渐进式模糊第四次：换掉整条路线 + 顶栏改悬浮玻璃条

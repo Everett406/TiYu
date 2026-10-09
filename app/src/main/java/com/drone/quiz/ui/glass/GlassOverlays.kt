@@ -61,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import kotlinx.coroutines.launch
 
@@ -136,16 +135,6 @@ object GlassOverlayPortal {
 val LocalBgBackdrop = compositionLocalOf<Backdrop?> { null }
 val LocalContentBackdrop = compositionLocalOf<Backdrop?> { null }
 
-/**
- * v2.17.0 渐进式模糊专用记录层：**只**包住各屏的滚动内容，不含固定头部。
- *
- * 为什么需要第三个记录层：contentBackdrop 记录整个 NavHost，屏内节点若采样它即构成
- * 「记录层内采样自己」——这正是 v2.1.0 首启 SIGSEGV 的病灶，架构上明令禁止。
- * 而顶栏过渡带必须采到滚动内容才能糊，又不能糊到固定标题（标题要保持锐利）。
- * 解法：滚动内容单独录一层，标题留在该层之外；过渡带在滚动层之外采样它，
- * 拓扑上与「底栏在 contentBackdrop 之外采样内容」同构，合法且不构成循环采样。
- */
-val LocalScrollBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
  * 弹窗主体（scrim + 玻璃面板），渲染在 AppRoot 顶层。

@@ -96,7 +96,6 @@ import com.drone.quiz.ui.glass.GlassOverlayPortal
 import com.drone.quiz.ui.glass.GlassPromptDialog
 import com.drone.quiz.ui.glass.LocalBgBackdrop
 import com.drone.quiz.ui.glass.LocalContentBackdrop
-import com.drone.quiz.ui.glass.LocalScrollBackdrop
 import com.drone.quiz.ui.glass.OverlayBlur
 import com.drone.quiz.ui.glass.TabIconSlot
 import com.drone.quiz.ui.onboarding.OnboardingBus
@@ -147,9 +146,6 @@ fun AppRoot(settings: RootSettings) {
     //    底栏在其记录层之外 → 安全。
     val bgBackdrop = rememberLayerBackdrop()
     val contentBackdrop = rememberLayerBackdrop()
-    // v2.17.0 渐进式模糊：只记录各屏滚动内容的第三层（不含固定头部），
-    // 供顶栏过渡带采样——见 LocalScrollBackdrop 注释里的架构理由
-    val scrollBackdrop = rememberLayerBackdrop()
 
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
@@ -270,7 +266,6 @@ fun AppRoot(settings: RootSettings) {
     CompositionLocalProvider(
         LocalBgBackdrop provides bgBackdrop,
         LocalContentBackdrop provides contentBackdrop,
-        LocalScrollBackdrop provides scrollBackdrop,
         com.drone.quiz.ui.theme.LocalWallpaperLuminance provides wallLuminance
     ) {
         Box(Modifier.fillMaxSize()) {

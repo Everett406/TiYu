@@ -3,6 +3,10 @@ package com.drone.quiz.ui.glass
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -182,3 +186,32 @@ fun Modifier.gradientBlurEdges(
             }
         }
 }
+
+// ============================ 悬浮底栏专用的便捷入口 ============================
+
+/** 悬浮底栏几何（与 AppRoot 里 AnimatedVisibility 的 padding 保持一致，改动请同步） */
+private val BottomBarBottomGap = 10.dp
+private val BottomBarBodyHeight = 64.dp
+
+/**
+ * 各 Tab 页滚动区统一挂这个：**只**在底缘做渐进模糊。
+ *
+ * 顶栏（v2.19.1 用户裁定）维持历代原样——固定标题行、不悬浮，
+ * 所以顶边不设模糊（`topWeight = 0f`），斜坡起点对齐悬浮底栏的**上缘**。
+ *
+ * 关键：斜坡起点必须挂在「包住滚动区的那一层」上。滚动容器自身有回弹位移层
+ * （BounceLazyColumn / BounceContainer / verticalScroll），效果挂到它上面会跟着
+ * 内容一起漂移，斜坡就失去锚点了。
+ */
+@Composable
+fun Modifier.bottomEdgeBlur(
+    maxBlurDp: Float = 6f,
+    edgeFadeDp: Float = 64f
+): Modifier = gradientBlurEdges(
+    maxBlurDp = maxBlurDp,
+    edgeFadeDp = edgeFadeDp,
+    topWeight = 0f,
+    bottomWeight = 1f,
+    bottomRampStartDp = BottomBarBottomGap + BottomBarBodyHeight +
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+)

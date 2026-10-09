@@ -10,10 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -64,7 +61,7 @@ import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.GlassIconButton
 import com.drone.quiz.ui.glass.BounceLazyColumn
-import com.drone.quiz.ui.glass.gradientBlurEdges
+import com.drone.quiz.ui.glass.bottomEdgeBlur
 import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.combine
@@ -152,43 +149,68 @@ fun HomeScreen(
         else -> "稳定输出，保持节奏"
     }
 
-    // v2.19.0：整屏重构为「悬浮顶栏 + 全屏滚动内容」。
-    // 顶栏（问候语 + 题库切换 + 设置）与底栏同款：浮在滚动内容之上、内容从它底下穿过；
-    // 滚动区铺满整屏，贴栏体两缘按距离渐进加糊（斜坡起点对齐栏体内缘，不是屏幕边缘）。
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // 悬浮顶栏：状态栏 + 12dp 起始 + 条体高
-    val barTop = statusBarTop + 12.dp
-    val barHeight = 62.dp
-    val barBottom = barTop + barHeight
-    // 底栏沿用 AppRoot 的几何：10dp + 64dp 条体 + 导航栏
-    val bottomBarTop = 10.dp + 64.dp + navBarBottom
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
+        // ---- 固定标题（问候语 + 昵称，不随滚动；内容滚入时在下缘柔化渐隐） ----
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+                val greeting = when (hour) {
+                    in 5..10 -> "早上好"
+                    in 11..12 -> "中午好"
+                    in 13..17 -> "下午好"
+                    else -> "晚上好"
+                }
+                Text(
+                    // 默认不取名（用户反馈"机长"出戏）：未设置昵称时只按时间问候
+                    settings.nickname.trim().takeIf { it.isNotEmpty() }
+                        ?.let { "$greeting，$it" } ?: greeting,
+                    color = ui.text, fontSize = 26.sp, fontWeight = FontWeight.Bold
+                )
+                // v2.8.0：副标题 = 当前题库切换入口（v2.8.2 起为玻璃锚点小菜单）
+                BankSwitchChip(
+                    backdrop = backdrop,
+                    currentBankId = settings.currentBank,
+                    onPick = { id ->
+                        if (id != settings.currentBank) {
+                            scope.launch { runCatching { ServiceLocator.settings.setCurrentBank(id) } }
+                        }
+                    },
+                    onManage = onSettings
+                )
+            }
+            GlassIconButton(
+                onClick = onSettings,
+                backdrop = backdrop,
+                icon = AppIcons.Tune
+            )
+        }
 
-    Box(Modifier.fillMaxSize()) {
-        // ---- 滚动内容：铺满整屏，贴顶/贴底渐进模糊 ----
+        // 滚离顶部才渐显，停在顶部时无效果、进度环等首屏内容不被遮挡
+        val homeListState = rememberLazyListState()
+        // v2.19.1（用户裁定）：顶栏整体维持历代原样——固定标题行、非胶囊、不做悬浮，
+        // 因此顶边没有任何内容从其下方穿过，顶边自然也没有模糊可言。
+        // 底栏维持现状：内容从底栏下方滑过时按距离渐进加糊，斜坡起点对齐底栏上缘。
         // 模糊挂在「包住列表的这一层」而非列表本身：列表内部有回弹位移层，
         // 挂在列表上斜坡会跟着内容漂移、失去锚点。
-        val homeListState = rememberLazyListState()
         Box(
             Modifier
                 .fillMaxSize()
-                .gradientBlurEdges(
-                    maxBlurDp = 6f,
-                    edgeFadeDp = 64f,
-                    topWeight = 1f,
-                    bottomWeight = 1f,
-                    // 斜坡起点对齐两条栏体的内缘——悬浮条都内缩过，从屏幕边缘起爬会看着"没贴顶/贴底"
-                    topRampStartDp = barBottom,
-                    bottomRampStartDp = 10.dp + navBarBottom
-                )
+                .bottomEdgeBlur()
         ) {
         BounceLazyColumn(
             modifier = Modifier
                 .fillMaxSize(),
             listState = homeListState
         ) {
-            // 顶部让位：首卡不被悬浮顶栏压住
-            item { Spacer(Modifier.height(barBottom + 8.dp)) }
             // ---- 总览：进度环 + 预估通过率 ----
         // 顶部留 6dp：玻璃卡上溢阴影不再被容器上缘/问候语区域裁切（用户反馈）
         item {
@@ -590,61 +612,9 @@ fun HomeScreen(
         }
 
         item { Spacer(Modifier.height(130.dp)) }
-        }   // 列表
-        }   // 渐进模糊承载 Box
-
-        // ---- 悬浮顶栏：问候语 + 题库切换 + 设置（玻璃条，浮于滚动内容之上） ----
-        GlassCard(
-            backdrop = backdrop,
-            cornerRadius = 26.dp,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(top = barTop)
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(barHeight)
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
-                    val greeting = when (hour) {
-                        in 5..10 -> "早上好"
-                        in 11..12 -> "中午好"
-                        in 13..17 -> "下午好"
-                        else -> "晚上好"
-                    }
-                    Text(
-                        // 默认不取名（用户反馈"机长"出戏）：未设置昵称时只按时间问候
-                        settings.nickname.trim().takeIf { it.isNotEmpty() }
-                            ?.let { "$greeting，$it" } ?: greeting,
-                        color = ui.text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                    // v2.8.0：副标题 = 当前题库切换入口（v2.8.2 起为玻璃锚点小菜单）
-                    BankSwitchChip(
-                        backdrop = backdrop,
-                        currentBankId = settings.currentBank,
-                        onPick = { id ->
-                            if (id != settings.currentBank) {
-                                scope.launch { runCatching { ServiceLocator.settings.setCurrentBank(id) } }
-                            }
-                        },
-                        onManage = onSettings
-                    )
-                }
-                GlassIconButton(
-                    onClick = onSettings,
-                    backdrop = backdrop,
-                    icon = AppIcons.Tune
-                )
-            }
-        }
     }
+        }   // 渐进模糊承载 Box（底缘模糊斜坡的锚点在这层）
+        }
 }
 
 @Composable

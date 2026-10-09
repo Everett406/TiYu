@@ -74,6 +74,7 @@ import com.drone.quiz.ui.glass.GlassBottomSheet
 import com.drone.quiz.ui.glass.GlassConfirmDialog
 import com.drone.quiz.ui.glass.GlassInputDialog
 import com.drone.quiz.ui.glass.BounceContainer
+import com.drone.quiz.ui.glass.bottomEdgeBlur
 import com.drone.quiz.ui.onboarding.OnboardingBus
 import com.drone.quiz.ui.onboarding.onboardingAnchor
 import com.drone.quiz.ui.theme.LocalReadingFont
@@ -226,6 +227,7 @@ fun SettingsScreen(backdrop: Backdrop) {
         Column(
             Modifier
                 .fillMaxSize()
+                .bottomEdgeBlur()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
         ) {

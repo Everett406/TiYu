@@ -418,12 +418,41 @@ else:
 _approot_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/nav/AppRoot.kt")
 if "ProgressiveEdge" in _approot_src:
     print("[FAIL] AppRoot 不得再挂背景采样式过渡带（v2.19.0 已改为各屏自挂）"); fail = True
+# 5 个 Tab 页（首页/练习配置/模考配置/错题本/设置）都必须有底缘渐进模糊；
+# 顶栏维持历代原样（用户 v2.19.1 裁定），故只做底缘、顶边不设模糊。
+_TAB_SCROLL_SCREENS = {
+    "HomeScreen.kt": "首页",
+    "PracticeConfig.kt": "练习配置",
+    "ExamScreens.kt": "模考配置",
+    "WrongBookScreen.kt": "错题本",
+    "SettingsScreen.kt": "设置",
+}
+for _f, _label in _TAB_SCROLL_SCREENS.items():
+    _src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/" + _f)
+    if "bottomEdgeBlur()" not in _src:
+        print(f"[FAIL] {_label}缺底缘渐进模糊（bottomEdgeBlur）——5 个 Tab 页应一致"); fail = True
+
+# 顶栏须维持原样：固定标题行、非胶囊、不悬浮
 _home_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
-if "gradientBlurEdges" not in _home_src:
-    print("[FAIL] 首页滚动区缺 gradientBlurEdges（贴顶/贴底渐进模糊）"); fail = True
-for _needle in ("barBottom", "bottomBarTop", "悬浮顶栏"):
-    if _needle not in _home_src:
-        print(f"[FAIL] 首页悬浮顶栏/斜坡锚点缺失：{_needle}"); fail = True
+if "statusBarsPadding()" not in _home_src:
+    print("[FAIL] 顶栏固定头部结构被破坏（应仍为 Column.statusBarsPadding + 固定标题 Row）"); fail = True
+for _forbidden in ("悬浮顶栏", "barHeight", "barTop"):
+    if _forbidden in _home_src:
+        print(f"[FAIL] 顶栏须维持历代原样（用户裁定），不得再引入 {_forbidden}"); fail = True
+
+# 共用修饰符：顶边权重必须为 0，且斜坡起点按悬浮底栏几何换算
+_edge_src = _prog_src
+if "fun Modifier.bottomEdgeBlur(" not in _edge_src:
+    print("[FAIL] 缺共用修饰符 Modifier.bottomEdgeBlur（底栏几何应在这一处单点维护）"); fail = True
+else:
+    _blk = _edge_src[_edge_src.index("fun Modifier.bottomEdgeBlur("):]
+    if "topWeight = 0f" not in _blk:
+        print("[FAIL] 顶栏维持原样，顶边不得有模糊：bottomEdgeBlur 的 topWeight 必须为 0f"); fail = True
+    if "bottomWeight = 1f" not in _blk:
+        print("[FAIL] bottomEdgeBlur 底缘权重应为 1f"); fail = True
+    for _needle in ("BottomBarBodyHeight", "BottomBarBottomGap", "bottomRampStartDp"):
+        if _needle not in _blk:
+            print(f"[FAIL] bottomEdgeBlur 缺 {_needle}（斜坡起点未对齐悬浮底栏上缘）"); fail = True
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
