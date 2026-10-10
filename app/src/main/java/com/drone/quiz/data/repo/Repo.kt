@@ -780,13 +780,17 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
 
     data class DayStat(val label: String, val isToday: Boolean, val answered: Int, val correct: Int)
 
+    /** 热力图上的一天：答题数用于分档着色，正确数用于长按详情浮窗 */
+    data class HeatDay(val date: String, val answered: Int, val correct: Int)
+
     /**
      * 打卡热力图用：近 [n] 天的「日期 → 当日答题数」。
      * 与 [streakDays] 同为**全局**数据（不按题库隔离），因为打卡是跨题库的习惯。
      * 返回按日期升序；当天没练的日子不在结果里（调用方补 0）。
      */
-    suspend fun heatmapDays(n: Int): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
-        rDao.recentStreaks(n).sortedBy { it.date }.map { it.date to it.answered }
+    suspend fun heatmapDays(n: Int): List<HeatDay> = withContext(Dispatchers.IO) {
+        rDao.recentStreaks(n).sortedBy { it.date }
+            .map { HeatDay(it.date, it.answered, it.correct) }
     }
 
     suspend fun streakDays(): Int = withContext(Dispatchers.IO) {

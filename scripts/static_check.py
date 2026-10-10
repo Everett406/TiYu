@@ -501,9 +501,11 @@ _heat_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/StreakH
 if not os.path.exists(_repo_root + "/app/src/main/java/com/drone/quiz/screens/StreakHeatmap.kt"):
     print("[FAIL] 热力图组件文件缺失：screens/StreakHeatmap.kt"); fail = True
 else:
-    # 热力图分档只看题量、不看正确率——低正确率染暗红像欠账，答得多不该被惩罚
-    if "correct" in _heat_src:
-        print("[FAIL] 热力图分档不得引入正确率（只按当天题量，理由见文件头注释）"); fail = True
+    # 分档只看题量：levelOf() 函数体内不得出现 correct
+    _lvl = _heat_src[_heat_src.index("private fun levelOf("):]
+    _lvl = _lvl[:_lvl.index("}")]
+    if "correct" in _lvl:
+        print("[FAIL] 分档函数 levelOf() 不得引入正确率（低正确率染暗红像欠账）"); fail = True
     # 未来日期必须留空不画，否则整张图左边看着缺一块
     if "future" not in _heat_src:
         print("[FAIL] 热力图须处理未来日期（留空不画）"); fail = True
@@ -513,16 +515,13 @@ else:
     # 周内标签必须落在 0/2/4/6 行；写成四个盒子依次堆叠会把「日」挪到第 4 行
     # v2.19.9：格子间距不得再丢。v2.19.8 每个格子写成 Modifier.size(cell) 且没给行间距，
     # 格子连成实心板（用户反馈"过密"），而标签列却按 cell+gap 排版。
-    if _heat_src.count("Arrangement.spacedBy(HeatGap)") < 2:
-        print("[FAIL] 格子横竖双向均须用 Arrangement.spacedBy(HeatGap)（v2.19.8 漏掉行间距，"
-              "格子连成实心板——用户反馈『过密』）"); fail = True
+    # 行间距靠 Column(spacedBy)；横向间距由「列宽 pitch - 格子 cell」的余量给出
+    if _heat_src.count("Arrangement.spacedBy(HeatGap)") < 1:
+        print("[FAIL] 每列内部须用 Arrangement.spacedBy(HeatGap) 给出行间距"
+              "（v2.19.8 漏掉行间距，格子连成实心板——用户反馈『过密』）"); fail = True
     # 月份标签不得因列宽不足被截断（「10月」→「10」）
     if "wrapContentWidth(unbounded = true)" not in _heat_src:
         print("[FAIL] 月份标签须允许溢出所在列，否则「10月」会被截成「10」"); fail = True
-    # 取数天数必须覆盖周数，否则图的左半段永远空白
-    _home3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
-    if "heatmapDays(140)" not in _home3:
-        print("[FAIL] 热力图取数天数须 ≥ 周数×7（HEATMAP_WEEKS=18 → 至少 126 天）"); fail = True
     # 月份标签不得设固定高度，9.sp 会被裁掉下半截
     _month_row = _heat_src[_heat_src.index("// ---- 月份标签"):_heat_src.index("// ---- 格子矩阵")]
     if ".height(" in _month_row:
@@ -553,6 +552,33 @@ if "if (!future) todayIndex = cells.size" not in _heat2:
 # 左侧星期栏已按用户裁定移除
 if "WeekdayLabels" in _heat2 or "HeatGutter" in _heat2:
     print("[FAIL] 左侧星期栏已按用户裁定移除（'似可有可无'），勿加回来"); fail = True
+
+# v2.19.11：卡片高度、末列挤压、长按浮窗、底栏减效
+_heat3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/StreakHeatmap.kt")
+_home5 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+# ① 卡片过高 → 周数固定为 22（约 5 个月）。18 周网格高 113dp，26 周格子仅 8dp 太小。
+if "HEATMAP_WEEKS = 22" not in _heat3:
+    print("[FAIL] 热力图周数须为 22（18 周卡片过高，26 周格子过小）"); fail = True
+# ② 末列被挤压 → 列宽必须「取整后由每一列自己声明」，不得靠 Row 自适应
+if "floor(rawPitch)" not in _heat3 or "Modifier.width(pitch)" not in _heat3:
+    print("[FAIL] 列宽须取整后由每列 width(pitch) 声明——靠 Row 自适应会压扁最后一列"
+          "（v2.19.10『右侧一列狭长如被挤压』）"); fail = True
+# ③ 长按详情浮窗
+for _needle in ("detectTapGestures", "onLongPress", "DayTip", "正确率"):
+    if _needle not in _heat3:
+        print(f"[FAIL] 热力图缺长按详情浮窗要素：{_needle}"); fail = True
+if "Repo.HeatDay" not in _heat3 and "HeatDay" not in _heat3:
+    print("[FAIL] 浮窗需含当日答对数，格子数据须带 correct"); fail = True
+_repo_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+if "data class HeatDay(val date: String, val answered: Int, val correct: Int)" not in _repo_src:
+    print("[FAIL] Repo.HeatDay 须含 correct（长按浮窗要显示当日正确率）"); fail = True
+if "heatmapDays(160)" not in _home5:
+    print("[FAIL] 取数天数须覆盖周数×7（HEATMAP_WEEKS=22 → 至少 154 天）"); fail = True
+# ④ 底栏模糊减效
+_blur = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/ProgressiveBlur.kt")
+if "maxBlurDp: Float = 6f" in _blur or "edgeFadeDp: Float = 32f" in _blur:
+    print("[FAIL] 底栏渐隐须维持 v2.19.11 减效后的值（4dp / 26dp）——"
+          "用户反馈『耗力过甚，宜减其效』"); fail = True
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +

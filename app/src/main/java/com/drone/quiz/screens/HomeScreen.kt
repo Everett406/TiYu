@@ -96,8 +96,8 @@ fun HomeScreen(
         val days: List<Repo.DayStat> = emptyList(),
         val todayAnswered: Int = 0,
         val todayCorrect: Int = 0,
-        // 打卡热力图：近 91+ 天「日期 → 当日答题数」，全局数据（不按题库隔离）
-        val heat: List<Pair<String, Int>> = emptyList(),
+        // 打卡热力图：近 154 天「日期 / 当日题量 / 当日答对」，全局数据（不按题库隔离）
+        val heat: List<com.drone.quiz.data.repo.Repo.HeatDay> = emptyList(),
         val lastExam: com.drone.quiz.data.db.ExamRecordEntity? = null
     )
 
@@ -132,7 +132,7 @@ fun HomeScreen(
                 days = days,
                 todayAnswered = todayAns,
                 todayCorrect = todayCor,
-                heat = runCatching { ServiceLocator.repo.heatmapDays(140) }
+                heat = runCatching { ServiceLocator.repo.heatmapDays(160) }
                     .getOrElse { emptyList() }
             )
         }

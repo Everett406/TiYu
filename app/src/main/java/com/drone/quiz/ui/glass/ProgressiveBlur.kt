@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** 半径封顶：9 抽头核的最外抽头在 2.4·s 处，实际模糊直径≈2.4×此值。 */
-private const val MAX_GRADIENT_BLUR_DP = 6f
+private const val MAX_GRADIENT_BLUR_DP = 4f
 
 /**
  * v2.19.0 渐进式模糊 —— 第四次实现，方案来自 Agora（newo-ether/Agora）的 GradientBlur。
@@ -168,7 +168,7 @@ private val EDGE_BLUR_SHADER = """
  * 挂在包住滚动区的 Box 上（不是挂在列表本身）：列表内部还有过冲回弹的位移层，
  * 模糊若挂在列表上会跟着内容一起漂，斜坡就失锚了。
  *
- * @param maxBlurDp 贴边处的模糊半径（内部按抽头核封顶到 6dp）
+ * @param maxBlurDp 贴边处的模糊半径（内部按抽头核封顶到 4dp）
  * @param edgeFadeDp 从贴边往内的斜坡长度
  * @param topWeight 顶边权重。1 = 贴顶最糊，0 = 顶边不糊
  * @param bottomWeight 底边权重。1 = 贴底最糊，0 = 底边不糊
@@ -178,7 +178,7 @@ private val EDGE_BLUR_SHADER = """
  */
 fun Modifier.gradientBlurEdges(
     maxBlurDp: Float,
-    edgeFadeDp: Float = 32f,
+    edgeFadeDp: Float = 26f,
     topWeight: Float = 1f,
     bottomWeight: Float = 1f,
     topRampStartDp: Dp = 0.dp,
@@ -286,8 +286,8 @@ private val BottomBarBodyHeight = 64.dp
  */
 @Composable
 fun Modifier.bottomEdgeBlur(
-    maxBlurDp: Float = 6f,
-    edgeFadeDp: Float = 32f
+    maxBlurDp: Float = 4f,
+    edgeFadeDp: Float = 26f
 ): Modifier = gradientBlurEdges(
     maxBlurDp = maxBlurDp,
     edgeFadeDp = edgeFadeDp,
