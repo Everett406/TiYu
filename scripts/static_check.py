@@ -507,6 +507,16 @@ else:
     # 未来日期必须留空不画，否则整张图左边看着缺一块
     if "future" not in _heat_src:
         print("[FAIL] 热力图须处理未来日期（留空不画）"); fail = True
+    # v2.19.8 三条排版约束：写死格子尺寸会在宽屏右侧空一大块
+    if "BoxWithConstraints" not in _heat_src:
+        print("[FAIL] 热力图格子尺寸必须按可用宽度算（写死会在宽屏右侧空一大块）"); fail = True
+    # 周内标签必须落在 0/2/4/6 行；写成四个盒子依次堆叠会把「日」挪到第 4 行
+    if "d % 2 == 0" not in _heat_src:
+        print("[FAIL] 周内标签须按行号取（d%2==0），逐个堆叠会让「日」错行"); fail = True
+    # 月份标签不得设固定高度，9.sp 会被裁掉下半截
+    _month_row = _heat_src[_heat_src.index("// ---- 月份标签"):_heat_src.index("// ---- 格子矩阵")]
+    if ".height(" in _month_row:
+        print("[FAIL] 月份标签行不得设固定高度（v2.19.7 用 12.dp 把 9.sp 的字裁掉下半截）"); fail = True
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +

@@ -315,42 +315,61 @@ fun HomeScreen(
                 cornerRadius = 22.dp
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    // ---- 顶行：连击（左） / 今日（右） ----
+                    // ---- 顶行：连击（左） / 今日（右），左右同构、顶端对齐 ----
+                    // v2.19.8：此前左块单行、右块两行，Row 用 CenterVertically 居中，
+                    // 于是「连击」被压到两行文字的中间，与右侧「今日」看着不同高。
+                    // 现改为左右各「一行小标签 + 一行大数字」，结构一致、顶端对齐。
                     Row(
                         Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(AppIcons.Flame, null, tint = ui.accent, modifier = Modifier.size(15.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    AppIcons.Flame, null, tint = ui.accent,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    "连击",
+                                    color = ui.textSub, fontSize = 11.sp,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
                             Text(
-                                "连击",
-                                color = ui.textSub, fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(start = 5.dp)
+                                "${stats.streak} 天",
+                                color = ui.text, fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 3.dp)
                             )
                         }
-                        Text(
-                            "${stats.streak} 天",
-                            color = ui.text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                        Spacer(Modifier.weight(1f))
-                        // 今日：0 题时**不显示正确率**——0 题不存在正确率，
-                        // 此前显示「正确 0%」是假数据
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                "今日 ${stats.todayAnswered} 题",
-                                color = ui.text, fontSize = 20.sp, fontWeight = FontWeight.Bold
-                            )
-                            Text(
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "今日",
+                                    color = ui.textSub, fontSize = 11.sp,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                                Icon(
+                                    AppIcons.Check, null, tint = ui.correct,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    "${stats.todayAnswered} 题",
+                                    color = ui.text, fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                // 0 题时**不显示正确率**——0 题不存在正确率（v2.19.7 修）
                                 if (stats.todayAnswered > 0) {
-                                    "正确 ${(stats.todayCorrect * 100) / stats.todayAnswered}%"
-                                } else {
-                                    "还没开始"
-                                },
-                                color = ui.textSub, fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
+                                    Text(
+                                        "${(stats.todayCorrect * 100) / stats.todayAnswered}%",
+                                        color = ui.correct, fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
