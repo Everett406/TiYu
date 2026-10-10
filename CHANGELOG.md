@@ -3,6 +3,49 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.6] - 2026-10-10
+
+### 回归修复：v2.19.5 导致整屏皆糊
+
+**用户真机反馈**：整屏内容全部模糊，不该糊的地方也糊了。
+
+**成因**。v2.19.5 那一版同时做了两件事：
+
+- (a) 容器高度改为在 `graphicsLayer` 块里逐帧把 uH 写进**已建好的**着色器；
+- (b) 移除与 `renderEffect` 重复的 `CompositingStrategy.Offscreen`。
+
+罪魁是 (a)。着色器是以 `uH = 0` 创建的，而
+`RenderEffect.createRuntimeShaderEffect` 在创建 RenderEffect 时**已快照了着色器状态**，
+块里的后续写入根本进不去。于是着色器带着 `uH = 0` 上场，而底边那一算式是
+
+```
+saturate(1.0 - ((uH - coord.y) - 偏移) / 斜坡)
+```
+
+`uH=0` 时 `uH - coord.y` 对每一行都是负数，负数除以正斜坡再取 `saturate` **恒等于 1**——
+**每一行都是最大模糊**，于是全屏糊成一片。
+
+**教训（已写入 `ProgressiveBlur.kt` 文档块）**：
+
+1. **`createRuntimeShaderEffect` 会快照 uniform 状态。** 着色器创建之后再改 uniform
+   是无效的，不要在 `graphicsLayer` 块里做这种"优化"。
+2. **一次改动不要夹带两处。** (a)(b) 同时动，出事时无法判断谁的责任，
+   修的时候也只能整个退回——等于白折腾一轮。这条比什么都值钱。
+
+**处置**：uH 回到 v2.19.2 那套机制（高度进 `remember` key，尺寸变化时重建着色器）。
+(b) 无法与 (a) 分离验证，**也一并退回**最后已知可用形态。
+
+仅保留两处**不涉及 uniform、不改观感**的纯分配削减：
+
+- `RenderEffect` 改为 `remember` 一次建好（原先 `createChainEffect` 写在 `graphicsLayer`
+  块里，该块每帧执行，等于每帧新建四个对象再全扔）；
+- `drawWithContent` 仅在 API 31/32 降级路径挂载（它在 API 33+ 上什么都不做）。
+
+**`static_check` 3.15 新增回归防护**：禁止用容器实时尺寸就地写 uH；
+要求 uH 在着色器创建时写入；要求 `Offscreen` 存在（不许再动）。
+另修复：该脚本尾部曾残留一段 105 行的重复死代码（在 `sys.exit` 之后从未执行），
+已删除——期间 3.15 节末尾的几条检查实际一直是空转。
+
 ## [2.19.5] - 2026-10-10
 
 ### 退回 Agora 原制 + 过渡带再裁 1/4 + 算力优化

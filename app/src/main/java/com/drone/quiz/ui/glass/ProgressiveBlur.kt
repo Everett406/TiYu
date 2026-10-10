@@ -6,6 +6,9 @@ import android.os.Build
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -17,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -65,6 +69,28 @@ private const val MAX_GRADIENT_BLUR_DP = 6f
  * **真机实测：反而更乱。** 用户原话"前番修整反致崩乱，不若复归旧制，带点亦无妨"，
  * 已退回本文件的原始形态。另该轮把最大半径从 6dp 压到 5dp、斜坡从 64dp 收到 43dp，
  * 亦一并回退（仅斜坡按用户要求进一步收到 32dp）。
+ *
+ * ## v2.19.6 回归：v2.19.5 的「算力优化」把整屏糊了，已修
+ *
+ * v2.19.5 同批做了两件事：(a) 容器高度改为在 `graphicsLayer` 块里逐帧
+ * `setFloatUniform("uH", size.height)`；(b) 移除与 renderEffect 重复的
+ * `CompositingStrategy.Offscreen`。真机结果是**整屏皆糊**。
+ *
+ * 定位在 (a)：着色器是以 `uH = 0` 创建的，而 `createRuntimeShaderEffect`
+ * 在创建 RenderEffect 时已取走着色器状态——块里的后续写入**进不去**。
+ * 底边那一算式 `saturate(1.0 - ((uH - coord.y) - 偏移) / 斜坡)` 在 uH=0 时
+ * 对**每一行**都饱和成 1，于是每一行都成了最大模糊。
+ *
+ * 教训两条：
+ *  1. **`RenderEffect.createRuntimeShaderEffect` 会快照 uniform 状态。**
+ *     着色器创建后再改 uniform 是无效的，别在 `graphicsLayer` 块里"优化"。
+ *  2. **一次改动不要夹带两处。** (a)(b) 同时动，出问题时无法判断谁的责任；
+ *     修的时候也只能整个退回。这条比什么都值钱。
+ *
+ * (b) 无法与 (a) 分离验证，故也一并退回最后已知可用形态。
+ * 仅保留两处**不涉及 uniform、不改观感**的纯分配削减：
+ * RenderEffect 改为 `remember` 一次建好（原先每帧新建四个对象）；
+ * `drawWithContent` 仅在 API 31/32 降级路径挂载。
  *
  * ## v2.19.4 算力账与优化（同一轮一并处理）
  *
@@ -168,33 +194,40 @@ fun Modifier.gradientBlurEdges(
     val topOffPx = topRampStartDp.value * density
     val botOffPx = bottomRampStartDp.value * density
 
-    // v2.19.4 算力优化：着色器与 RenderEffect 对象**只建一次**。
-    // 此前 renderEffect = RenderEffect.createChainEffect(...) 写在 graphicsLayer 的
-    // 块里——那个块每帧都跑，于是每帧都要 new 两个 RuntimeShaderEffect + 一个
-    // createChainEffect + 一个 Compose 包装。全是纯分配，纯浪费。
+    // ⚠️ v2.19.6 回归修复：uH（容器高度）**必须**在着色器创建时写入。
+    // v2.19.5 试着改成在 graphicsLayer 块里逐帧 setFloatUniform("uH", size.height)，
+    // 结果整屏皆糊。原因：着色器是以 uH=0 创建的，而 RenderEffect
+    // 在 createRuntimeShaderEffect 时已取走了着色器状态——块里的后续写入进不去。
+    // 而底边那一算式是 saturate(1.0 - ((uH - coord.y) - 偏移) / 斜坡)：
+    // uH=0 时每一行都饱和成 1，于是**每一行都是最大模糊**，全屏糊掉。
+    // 这是 v2.19.5 唯一的真·回归，已回到 v2.19.2 那套「高度进 remember key、
+    // 变化时重建着色器」的机制。
+    var composableHPx by remember { mutableFloatStateOf(0f) }
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && maxBlurPx > 0f) {
-        val horizontal = remember(maxBlurPx, fadePx, tw, bw, topOffPx, botOffPx) {
+        val horizontal = remember(maxBlurPx, fadePx, tw, bw, topOffPx, botOffPx, composableHPx) {
             RuntimeShader(EDGE_BLUR_SHADER).apply {
                 setFloatUniform("uMaxBlur", maxBlurPx)
                 setFloatUniform("uFade", fadePx)
-                setFloatUniform("uH", 0f)
+                setFloatUniform("uH", composableHPx)
                 setFloatUniform("uWeights", tw, bw)
                 setFloatUniform("uOffsets", topOffPx, botOffPx)
                 setFloatUniform("uDirection", 1f, 0f)
             }
         }
-        val vertical = remember(maxBlurPx, fadePx, tw, bw, topOffPx, botOffPx) {
+        val vertical = remember(maxBlurPx, fadePx, tw, bw, topOffPx, botOffPx, composableHPx) {
             RuntimeShader(EDGE_BLUR_SHADER).apply {
                 setFloatUniform("uMaxBlur", maxBlurPx)
                 setFloatUniform("uFade", fadePx)
-                setFloatUniform("uH", 0f)
+                setFloatUniform("uH", composableHPx)
                 setFloatUniform("uWeights", tw, bw)
                 setFloatUniform("uOffsets", topOffPx, botOffPx)
                 setFloatUniform("uDirection", 0f, 1f)
             }
         }
-        // 容器高度不再走 remember key（那会让旋转/改尺寸时重建两个着色器），
-        // 改为每帧就地写入 uniform：一次 native 调用，换掉整轮对象重建。
+        // RenderEffect 只建一次。此前 createChainEffect 写在 graphicsLayer 块里，
+        // 而该块每帧执行——等于每帧 new 两个 RuntimeShaderEffect + 一个链 + 一个
+        // Compose 包装，全扔。这是纯分配削减，与 uniform 无关，安全。
         val effect = remember(horizontal, vertical) {
             RenderEffect
                 .createChainEffect(
@@ -203,18 +236,16 @@ fun Modifier.gradientBlurEdges(
                 )
                 .asComposeRenderEffect()
         }
-        Modifier.graphicsLayer {
-            vertical.setFloatUniform("uH", size.height)
-            horizontal.setFloatUniform("uH", size.height)
-            renderEffect = effect
-        }
-        // 这里**不**再挂 CompositingStrategy.Offscreen：renderEffect 本身已强制
-        // 离屏渲染，再叠一层 compositing layer 等于多一整块全屏缓冲 + 一次 blit。
-        // 该层是 v2.19.3 之前加的冗余项，每帧白白多搬一次全屏。
+        Modifier
+            .onSizeChanged { composableHPx = it.height.toFloat() }
+            .graphicsLayer { renderEffect = effect }
+            // CompositingStrategy.Offscreen 保留：v2.19.5 曾把它当作冗余移除，
+            // 但那一版同时改了 uH，两处混在一起无法判断它是否有责。
+            // 既然没有真机可验证，就退回最后已知可用的形态，不在同一次里动两处。
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     } else {
         // API 31/32 无着色器：退化为纯 alpha 渐隐。观感接近，成本近零。
-        // 这条路径用 BlendMode.DstIn，**必须**有离屏层，否则会连带把父层内容一起裁掉，
-        // 故上面的 Offscreen 冗余项在这里保留。
+        // 这条路径用 BlendMode.DstIn，**必须**有离屏层，否则会连带把父层内容一起裁掉。
         val fadeFinal = fadePx
         Modifier
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }

@@ -13,6 +13,7 @@
 import os
 import shutil
 import subprocess
+import re
 import sys
 
 DEFAULT_BASE = os.path.normpath(os.path.join(
@@ -419,6 +420,24 @@ else:
         fail = True
     if "s < 0.5" not in _prog_src:
         print("[FAIL] 着色器缺少半径近零早退（过渡带外零成本的关键分支）"); fail = True
+    # v2.19.6 回归防护：uniform 只能在着色器**创建时**写。
+    # v2.19.5 改成在 graphicsLayer 块里逐帧 setFloatUniform("uH", size.height)，
+    # 整屏皆糊——createRuntimeShaderEffect 创建 RenderEffect 时已快照 uniform 状态，
+    # 块里的写入进不去；着色器带着 uH=0，底边 saturate 对每一行都饱和成 1。
+    # 注释里复述这段代码是正常的，故对去注释后的源码做此项检查
+    _prog_code = re.sub(r"/\*.*?\*/", "", _prog_src, flags=re.S)
+    _prog_code = re.sub(r"//[^\n]*", "", _prog_code)
+    if 'setFloatUniform("uH", size' in _prog_code:
+        print("[FAIL] 不得用容器实时尺寸就地写 uH（v2.19.5 整屏皆糊的成因："
+              "createRuntimeShaderEffect 已快照状态，块内写入无效）"); fail = True
+    if 'setFloatUniform("uH", composableHPx)' not in _prog_src:
+        print("[FAIL] uH（容器高度）必须在着色器创建时写入，且进 remember key 以便尺寸变化时重建"); fail = True
+
+    # 一次改动不要夹带两处（v2.19.5 同时改了 uniform 写入方式与 Offscreen，
+    # 事后无法判定责任，修也只能整个退回）
+    if "CompositingStrategy.Offscreen" not in _prog_src:
+        print("[FAIL] Offscreen 不得再动：v2.19.5 移除它时同时改了 uH，两处混在一起无法验证"); fail = True
+
     # 禁止回到背景采样路线：任何 backdrop/drawBackdrop 用在渐进模糊上都不许复活
     for _banned in ("drawBackdrop", "BlendMode.SrcIn"):
         if _banned in _prog_src:
