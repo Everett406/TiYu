@@ -389,97 +389,22 @@ if "externalNativeBuild" in _gradle_src or "ndkVersion" in _gradle_src:
 if "android.permission.CAMERA" in _manifest_src or "android.hardware.camera.any" in _manifest_src:
     print("[FAIL] 拍照搜题下线后不应再声明 CAMERA 权限 / camera.any 特性（无端索权）"); fail = True
 
-# 3.15) 渐进式模糊（v2.19.0 第四次实现，方案取自 newo-ether/Agora 的 GradientBlur）：
-#       前三次全部把模糊做成「贴在栏体上的背景采样层」，在本题库结构下必炸：
-#         ① v2.6.0~v2.7.2 alpha 蒙版/雾条/saveLayer 覆盖滚动容器 → 与玻璃卡离屏渲染互作，伪影闪烁
-#         ② v2.15.0 自写着色器做连续可变半径（稠密 2D 网格 + 每抽头 exp()）→ per-pixel 成本过高
-#         ③ v2.17.0 分层固定半径叠加 → 每层一个裁剪边界，真机满屏横线 + 底栏糊穿
-#       现在：把可变半径 RenderEffect 直接挂在包住滚动区的 Box 上（graphicsLayer{renderEffect}），
-#       模糊的是「滚动内容自己」，栏体是画在其上的独立玻璃件。单层单效果，接缝无处可生，
-#       且完全不做背景采样——绕开「记录层内禁用采样」这条架构红线。
-_prog_src_path = _repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/ProgressiveBlur.kt"
-if not _os.path.exists(_prog_src_path):
-    print("[FAIL] 渐进式模糊实现文件缺失：ui/glass/ProgressiveBlur.kt"); fail = True
-else:
-    _prog_src = load(_prog_src_path)
-    for _needle in ("gradientBlurEdges", "graphicsLayer", "createChainEffect",
-                    "createRuntimeShaderEffect", "EDGE_BLUR_SHADER", "topRampStartDp"):
-        if _needle not in _prog_src:
-            print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}"); fail = True
-    # 9 抽头可分离核即画质底线——这是 v2.19.3~v2.19.4 反复试出来的结论：
-    #   加密到 25 抽头（间距 0.6·s→0.2·s）、累加改 float4、斜坡改二次缓动 x*x，
-    #   纸面上覆盖率从 20% 提到 60%、应能消除"带点"，但真机实测"反而更乱"，
-    #   用户原话"前番修整反致崩乱，不若复归旧制，带点亦无妨"，已全部退回。
-    # 教训：观感问题上"理论上更正确"≠"看起来更好"，收敛是否可见、边缘是否生硬
-    # 只能真机判。没有真机可验证时，不要动抽头数与累加精度。
-    # 这条同时挡住两条退路：稠密网格 + exp()（Agora 原注释：太贵，掉帧）。
-    _taps = _prog_src.count("accum +=")
-    if _taps < 8 or "half4 main(" not in _prog_src:
-        print(f"[FAIL] 渐进模糊须保留 Agora 的 9 抽头 half4 可分离核（当前累加 {_taps} 项）——"
-              "加密抽头/换单精度已实测更乱并退回；改稠密网格则拖垮滚动帧率")
-        fail = True
-    if "s < 0.5" not in _prog_src:
-        print("[FAIL] 着色器缺少半径近零早退（过渡带外零成本的关键分支）"); fail = True
-    # v2.19.6 回归防护：uniform 只能在着色器**创建时**写。
-    # v2.19.5 改成在 graphicsLayer 块里逐帧 setFloatUniform("uH", size.height)，
-    # 整屏皆糊——createRuntimeShaderEffect 创建 RenderEffect 时已快照 uniform 状态，
-    # 块里的写入进不去；着色器带着 uH=0，底边 saturate 对每一行都饱和成 1。
-    # 注释里复述这段代码是正常的，故对去注释后的源码做此项检查
-    _prog_code = re.sub(r"/\*.*?\*/", "", _prog_src, flags=re.S)
-    _prog_code = re.sub(r"//[^\n]*", "", _prog_code)
-    if 'setFloatUniform("uH", size' in _prog_code:
-        print("[FAIL] 不得用容器实时尺寸就地写 uH（v2.19.5 整屏皆糊的成因："
-              "createRuntimeShaderEffect 已快照状态，块内写入无效）"); fail = True
-    if 'setFloatUniform("uH", composableHPx)' not in _prog_src:
-        print("[FAIL] uH（容器高度）必须在着色器创建时写入，且进 remember key 以便尺寸变化时重建"); fail = True
-
-    # 一次改动不要夹带两处（v2.19.5 同时改了 uniform 写入方式与 Offscreen，
-    # 事后无法判定责任，修也只能整个退回）
-    if "CompositingStrategy.Offscreen" not in _prog_src:
-        print("[FAIL] Offscreen 不得再动：v2.19.5 移除它时同时改了 uH，两处混在一起无法验证"); fail = True
-
-    # 禁止回到背景采样路线：任何 backdrop/drawBackdrop 用在渐进模糊上都不许复活
-    for _banned in ("drawBackdrop", "BlendMode.SrcIn"):
-        if _banned in _prog_src:
-            print(f"[FAIL] 渐进模糊不得走背景采样路线（前三次老路）：{_banned}"); fail = True
-_approot_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/nav/AppRoot.kt")
-if "ProgressiveEdge" in _approot_src:
-    print("[FAIL] AppRoot 不得再挂背景采样式过渡带（v2.19.0 已改为各屏自挂）"); fail = True
-# 5 个 Tab 页（首页/练习配置/模考配置/错题本/设置）都必须有底缘渐进模糊；
-# 顶栏维持历代原样（用户 v2.19.1 裁定），故只做底缘、顶边不设模糊。
-_TAB_SCROLL_SCREENS = {
-    "HomeScreen.kt": "首页",
-    "PracticeConfig.kt": "练习配置",
-    "ExamScreens.kt": "模考配置",
-    "WrongBookScreen.kt": "错题本",
-    "SettingsScreen.kt": "设置",
-}
-for _f, _label in _TAB_SCROLL_SCREENS.items():
-    _src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/" + _f)
-    if "bottomEdgeBlur()" not in _src:
-        print(f"[FAIL] {_label}缺底缘渐进模糊（bottomEdgeBlur）——5 个 Tab 页应一致"); fail = True
-
-# 顶栏须维持原样：固定标题行、非胶囊、不悬浮
-_home_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
-if "statusBarsPadding()" not in _home_src:
-    print("[FAIL] 顶栏固定头部结构被破坏（应仍为 Column.statusBarsPadding + 固定标题 Row）"); fail = True
-for _forbidden in ("悬浮顶栏", "barHeight", "barTop"):
-    if _forbidden in _home_src:
-        print(f"[FAIL] 顶栏须维持历代原样（用户裁定），不得再引入 {_forbidden}"); fail = True
-
-# 共用修饰符：顶边权重必须为 0，且斜坡起点按悬浮底栏几何换算
-_edge_src = _prog_src
-if "fun Modifier.bottomEdgeBlur(" not in _edge_src:
-    print("[FAIL] 缺共用修饰符 Modifier.bottomEdgeBlur（底栏几何应在这一处单点维护）"); fail = True
-else:
-    _blk = _edge_src[_edge_src.index("fun Modifier.bottomEdgeBlur("):]
-    if "topWeight = 0f" not in _blk:
-        print("[FAIL] 顶栏维持原样，顶边不得有模糊：bottomEdgeBlur 的 topWeight 必须为 0f"); fail = True
-    if "bottomWeight = 1f" not in _blk:
-        print("[FAIL] bottomEdgeBlur 底缘权重应为 1f"); fail = True
-    for _needle in ("BottomBarBodyHeight", "BottomBarBottomGap", "bottomRampStartDp"):
-        if _needle not in _blk:
-            print(f"[FAIL] bottomEdgeBlur 缺 {_needle}（斜坡起点未对齐悬浮底栏上缘）"); fail = True
+# 3.15) 渐进式模糊 —— v2.19.12 起**已整体移除**，此处只做「不得复活」的封锁
+_prog_path = _repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/ProgressiveBlur.kt"
+if os.path.exists(_prog_path):
+    print("[FAIL] ProgressiveBlur.kt 已被移除（用户裁定『干脆完全去掉』），不得复活"); fail = True
+if os.path.exists(_prog_path + ".bak"):
+    print("[FAIL] 不得留 ProgressiveBlur.kt.bak 之类的残留"); fail = True
+_blur_hits = grep_hits("bottomEdgeBlur")
+if _blur_hits:
+    print("[FAIL] bottomEdgeBlur 已被移除，不得复活：")
+    for h in _blur_hits[:6]:
+        print("   ", h)
+    fail = True
+for _f in ("HomeScreen.kt", "PracticeConfig.kt", "ExamScreens.kt",
+           "WrongBookScreen.kt", "SettingsScreen.kt"):
+    if "gradientBlurEdges" in load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/" + _f):
+        print(f"[FAIL] {_f} 不得再挂 gradientBlurEdges"); fail = True
 
 # 3.15b) 打卡热力图（v2.19.7）
 #   「连击卡 + 今日卡」两半并排 → 合并为一张全宽卡：顶行连击/今日两个数字，
@@ -563,10 +488,18 @@ if "HEATMAP_WEEKS = 22" not in _heat3:
 if "floor(rawPitch)" not in _heat3 or "Modifier.width(pitch)" not in _heat3:
     print("[FAIL] 列宽须取整后由每列 width(pitch) 声明——靠 Row 自适应会压扁最后一列"
           "（v2.19.10『右侧一列狭长如被挤压』）"); fail = True
-# ③ 长按详情浮窗
-for _needle in ("detectTapGestures", "onLongPress", "DayTip", "正确率"):
+# ③ 详情浮窗：交互按图表惯例走**轻点**（不是长按），且渲染条件不得依赖自身尺寸
+for _needle in ("detectTapGestures", "onTap", "DayTip", "正确率"):
     if _needle not in _heat3:
-        print(f"[FAIL] 热力图缺长按详情浮窗要素：{_needle}"); fail = True
+        print(f"[FAIL] 热力图缺详情浮窗要素：{_needle}"); fail = True
+if "onLongPress" in _heat3:
+    print("[FAIL] 浮窗交互须为轻点（图表惯例，触屏无 hover）；长按须移除"); fail = True
+# v2.19.11 的鸡生蛋死锁：条件里要求 tipW>0 才渲染浮窗，而 tipW 只在渲染后才写入。
+# 注释里复述这段代码是正常的，故对去注释后的源码做此项检查。
+_heat3_code = re.sub(r"/\*.*?\*/", "", _heat3, flags=re.S)
+_heat3_code = re.sub(r"//[^\n]*", "", _heat3_code)
+if "tipIndex >= 0 && tipW > 0" in _heat3_code:
+    print("[FAIL] 浮窗渲染条件不得依赖自身尺寸（v2.19.11 因此只有框没有窗）"); fail = True
 if "Repo.HeatDay" not in _heat3 and "HeatDay" not in _heat3:
     print("[FAIL] 浮窗需含当日答对数，格子数据须带 correct"); fail = True
 _repo_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
@@ -574,11 +507,7 @@ if "data class HeatDay(val date: String, val answered: Int, val correct: Int)" n
     print("[FAIL] Repo.HeatDay 须含 correct（长按浮窗要显示当日正确率）"); fail = True
 if "heatmapDays(160)" not in _home5:
     print("[FAIL] 取数天数须覆盖周数×7（HEATMAP_WEEKS=22 → 至少 154 天）"); fail = True
-# ④ 底栏模糊减效
-_blur = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/ProgressiveBlur.kt")
-if "maxBlurDp: Float = 6f" in _blur or "edgeFadeDp: Float = 32f" in _blur:
-    print("[FAIL] 底栏渐隐须维持 v2.19.11 减效后的值（4dp / 26dp）——"
-          "用户反馈『耗力过甚，宜减其效』"); fail = True
+# ④ 底栏不再有渐隐模糊（v2.19.12 已整体移除），本条随之作废
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +

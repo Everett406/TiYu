@@ -27,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.offset
@@ -65,18 +67,26 @@ import kotlin.math.floor
  *   18 周则高 113dp。22 周格子约 10dp、网格高约 92dp，比 18 周矮约 21dp，
  *   格子仍够看清深浅。
  *
- * ## 长按详情浮窗（v2.19.11 新增）
+ * ## 详情浮窗（v2.19.12 重做）
  *
- * 触屏没有 hover，故用**长按**等价：按住任一格（含未练习的格），在指尖附近浮出
- * 一张小窗，显示当天的题量与正确率；按「在图表之侧、指尖之畔」定位——
- * 默认浮在格子上方，顶部越界则改浮下方，左右始终夹在图内。
- * 轻点不触发（避免与列表滚动打架），浮窗 2.5 秒后自动消失。
+ * **交互按图表的惯例来：轻点格子即出窗**，不是长按。触屏没有 hover，
+ * 轻点是最贴近"鼠标移上去"的动作；长按反而不合直觉，还会和列表的
+ * 长按滚动打架。再点同一格收起，4 秒后自动消失。
+ *
+ * v2.19.11 那一版**只有框、没有窗**，是条件写死了：
+ * `if (tipIndex >= 0 && tipW > 0 && gridW > 0)` 才渲染浮窗，而 `tipW`
+ * 只有浮窗被渲染后 `onSizeChanged` 才会写入——浮窗不出，尺寸永不更新，
+ * 尺寸不更新浮窗更不出。鸡生蛋死锁，故整版永远只有格子上的描边。
+ * 现改为：**先无条件渲染，再拿尺寸定位**（首帧位置略有偏差，下一帧即修正）。
+ *
+ * 外观按用户给的参考图：深色圆角小窗 + 指向格子的三角，默认浮在格子上方，
+ * 顶上卡片边缘则改浮下方；左右始终夹在图内不出界。
  */
 private const val HEATMAP_WEEKS = 22
 private val HeatGap = 3.dp
 private val CellMin = 9.dp
 private val CellMax = 20.dp
-private const val TIP_LINGER_MS = 2500L
+private const val TIP_LINGER_MS = 4000L
 
 /** 分档：0 / 1–9 / 10–29 / 30–59 / 60+ */
 private fun levelOf(answered: Int): Int = when {
@@ -197,6 +207,7 @@ internal fun StreakHeatmap(
     var tipW by remember { mutableIntStateOf(0) }
     var tipH by remember { mutableIntStateOf(0) }
     var gridW by remember { mutableIntStateOf(0) }
+    // 自动消失。点同一格再次可立即收起（见 onTap 的 toggle 逻辑）
     LaunchedEffect(tipIndex) {
         if (tipIndex >= 0) { kotlinx.coroutines.delay(TIP_LINGER_MS); tipIndex = -1 }
     }
@@ -241,15 +252,16 @@ internal fun StreakHeatmap(
                     .pointerInput(grid.cells, pitch) {
                         // PointerInputScope 本身即 Density，就地换算 px
                         val pitchPx = pitch.toPx()
+                        fun cellAt(pos: androidx.compose.ui.geometry.Offset): Int? {
+                            val w = (pos.x / pitchPx).toInt()
+                            val d = (pos.y / pitchPx).toInt()
+                            return if (w in 0 until HEATMAP_WEEKS && d in 0 until 7) w * 7 + d else null
+                        }
                         detectTapGestures(
-                            onLongPress = { pos ->
-                                val w = (pos.x / pitchPx).toInt()
-                                val d = (pos.y / pitchPx).toInt()
-                                if (w in 0 until HEATMAP_WEEKS && d in 0 until 7) {
-                                    tipIndex = w * 7 + d
-                                }
-                            },
-                            onTap = { /* 轻点不做任何事：避免与列表滚动打架 */ }
+                            onTap = { pos ->
+                                // 图表惯例：轻点出窗；再点同一格收起，点别的格则移过去
+                                tipIndex = cellAt(pos)?.let { if (it == tipIndex) -1 else it } ?: -1
+                            }
                         )
                     }
             ) {
@@ -285,31 +297,32 @@ internal fun StreakHeatmap(
                         }
                     }
                 }
-                // ---- 详情浮窗：夹在图内、贴指尖 ----
-                if (tipIndex >= 0 && tipW > 0 && gridW > 0) {
+                // ---- 详情浮窗：深色小窗 + 指向格子的三角，默认浮于格子上方 ----
+                if (tipIndex >= 0) {
                     val c = grid.cells[tipIndex]
                     val col = tipIndex / 7
+                    val row = tipIndex % 7
                     DayTip(
                         date = c.date,
                         answered = c.answered,
                         correct = c.correct,
+                        below = false,          // 首帧先按上方摆，量到尺寸后再修正
                         modifier = Modifier
                             .onSizeChanged { tipW = it.width; tipH = it.height }
                             .offset {
                                 // DensityScope 亦提供 toPx()
                                 val pitchPx = pitch.toPx()
-                                val gapPx = HeatGap.toPx()
-                                val cx = pitchPx * col + (pitchPx - gapPx) / 2f
-                                val cy = pitchPx * (tipIndex % 7)
+                                val cx = pitchPx * col + (pitchPx - HeatGap.toPx()) / 2f
                                 val tipWf = tipW.toFloat()
                                 val tipHf = tipH.toFloat()
                                 val gridWf = gridW.toFloat()
                                 val x = (cx - tipWf / 2f)
                                     .coerceIn(0f, (gridWf - tipWf).coerceAtLeast(0f))
                                     .toInt()
-                                val above = cy - tipHf - 8f
-                                val y = (if (above >= 0f) above else cy + pitchPx + 8f).toInt()
-                                IntOffset(x, y)
+                                // 上方放得下就放上方，否则翻到格子下方
+                                val above = pitchPx * row - tipHf - 10f
+                                val y = if (above >= -tipHf * 0.35f) above else pitchPx * (row + 1) + 10f
+                                IntOffset(x, y.toInt())
                             }
                     )
                 }
@@ -323,35 +336,45 @@ private fun DayTip(
     date: String,
     answered: Int,
     correct: Int,
+    below: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val ui = LocalUi.current
     val cal = remember(date) {
         Calendar.getInstance().apply {
             time = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).parse(date) ?: Date()
         }
     }
     val md = remember(date) { "${cal.get(Calendar.MONTH) + 1}月${cal.get(Calendar.DAY_OF_MONTH)}日" }
-    val wd = remember(date) {
-        listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")[
-            (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7]
-    }
     val rate = if (answered > 0) (correct * 100) / answered else 0
-    Column(
-        modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(ui.surfaceStrong)
-            .border(1.dp, ui.line, RoundedCornerShape(8.dp))
-            .padding(horizontal = 9.dp, vertical = 6.dp)
-    ) {
-        Text(
-            "$md · $wd",
-            color = ui.text, fontSize = 10.sp, fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            if (answered > 0) "答了 $answered 题 · 正确率 $rate%" else "未练习",
-            color = ui.textSub, fontSize = 9.sp,
-            modifier = Modifier.padding(top = 2.dp)
+    // 深色小窗：与参考图一致——深底浅字，浮在格子之上
+    val bg = Color(0xF21F2430)
+    val fg = Color(0xFFF2F4F8)
+    val fgSub = Color(0xFFB6BECD)
+
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(bg)
+                .padding(horizontal = 10.dp, vertical = 7.dp)
+        ) {
+            Text(
+                if (answered > 0) "$md · 答了 $answered 题" else "$md · 未练习",
+                color = fg, fontSize = 10.sp, fontWeight = FontWeight.Medium
+            )
+            Text(
+                if (answered > 0) "正确率 $rate%" else "",
+                color = fgSub, fontSize = 10.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        // 指向格子的三角：旋转 45° 的小方块，一半压在窗体上、一半露在外面
+        Box(
+            Modifier
+                .offset(y = (-4).dp)
+                .size(8.dp)
+                .rotate(if (below) -45f else 45f)
+                .background(bg)
         )
     }
 }

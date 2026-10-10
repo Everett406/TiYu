@@ -61,7 +61,6 @@ import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.GlassIconButton
 import com.drone.quiz.ui.glass.BounceLazyColumn
-import com.drone.quiz.ui.glass.bottomEdgeBlur
 import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.combine
@@ -200,16 +199,6 @@ fun HomeScreen(
 
         // 滚离顶部才渐显，停在顶部时无效果、进度环等首屏内容不被遮挡
         val homeListState = rememberLazyListState()
-        // v2.19.1（用户裁定）：顶栏整体维持历代原样——固定标题行、非胶囊、不做悬浮，
-        // 因此顶边没有任何内容从其下方穿过，顶边自然也没有模糊可言。
-        // 底栏维持现状：内容从底栏下方滑过时按距离渐进加糊，斜坡起点对齐底栏上缘。
-        // 模糊挂在「包住列表的这一层」而非列表本身：列表内部有回弹位移层，
-        // 挂在列表上斜坡会跟着内容漂移、失去锚点。
-        Box(
-            Modifier
-                .fillMaxSize()
-                .bottomEdgeBlur()
-        ) {
         BounceLazyColumn(
             modifier = Modifier
                 .fillMaxSize(),
@@ -587,7 +576,6 @@ fun HomeScreen(
 
         item { Spacer(Modifier.height(130.dp)) }
     }
-        }   // 渐进模糊承载 Box（底缘模糊斜坡的锚点在这层）
         }
 }
 

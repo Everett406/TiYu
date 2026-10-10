@@ -487,9 +487,10 @@ fun AppRoot(settings: RootSettings) {
             }
         }
 
-        // v2.19.0：底部渐进模糊不再由 AppRoot 挂「背景采样过渡带」，
-        // 改为各屏把可变半径 RenderEffect 挂在自己的滚动区上（见 ui/glass/ProgressiveBlur.kt
-        // 的 gradientBlurEdges）——单层单效果，接缝无处可生，栏体像素自然锐利。
+        // v2.19.12：底部渐进式模糊已**整体移除**（用户裁定"干脆完全去掉"）。
+        // 四次实现（v2.6.0 蒙版 / v2.15.0 自写可变半径着色器 / v2.17.0 分层固定半径叠加 /
+        // v2.19.0 Agora 九抽头）连同 ProgressiveBlur.kt 一并删除，理由见 CHANGELOG。
+        // 底栏玻璃本身折射的是已模糊的内容层，视觉上并无缺憾。
 
         // 浮动玻璃底栏（仅 Tab 页显示；离场下滑独立动画，不与页面转场叠加）
         // 注：不给底栏套 Modifier.blur——方形 blur 层会在胶囊四周留下方框裁剪痕迹，

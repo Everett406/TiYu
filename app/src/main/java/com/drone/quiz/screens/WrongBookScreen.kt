@@ -69,7 +69,6 @@ import com.drone.quiz.ui.glass.GlassButton
 import com.drone.quiz.ui.glass.GlassCard
 import com.drone.quiz.ui.glass.rememberBounceState
 import com.drone.quiz.ui.glass.BounceLazyColumn
-import com.drone.quiz.ui.glass.bottomEdgeBlur
 import com.drone.quiz.ui.theme.LocalUi
 import com.drone.quiz.ui.theme.readableSubColor
 import com.kyant.backdrop.Backdrop
@@ -212,9 +211,7 @@ fun WrongBookScreen(
             }
 
             // ---- 列表 + 右侧快速滚动把手 ----
-            // 模糊挂在这一层（Box）而不是 BounceLazyColumn 上：后者内部有回弹位移层，
-            // 效果挂上去斜坡会跟着内容漂移、失去锚点。
-            Box(Modifier.weight(1f).bottomEdgeBlur()) {
+            Box(Modifier.weight(1f)) {
                 BounceLazyColumn(
                     modifier = Modifier
                         .fillMaxSize(),
