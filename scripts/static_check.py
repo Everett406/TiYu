@@ -131,7 +131,7 @@ must = [
     ("scrolledFromTopPx", "柔化连续渐显"),
     ("clipToBounds", "Bounce 过冲裁剪"),
     ("remainingBottomPx", "网格底部剩余像素"),
-    ("IntrinsicSize.Min", "双卡等高"),
+    ("StreakHeatmap", "打卡热力图(v2.19.7，双卡已合并为单全宽卡)"),
     ("wallScrim", "壁纸主题纱"),
     ("practiceSessionRandom", "刷题会话随机槽"),
     ("examDeleteQuota", "模考删除周限额"),
@@ -480,6 +480,33 @@ else:
     for _needle in ("BottomBarBodyHeight", "BottomBarBottomGap", "bottomRampStartDp"):
         if _needle not in _blk:
             print(f"[FAIL] bottomEdgeBlur 缺 {_needle}（斜坡起点未对齐悬浮底栏上缘）"); fail = True
+
+# 3.15b) 打卡热力图（v2.19.7）
+#   「连击卡 + 今日卡」两半并排 → 合并为一张全宽卡：顶行连击/今日两个数字，
+#   中部 13 周热力图，底行脚注。半屏宽度塞不下 13 周，故必须合并。
+_home_src2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+if "StreakHeatmap(" not in _home_src2:
+    print("[FAIL] 首页缺打卡热力图"); fail = True
+if "heatmapDays(" not in _home_src2:
+    print("[FAIL] 热力图未接数据（Repo.heatmapDays）"); fail = True
+# 里程碑进度条按用户裁定移除——热力图已接管「我这阵子状态如何」
+if "val p = (stats.streak.toFloat() / milestone)" in _home_src2:
+    print("[FAIL] 里程碑进度条已按用户裁定移除，热力图接管该职责"); fail = True
+# 0 题时不得显示正确率（此前显示「正确 0%」，0 题不存在正确率，是假数据）
+if "正确 ${(stats.todayCorrect * 100) / stats.todayAnswered}%" in _home_src2 \
+        and "stats.todayAnswered > 0" not in _home_src2:
+    print("[FAIL] 今日正确率须在 todayAnswered > 0 时才显示（0 题不存在正确率）"); fail = True
+
+_heat_src = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/StreakHeatmap.kt")
+if not os.path.exists(_repo_root + "/app/src/main/java/com/drone/quiz/screens/StreakHeatmap.kt"):
+    print("[FAIL] 热力图组件文件缺失：screens/StreakHeatmap.kt"); fail = True
+else:
+    # 热力图分档只看题量、不看正确率——低正确率染暗红像欠账，答得多不该被惩罚
+    if "correct" in _heat_src:
+        print("[FAIL] 热力图分档不得引入正确率（只按当天题量，理由见文件头注释）"); fail = True
+    # 未来日期必须留空不画，否则整张图左边看着缺一块
+    if "future" not in _heat_src:
+        print("[FAIL] 热力图须处理未来日期（留空不画）"); fail = True
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +

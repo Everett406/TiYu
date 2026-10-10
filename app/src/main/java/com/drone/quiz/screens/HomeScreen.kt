@@ -96,6 +96,8 @@ fun HomeScreen(
         val days: List<Repo.DayStat> = emptyList(),
         val todayAnswered: Int = 0,
         val todayCorrect: Int = 0,
+        // 打卡热力图：近 91+ 天「日期 → 当日答题数」，全局数据（不按题库隔离）
+        val heat: List<Pair<String, Int>> = emptyList(),
         val lastExam: com.drone.quiz.data.db.ExamRecordEntity? = null
     )
 
@@ -129,7 +131,9 @@ fun HomeScreen(
                 streak = streak,
                 days = days,
                 todayAnswered = todayAns,
-                todayCorrect = todayCor
+                todayCorrect = todayCor,
+                heat = runCatching { ServiceLocator.repo.heatmapDays(100) }
+                    .getOrElse { emptyList() }
             )
         }
     }
@@ -297,151 +301,95 @@ fun HomeScreen(
             }
         }
 
-        // ---- 打卡双卡（连击里程碑 + 今日；IntrinsicSize 等高 + 完全同构排版） ----
-        // v2.7.1 统一：两卡同为"图标+标签 / 大数字 / 副行 / 进度条 / 底注"五行结构，
-        // 字号、间距、条高逐行对齐，仅图标与条色按语义区分（用户反馈排版凌乱）
+        // ---- 打卡单卡：连击 + 今日 + 13 周热力图 ----
+        // v2.19.7 重构：原先「连击卡 + 今日卡」并排两半，热力图塞不进半屏宽度，
+        // 故合并为一张全宽卡 —— 顶行两个数字，中部热力图，底行脚注。
+        // 同时按用户裁定去掉了里程碑进度条（那是倒计时桩，热力图已接管
+        // 「我这阵子状态如何」这件事），只保留脚注文字。
         item {
-            Row(
-                Modifier
+            GlassCard(
+                backdrop = backdrop,
+                modifier = Modifier
                     .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .fillMaxWidth(),
+                cornerRadius = 22.dp
             ) {
-                GlassCard(
-                    backdrop = backdrop,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    cornerRadius = 22.dp
-                ) {
-                    Column(Modifier.padding(16.dp)) {
+                Column(Modifier.padding(16.dp)) {
+                    // ---- 顶行：连击（左） / 今日（右） ----
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                AppIcons.Flame,
-                                null,
-                                tint = ui.accent,
-                                modifier = Modifier.size(15.dp)
-                            )
+                            Icon(AppIcons.Flame, null, tint = ui.accent, modifier = Modifier.size(15.dp))
                             Text(
                                 "连击",
-                                color = ui.textSub,
-                                fontSize = 12.sp,
+                                color = ui.textSub, fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(start = 5.dp)
                             )
                         }
                         Text(
                             "${stats.streak} 天",
-                            color = ui.text,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                        Text(
-                            streakHint,
-                            color = ui.textSub, fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 4.dp)
+                            color = ui.text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 8.dp)
                         )
                         Spacer(Modifier.weight(1f))
-                        // 距下一里程碑进度条（与今日卡同高同位）
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(ui.ink.copy(alpha = 0.1f))
-                        ) {
-                            val p = (stats.streak.toFloat() / milestone).coerceIn(0f, 1f)
-                            Box(
-                                Modifier
-                                    .fillMaxWidth(p)
-                                    .height(5.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(ui.accent, ui.accent.copy(alpha = 0.7f))
-                                        )
-                                    )
-                            )
-                        }
-                        Text(
-                            "再练 ${milestone - stats.streak} 天达成 $milestone 天连击",
-                            color = ui.textSub, fontSize = 10.sp,
-                            modifier = Modifier.padding(top = 5.dp)
-                        )
-                    }
-                }
-                GlassCard(
-                    backdrop = backdrop,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    cornerRadius = 22.dp
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                AppIcons.Check,
-                                null,
-                                tint = ui.correct,
-                                modifier = Modifier.size(15.dp)
+                        // 今日：0 题时**不显示正确率**——0 题不存在正确率，
+                        // 此前显示「正确 0%」是假数据
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "今日 ${stats.todayAnswered} 题",
+                                color = ui.text, fontSize = 20.sp, fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "今日",
-                                color = ui.textSub,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(start = 5.dp)
+                                if (stats.todayAnswered > 0) {
+                                    "正确 ${(stats.todayCorrect * 100) / stats.todayAnswered}%"
+                                } else {
+                                    "还没开始"
+                                },
+                                color = ui.textSub, fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 2.dp)
                             )
                         }
+                    }
+
+                    // ---- 13 周热力图（全局打卡数据，与连击同源） ----
+                    StreakHeatmap(
+                        days = stats.heat,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 14.dp)
+                    )
+
+                    // ---- 脚注 ----
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                    ) {
                         Text(
-                            "${stats.todayAnswered} 题",
-                            color = ui.text,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                        val accToday = if (stats.todayAnswered > 0) {
-                            (stats.todayCorrect * 100) / stats.todayAnswered
-                        } else 0
-                        Text(
-                            "正确 $accToday%",
-                            color = ui.textSub, fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                        Spacer(Modifier.weight(1f))
-                        // 对错占比条（与连击卡同高同位）
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(ui.ink.copy(alpha = 0.08f))
-                        ) {
-                            val done = stats.todayAnswered.coerceAtLeast(1)
-                            val goodRatio = (stats.todayCorrect.toFloat() / done).coerceIn(0f, 1f)
-                            if (stats.todayAnswered > 0) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth(goodRatio)
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(50))
-                                        .background(ui.correct)
-                                )
-                            }
-                        }
-                        Text(
-                            if (stats.todayAnswered > 0)
-                                "答对 ${stats.todayCorrect} · 答错 ${stats.todayAnswered - stats.todayCorrect}"
-                            else "今天还没开始，来几题热热手",
+                            if (stats.streak < milestone) {
+                                "再练 ${milestone - stats.streak} 天达成 $milestone 天连击"
+                            } else {
+                                streakHint
+                            },
                             color = ui.textSub, fontSize = 10.sp,
-                            modifier = Modifier.padding(top = 5.dp)
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            if (stats.todayAnswered > 0) {
+                                "答对 ${stats.todayCorrect} · 答错 ${stats.todayAnswered - stats.todayCorrect}"
+                            } else {
+                                "今天还没开始，来几题热热手"
+                            },
+                            color = ui.textSub, fontSize = 10.sp
                         )
                     }
                 }
             }
         }
+
 
         // ---- 近 7 天图表 ----
         item {
