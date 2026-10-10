@@ -315,10 +315,14 @@ fun HomeScreen(
                 cornerRadius = 22.dp
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    // ---- 顶行：连击（左） / 今日（右），左右同构、顶端对齐 ----
-                    // v2.19.8：此前左块单行、右块两行，Row 用 CenterVertically 居中，
-                    // 于是「连击」被压到两行文字的中间，与右侧「今日」看着不同高。
-                    // 现改为左右各「一行小标签 + 一行大数字」，结构一致、顶端对齐。
+                    // ---- 顶行：连击（左） / 今日（右）----
+                    // v2.19.10 信息重排。此前用户反馈"今日四十题，百分之七十"未明何意、
+                    // "答对二十八·答错十二"亦未解其义：70% 悬着没有标签，答对/答错也没说
+                    // 是哪一天的；而这三条其实是同一份数据（28+12=40，28/40=70%），
+                    // 摆两遍还都不说清，反而添乱。
+                    // 现改为左右**三行同构**：各「一行小标签 + 一行大数字 + 一行注解」，
+                    // 注解自带单位与主语（"再练 4 天…"挂在连击下，"正确率 70%"挂在今日下），
+                    // 底部脚注只留一句带主语的"今日答对…"，图例挪到同一行右侧。
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -339,6 +343,15 @@ fun HomeScreen(
                                 "${stats.streak} 天",
                                 color = ui.text, fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            Text(
+                                if (stats.streak < milestone) {
+                                    "再练 ${milestone - stats.streak} 天达成 $milestone 天"
+                                } else {
+                                    streakHint
+                                },
+                                color = ui.textSub, fontSize = 10.sp,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                         }
@@ -354,61 +367,55 @@ fun HomeScreen(
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(
-                                    "${stats.todayAnswered} 题",
-                                    color = ui.text, fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                // 0 题时**不显示正确率**——0 题不存在正确率（v2.19.7 修）
+                            Text(
+                                "${stats.todayAnswered} 题",
+                                color = ui.text, fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            // 主语 + 单位都写全：0 题时不显示（0 题不存在正确率）
+                            Text(
                                 if (stats.todayAnswered > 0) {
-                                    Text(
-                                        "${(stats.todayCorrect * 100) / stats.todayAnswered}%",
-                                        color = ui.correct, fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
-                                    )
-                                }
-                            }
+                                    "正确率 ${(stats.todayCorrect * 100) / stats.todayAnswered}%"
+                                } else {
+                                    "还没开始"
+                                },
+                                color = if (stats.todayAnswered > 0) ui.correct else ui.textSub,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
                         }
                     }
 
-                    // ---- 13 周热力图（全局打卡数据，与连击同源） ----
+                    // ---- 18 周热力图（全局打卡数据，与连击同源）----
                     StreakHeatmap(
                         days = stats.heat,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 14.dp)
+                            .padding(top = 12.dp)
                     )
 
-                    // ---- 脚注 ----
+                    // ---- 脚注：主语写全的答对/答错 + 图例同处一行 ----
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp)
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            if (stats.streak < milestone) {
-                                "再练 ${milestone - stats.streak} 天达成 $milestone 天连击"
+                            if (stats.todayAnswered > 0) {
+                                "今日答对 ${stats.todayCorrect} · 答错 ${stats.todayAnswered - stats.todayCorrect}"
                             } else {
-                                streakHint
+                                "今天还没开始，来几题热热手"
                             },
                             color = ui.textSub, fontSize = 10.sp,
                             modifier = Modifier.weight(1f)
                         )
-                        Text(
-                            if (stats.todayAnswered > 0) {
-                                "答对 ${stats.todayCorrect} · 答错 ${stats.todayAnswered - stats.todayCorrect}"
-                            } else {
-                                "今天还没开始，来几题热热手"
-                            },
-                            color = ui.textSub, fontSize = 10.sp
-                        )
+                        StreakHeatmapLegend()
                     }
                 }
             }
         }
-
 
         // ---- 近 7 天图表 ----
         item {

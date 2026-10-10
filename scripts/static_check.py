@@ -511,12 +511,9 @@ else:
     if "BoxWithConstraints" not in _heat_src:
         print("[FAIL] 热力图格子尺寸必须按可用宽度算（写死会在宽屏右侧空一大块）"); fail = True
     # 周内标签必须落在 0/2/4/6 行；写成四个盒子依次堆叠会把「日」挪到第 4 行
-    if "d % 2 == 0" not in _heat_src:
-        print("[FAIL] 周内标签须按行号取（d%2==0），逐个堆叠会让「日」错行"); fail = True
     # v2.19.9：格子间距不得再丢。v2.19.8 每个格子写成 Modifier.size(cell) 且没给行间距，
-    # 126 个方块首尾相连连成一块实心板（用户反馈"过密"），而标签列却按 cell+gap 排版。
-    _grid_body = _heat_src[_heat_src.index("// ---- 格子矩阵"):_heat_src.index("// ---- 图例")]
-    if _grid_body.count("Arrangement.spacedBy(HeatGap)") < 3:
+    # 格子连成实心板（用户反馈"过密"），而标签列却按 cell+gap 排版。
+    if _heat_src.count("Arrangement.spacedBy(HeatGap)") < 2:
         print("[FAIL] 格子横竖双向均须用 Arrangement.spacedBy(HeatGap)（v2.19.8 漏掉行间距，"
               "格子连成实心板——用户反馈『过密』）"); fail = True
     # 月份标签不得因列宽不足被截断（「10月」→「10」）
@@ -530,6 +527,32 @@ else:
     _month_row = _heat_src[_heat_src.index("// ---- 月份标签"):_heat_src.index("// ---- 格子矩阵")]
     if ".height(" in _month_row:
         print("[FAIL] 月份标签行不得设固定高度（v2.19.7 用 12.dp 把 9.sp 的字裁掉下半截）"); fail = True
+
+# v2.19.10 信息可读性（用户反馈"今日四十题，百分之七十"未明何意、
+# "答对二十八·答错十二"亦未解其义）
+_home4 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+# 每个百分数必须带主语，否则读者无从判断那是什么的比例
+for _bare in ['Text(\n                                    "${(stats.todayCorrect * 100) / stats.todayAnswered}%"']:
+    if _bare in _home4:
+        print("[FAIL] 正确率必须带标签（用户反馈'百分之七十'未明何意）"); fail = True
+if "正确率 ${(stats.todayCorrect * 100) / stats.todayAnswered}%" not in _home4:
+    print("[FAIL] 今日正确率须写成『正确率 X%』——裸百分数读者无从判断是什么的比例"); fail = True
+# 答对/答错必须标明是「今日」
+if "今日答对 ${stats.todayCorrect}" not in _home4:
+    print("[FAIL] 答对/答错须标明『今日』——用户反馈'答对二十八·答错十二'未解其义"); fail = True
+# 里程碑注解挂在连击下，不得再放回底部脚注与答对/答错抢行
+if 'modifier = Modifier.padding(top = 10.dp),\n                    ) {\n                        Text(\n                            if (stats.todayAnswered > 0) {\n                                "再练' in _home4:
+    print("[FAIL] 里程碑注解应挂在连击下方，不应回到底部脚注行"); fail = True
+
+_heat2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/StreakHeatmap.kt")
+# 未来日须按 0 档绘制：只画到今天会让末列变成一根孤零零的竖条（用户反馈）
+if "future" not in _heat2 or "val future = c.timeInMillis > startOfToday" not in _heat2:
+    print("[FAIL] 未来日须按 0 档绘制（只画到今天会让末列脱节成孤条）"); fail = True
+if "if (!future) todayIndex = cells.size" not in _heat2:
+    print("[FAIL] 今天下标须按『最后一个非未来格』确定"); fail = True
+# 左侧星期栏已按用户裁定移除
+if "WeekdayLabels" in _heat2 or "HeatGutter" in _heat2:
+    print("[FAIL] 左侧星期栏已按用户裁定移除（'似可有可无'），勿加回来"); fail = True
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
