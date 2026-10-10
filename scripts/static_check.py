@@ -405,25 +405,20 @@ else:
                     "createRuntimeShaderEffect", "EDGE_BLUR_SHADER", "topRampStartDp"):
         if _needle not in _prog_src:
             print(f"[FAIL] 渐进式模糊实现不完整：缺 {_needle}"); fail = True
-    # 25 抽头可分离核是画质底线（v2.19.3）。
-    # Agora 原版 9 抽头间距 0.6·s，6dp 半径下抽头相距 ~11px、双线性仅覆盖 2px，
-    # 覆盖率不足 20% —— 高频内容（细线/细字/小图标）落在空隙里就拍成"带点"与摩尔纹。
-    # Agora 自己没暴露是因为聊天气泡是纯色块；本项目列表全是高频内容，必须加密。
-    # 这条同时挡住两条退路：退回 9 抽头（带点），或改成稠密网格+exp()（掉帧）。
-    _taps = (_prog_src.count("acc += content.eval(coord")
-             + _prog_src.count("acc -= content.eval(coord"))
-    if _taps < 24:
-        print(f"[FAIL] 渐进模糊须保留 25 抽头可分离核（当前 {_taps+1} 抽头）——"
-              "退回 9 抽头会出现用户实测的『带点/摩尔纹』，改稠密网格则会拖垮滚动帧率")
+    # 9 抽头可分离核即画质底线——这是 v2.19.3~v2.19.4 反复试出来的结论：
+    #   加密到 25 抽头（间距 0.6·s→0.2·s）、累加改 float4、斜坡改二次缓动 x*x，
+    #   纸面上覆盖率从 20% 提到 60%、应能消除"带点"，但真机实测"反而更乱"，
+    #   用户原话"前番修整反致崩乱，不若复归旧制，带点亦无妨"，已全部退回。
+    # 教训：观感问题上"理论上更正确"≠"看起来更好"，收敛是否可见、边缘是否生硬
+    # 只能真机判。没有真机可验证时，不要动抽头数与累加精度。
+    # 这条同时挡住两条退路：稠密网格 + exp()（Agora 原注释：太贵，掉帧）。
+    _taps = _prog_src.count("accum +=")
+    if _taps < 8 or "half4 main(" not in _prog_src:
+        print(f"[FAIL] 渐进模糊须保留 Agora 的 9 抽头 half4 可分离核（当前累加 {_taps} 项）——"
+              "加密抽头/换单精度已实测更乱并退回；改稠密网格则拖垮滚动帧率")
         fail = True
-    if "float4 main(" not in _prog_src or "half4 main(" in _prog_src:
-        print("[FAIL] 着色器累加必须用 float4（fp16 尾数 10 位，25 项累加后误差在大片"
-               "渐变上会踩成细带）"); fail = True
     if "s < 0.5" not in _prog_src:
         print("[FAIL] 着色器缺少半径近零早退（过渡带外零成本的关键分支）"); fail = True
-    # 斜坡必须二次缓动：线性缓动在斜坡起点导数突变，会留下一道可见的"起糊线"
-    if "x * x" not in _prog_src:
-        print("[FAIL] 斜坡须用二次缓动（x*x），线性缓动在起点导数突变会留下可见起糊线"); fail = True
     # 禁止回到背景采样路线：任何 backdrop/drawBackdrop 用在渐进模糊上都不许复活
     for _banned in ("drawBackdrop", "BlendMode.SrcIn"):
         if _banned in _prog_src:
