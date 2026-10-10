@@ -332,6 +332,7 @@ fun HomeScreen(
                                 "${stats.streak} 天",
                                 color = ui.text, fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                             Text(
@@ -341,6 +342,7 @@ fun HomeScreen(
                                     streakHint
                                 },
                                 color = ui.textSub, fontSize = 10.sp,
+                                maxLines = 1,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                         }
@@ -360,6 +362,7 @@ fun HomeScreen(
                                 "${stats.todayAnswered} 题",
                                 color = ui.text, fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                             // 主语 + 单位都写全：0 题时不显示（0 题不存在正确率）
@@ -371,6 +374,7 @@ fun HomeScreen(
                                 },
                                 color = if (stats.todayAnswered > 0) ui.correct else ui.textSub,
                                 fontSize = 10.sp,
+                                maxLines = 1,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                         }
@@ -398,6 +402,7 @@ fun HomeScreen(
                                 "今天还没开始，来几题热热手"
                             },
                             color = ui.textSub, fontSize = 10.sp,
+                            maxLines = 1,
                             modifier = Modifier.weight(1f)
                         )
                         StreakHeatmapLegend()

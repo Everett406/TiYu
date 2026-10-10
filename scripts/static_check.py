@@ -491,7 +491,7 @@ if "floor(rawPitch)" not in _heat3 or "Modifier.width(pitch)" not in _heat3:
 # ③ 详情浮窗：交互按图表惯例走**轻点**（不是长按），且渲染条件不得依赖自身尺寸
 #    箭头方向与浮窗坐标必须共用同一个 showBelow 判定（v2.19.12 二者各算各的，
 #    窗被翻到下方而箭头仍朝下）
-if "below = showBelow" not in _heat3 or "if (showBelow)" not in _heat3:
+if "below = showBelow" not in _heat3 or "if (!below) arrow()" not in _heat3:
     print("[FAIL] 浮窗坐标与箭头方向须共用同一个 showBelow 判定"); fail = True
 if "pitchPxOf" in _heat3 or "d.value * 3f" in _heat3:
     print("[FAIL] Dp→px 换算不得硬编码密度，须用 LocalDensity"); fail = True
@@ -513,7 +513,26 @@ if "data class HeatDay(val date: String, val answered: Int, val correct: Int)" n
     print("[FAIL] Repo.HeatDay 须含 correct（长按浮窗要显示当日正确率）"); fail = True
 if "heatmapDays(160)" not in _home5:
     print("[FAIL] 取数天数须覆盖周数×7（HEATMAP_WEEKS=22 → 至少 154 天）"); fail = True
-# ④ 底栏不再有渐隐模糊（v2.19.12 已整体移除），本条随之作废
+# ④ 浮窗三态定位 + 网格区裁剪：窗的上下边永不得越出网格区域
+#    （v2.19.13 只有"上方/下方"两态，下方无下界 → 最下面几行的格子一翻就冲出卡片）
+if "else -> (gridHf - tipHf)" not in _heat3:
+    print("[FAIL] 浮窗定位须为三态（上方/下方/贴底），否则会冲出卡片压住脚注"); fail = True
+if ".clipToBounds()" not in _heat3:
+    print("[FAIL] 网格区须加 clipToBounds() 兜底——浮窗不得越出热力图区域"); fail = True
+
+# ⑤ 卡片高度须锁死：顶行两处注解、两个大数字、脚注全部 maxLines = 1，
+#    文案长短不一（大字号/小屏下会换行）不得撑高整张卡
+_home6 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+_blk = _home6[_home6.index("// ---- 顶行：连击（左） / 今日（右）----"):
+              _home6.index("// ---- 18 周热力图")]
+_foot = _home6[_home6.index("// ---- 脚注：主语写全的答对/答错 + 图例同处一行 ----"):
+               _home6.index("// ---- 近 7 天图表 ----")]
+if _blk.count("maxLines = 1") < 4:
+    print("[FAIL] 打卡卡顶行四个文本须加 maxLines=1（文案长短不一会撑高卡片）"); fail = True
+if "maxLines = 1" not in _foot:
+    print("[FAIL] 打卡卡脚注须加 maxLines=1（『今日答对…』与『今天还没开始…』长短不一）"); fail = True
+
+# ⑥ 底栏不再有渐隐模糊（v2.19.12 已整体移除），本条随之作废
 
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +

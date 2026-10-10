@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -82,6 +83,20 @@ import kotlin.math.floor
  *
  * 外观按用户给的参考图：深色圆角小窗 + 指向格子的三角，默认浮在格子上方，
  * 顶上卡片边缘则改浮下方；左右始终夹在图内不出界。
+ *
+ * ## v2.19.14 按真机截图修的四处（浮窗冲出卡片 / 卡片高度会跳）
+ *
+ * ① **浮窗翻到下方后直接冲出卡片。** v2.19.13 的定位是"上方放得下就上方，
+ *    否则翻到下方"，可"下方"没有任何下界——最下面几行的格子一翻，窗就压到脚注
+ *    文字和图例上，甚至被卡片圆角裁掉半截（用户截图里"正确率 77%"被切了一半）。
+ *    现改成**三态**：上方放得下就上方；上方放不下且下方还塞得下，才翻下方；
+ *    **两边都塞不下就贴住网格底部**，任何情况下窗的上下边都不越出网格区域。
+ * ② **网格区加 `clipToBounds()` 兜底。** 即使上面某处算错，窗也画不出去。
+ * ③ **卡片高度会随文字长短跳。** 顶行注解（"再练 4 天达成 7 天" / "手感正热，
+ *    保持节奏"）与脚注（"今日答对 28 · 答错 12" / "今天还没开始，来几题热热手"）
+ *    在大字号或小屏下会换行，换行就撑高整张卡。现全部加 `maxLines = 1`，
+ *    高度锁定不随文案变化——这正是用户说的"卡片高度没有锁定"。
+ * ④ 选中描边再淡一档（0.55 → 0.45）。
  *
  * ## v2.19.13 按真机截图修的三处
  *
@@ -264,6 +279,7 @@ internal fun StreakHeatmap(
             Box(
                 Modifier
                     .fillMaxWidth()
+                    .clipToBounds()          // ② 兜底：窗无论算成什么样都画不出网格区
                     .onSizeChanged { gridW = it.width; gridH = it.height }
                     .pointerInput(grid.cells, pitch) {
                         // PointerInputScope 本身即 Density，就地换算 px
@@ -298,7 +314,7 @@ internal fun StreakHeatmap(
                                         .then(
                                             when {
                                                 idx == tipIndex -> Modifier.border(
-                                                    1.dp, ui.text.copy(alpha = 0.55f),
+                                                    1.dp, ui.text.copy(alpha = 0.45f),
                                                     RoundedCornerShape(3.dp)
                                                 )
                                                 idx == grid.todayIndex -> Modifier.border(
@@ -320,6 +336,7 @@ internal fun StreakHeatmap(
                     val row = tipIndex % 7
                     // 放得下就放上方；放不下翻到下方。首帧 tipH 未知，先假定上方，
                     // 量到尺寸后下面的 showBelow 会自动纠正。
+                    // 上方放不下时，窗必定落在下方（含贴底那一态），箭头朝上
                     val showBelow = tipH > 0 && gridH > 0 &&
                             pitch.value * density * row - tipH - 10f < 0f
                     DayTip(
@@ -334,14 +351,19 @@ internal fun StreakHeatmap(
                                 val pitchPx = pitch.toPx()
                                 val cx = pitchPx * col + (pitchPx - HeatGap.toPx()) / 2f
                                 val tipWf = tipW.toFloat()
+                                val tipHf = tipH.toFloat()
                                 val gridWf = gridW.toFloat()
+                                val gridHf = gridH.toFloat()
                                 val x = (cx - tipWf / 2f)
                                     .coerceIn(0f, (gridWf - tipWf).coerceAtLeast(0f))
                                     .toInt()
-                                val y = if (showBelow) {
-                                    pitchPx * (row + 1) + 8f
-                                } else {
-                                    pitchPx * row - tipH - 10f
+                                // 三态定位：上方 → 下方 → 贴底。上界永远不越出网格区域
+                                val aboveY = pitchPx * row - tipHf - 10f
+                                val belowY = pitchPx * (row + 1) + 8f
+                                val y = when {
+                                    aboveY >= 0f -> aboveY
+                                    belowY + tipHf <= gridHf -> belowY
+                                    else -> (gridHf - tipHf).coerceAtLeast(0f)
                                 }
                                 IntOffset(x, y.toInt())
                             }
