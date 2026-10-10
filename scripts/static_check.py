@@ -513,6 +513,19 @@ else:
     # 周内标签必须落在 0/2/4/6 行；写成四个盒子依次堆叠会把「日」挪到第 4 行
     if "d % 2 == 0" not in _heat_src:
         print("[FAIL] 周内标签须按行号取（d%2==0），逐个堆叠会让「日」错行"); fail = True
+    # v2.19.9：格子间距不得再丢。v2.19.8 每个格子写成 Modifier.size(cell) 且没给行间距，
+    # 126 个方块首尾相连连成一块实心板（用户反馈"过密"），而标签列却按 cell+gap 排版。
+    _grid_body = _heat_src[_heat_src.index("// ---- 格子矩阵"):_heat_src.index("// ---- 图例")]
+    if _grid_body.count("Arrangement.spacedBy(HeatGap)") < 3:
+        print("[FAIL] 格子横竖双向均须用 Arrangement.spacedBy(HeatGap)（v2.19.8 漏掉行间距，"
+              "格子连成实心板——用户反馈『过密』）"); fail = True
+    # 月份标签不得因列宽不足被截断（「10月」→「10」）
+    if "wrapContentWidth(unbounded = true)" not in _heat_src:
+        print("[FAIL] 月份标签须允许溢出所在列，否则「10月」会被截成「10」"); fail = True
+    # 取数天数必须覆盖周数，否则图的左半段永远空白
+    _home3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+    if "heatmapDays(140)" not in _home3:
+        print("[FAIL] 热力图取数天数须 ≥ 周数×7（HEATMAP_WEEKS=18 → 至少 126 天）"); fail = True
     # 月份标签不得设固定高度，9.sp 会被裁掉下半截
     _month_row = _heat_src[_heat_src.index("// ---- 月份标签"):_heat_src.index("// ---- 格子矩阵")]
     if ".height(" in _month_row:

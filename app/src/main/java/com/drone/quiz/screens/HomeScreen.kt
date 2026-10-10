@@ -132,7 +132,7 @@ fun HomeScreen(
                 days = days,
                 todayAnswered = todayAns,
                 todayCorrect = todayCor,
-                heat = runCatching { ServiceLocator.repo.heatmapDays(100) }
+                heat = runCatching { ServiceLocator.repo.heatmapDays(140) }
                     .getOrElse { emptyList() }
             )
         }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +32,23 @@ import java.util.Locale
 
 /**
  * 打卡热力图：GitHub 贡献图那种形状 —— **列 = 周，行 = 周一…周日**。
+ *
+ * ## v2.19.9 修的三条（用户真机截图反馈："过密"与"版式失序"）
+ *
+ * ① **格子之间的间距被写丢了。** v2.19.8 重写渲染时，每个格子写成
+ *    `Modifier.size(cell)` —— 只给了尺寸，**没给行间距**，于是 126 个方块首尾相连
+ *    连成一块实心板（用户反馈"过密"）。而左侧标签列却按 `cell + gap` 排版，
+ *    两边高度也对不上。现统一改用 `Arrangement.spacedBy(gap)` 横竖双向排布，
+ *    尺寸与间距不再分别维护，也就再不会漏掉一边。
+ * ② **月份标签被截断。** 列宽不够时 `maxLines = 1` 会把「10月」截成「10」。
+ *    现用 `wrapContentWidth(unbounded = true)` 让文字按自然宽度排版、允许溢出
+ *    所在列（Box 默认不裁剪，月份标签本就稀疏，溢出不会压到别的内容）。
+ * ③ **右边空一大块。** `CellMax` 上限卡得太死，13 列填不满卡片内宽，
+ *    多余的空白全被右下角的图例占着，看着像块补丁。现周数 13 → 18，
+ *    列宽天然更细、密度更低；上限也放宽到 22dp，宽屏照样能铺满。
+ *
+ * 另：末列的「未来日」不再占位——最后一列只画到今天为止，图的右缘干净收口，
+ * 不会留一列空格造成缺口。
  *
  * 数据来自 `streak_log` 表（全局，不按题库隔离，与连击一致），仓库层已给出
  * 「日期 → 当日答题数」。当天没练的日子仓库不返回，这里补 0。
@@ -52,11 +70,11 @@ import java.util.Locale
  * 左侧第一列是「本周尚未到来的日子」，**留空不画**——画一个浅灰格虽然更像
  * GitHub，但会让整张图看着左边缺一块。
  */
-private const val HEATMAP_WEEKS = 13
+private const val HEATMAP_WEEKS = 18
 private val HeatGap = 3.dp
 private val HeatGutter = 14.dp
 private val CellMin = 11.dp
-private val CellMax = 19.dp
+private val CellMax = 22.dp
 
 /** 周内标签只标一三五日，七行全标太挤 */
 private val WeekdayLabels = listOf("一", "三", "五", "日")
@@ -140,37 +158,49 @@ internal fun StreakHeatmap(
     )
 
     BoxWithConstraints(modifier) {
-        // ① 13 列铺满可用宽度：列距 = (可用宽 - 标签槽 + 间距) / 列数，格子 = 列距 - 间距
+        // 18 列铺满可用宽度：列距 = (可用宽 - 标签槽 + 间距) / 列数，格子 = 列距 - 间距
         val pitch: Dp =
             ((maxWidth - HeatGutter + HeatGap) / HEATMAP_WEEKS).coerceIn(CellMin, CellMax)
         val cell = pitch - HeatGap
-        val rowPitch = cell + HeatGap
 
         Column(Modifier.fillMaxWidth()) {
-            // ---- 月份标签：高度交给文字自己决定，勿设固定值（②） ----
-            Row(Modifier.padding(start = HeatGutter, bottom = 4.dp)) {
+            // ---- 月份标签：高度交给文字自己决定；宽度不限，允许溢出所在列（②） ----
+            Row(
+                Modifier
+                    .padding(start = HeatGutter, bottom = 4.dp)
+                    .fillMaxWidth()
+            ) {
                 for (w in 0 until HEATMAP_WEEKS) {
-                    Box(Modifier.width(pitch)) {
+                    Box(Modifier.width(cell)) {
                         grid.monthLabels[w]?.let {
                             Text(
                                 "${it}月",
                                 color = ui.textSub,
                                 fontSize = 9.sp,
                                 maxLines = 1,
-                                modifier = Modifier.padding(start = 1.dp)
+                                softWrap = false,
+                                modifier = Modifier
+                                    .wrapContentWidth(unbounded = true)
+                                    .padding(start = 1.dp)
                             )
                         }
                     }
                 }
             }
             // ---- 格子矩阵 ----
-            Row(Modifier.fillMaxWidth()) {
-                // ② 周内标签落在第 0/2/4/6 行
-                Column(Modifier.width(HeatGutter)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(HeatGap)   // ① 横向间距
+            ) {
+                // 周内标签：一三五日落在第 0/2/4/6 行
+                Column(
+                    Modifier.width(HeatGutter),
+                    verticalArrangement = Arrangement.spacedBy(HeatGap)
+                ) {
                     for (d in 0 until 7) {
                         Box(
                             Modifier
-                                .height(rowPitch)
+                                .height(cell)
                                 .fillMaxWidth(),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -183,22 +213,20 @@ internal fun StreakHeatmap(
                         }
                     }
                 }
-                for (w in 0 until HEATMAP_WEEKS) {
-                    Column {
-                        for (d in 0 until 7) {
-                            val idx = w * 7 + d
-                            val c = grid.cells[idx]
-                            if (c.future) {
-                                // 未来日：留空不画
-                                Spacer(Modifier.size(cell))
-                            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(HeatGap)) {
+                    for (w in 0 until HEATMAP_WEEKS) {
+                        // 末列只画到今天，不留一列未来日的空位（图的右缘干净收口）
+                        val rows = if (w == HEATMAP_WEEKS - 1) grid.todayIndex - w * 7 + 1 else 7
+                        Column(verticalArrangement = Arrangement.spacedBy(HeatGap)) {
+                            for (d in 0 until rows) {
+                                val c = grid.cells[w * 7 + d]
                                 Box(
                                     Modifier
                                         .size(cell)
                                         .clip(RoundedCornerShape(3.dp))
                                         .background(scale[levelOf(c.answered)])
                                         .then(
-                                            if (idx == grid.todayIndex)
+                                            if (w * 7 + d == grid.todayIndex)
                                                 Modifier.border(
                                                     1.5.dp, ui.accent.copy(alpha = 0.9f),
                                                     RoundedCornerShape(3.dp)
@@ -215,7 +243,7 @@ internal fun StreakHeatmap(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = 7.dp),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
