@@ -485,13 +485,13 @@ _home5 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen
 if "HEATMAP_WEEKS = 22" not in _heat3:
     print("[FAIL] 热力图周数须为 22（18 周卡片过高，26 周格子过小）"); fail = True
 # ② 末列被挤压 → 列宽必须「取整后由每一列自己声明」，不得靠 Row 自适应
-if "floor(rawPitch)" not in _heat3 or "Modifier.width(pitch)" not in _heat3:
+if "kotlin.math.floor(maxWidth.value / HEATMAP_WEEKS)" not in _heat3 or "Modifier.width(pitch)" not in _heat3:
     print("[FAIL] 列宽须取整后由每列 width(pitch) 声明——靠 Row 自适应会压扁最后一列"
           "（v2.19.10『右侧一列狭长如被挤压』）"); fail = True
 # ③ 详情浮窗：交互按图表惯例走**轻点**（不是长按），且渲染条件不得依赖自身尺寸
 #    箭头方向与浮窗坐标必须共用同一个 showBelow 判定（v2.19.12 二者各算各的，
 #    窗被翻到下方而箭头仍朝下）
-if "below = showBelow" not in _heat3 or "if (!below) arrow()" not in _heat3:
+if "TooltipPositionProvider" not in _heat3 or "cellTop() - h - 10f" not in _heat3:
     print("[FAIL] 浮窗坐标与箭头方向须共用同一个 showBelow 判定"); fail = True
 if "pitchPxOf" in _heat3 or "d.value * 3f" in _heat3:
     print("[FAIL] Dp→px 换算不得硬编码密度，须用 LocalDensity"); fail = True
@@ -513,12 +513,19 @@ if "data class HeatDay(val date: String, val answered: Int, val correct: Int)" n
     print("[FAIL] Repo.HeatDay 须含 correct（长按浮窗要显示当日正确率）"); fail = True
 if "heatmapDays(160)" not in _home5:
     print("[FAIL] 取数天数须覆盖周数×7（HEATMAP_WEEKS=22 → 至少 154 天）"); fail = True
-# ④ 浮窗三态定位 + 网格区裁剪：窗的上下边永不得越出网格区域
-#    （v2.19.13 只有"上方/下方"两态，下方无下界 → 最下面几行的格子一翻就冲出卡片）
-if "else -> (gridHf - tipHf)" not in _heat3:
-    print("[FAIL] 浮窗定位须为三态（上方/下方/贴底），否则会冲出卡片压住脚注"); fail = True
-if ".clipToBounds()" not in _heat3:
-    print("[FAIL] 网格区须加 clipToBounds() 兜底——浮窗不得越出热力图区域"); fail = True
+# ④ 浮窗必须是**真·浮层**：用 Popup 独立窗口，不占布局、不被父级裁剪。
+#    v2.19.12~v2.19.14 三版都把浮窗当网格 Box 的子节点、用 offset 摆位置，
+#    于是陷入两难：窗高约 50dp 而格子只有 10dp，夹在网格内必然盖住旁边几列，
+#    允许越界就会压住脚注、冲出卡片被圆角裁掉——那是架构选错，不是参数没调好。
+for _needle in ("Popup(", "PopupPositionProvider", "dismissOnClickOutside"):
+    if _needle not in _heat3:
+        print(f"[FAIL] 详情浮窗须用 Popup 独立窗口浮在最上层（缺 {_needle}）"
+              "——嵌在布局里的做法已被证伪三轮"); fail = True
+if "tipW" in _heat3_code or "tipH" in _heat3_code:
+    print("[FAIL] 浮窗尺寸不得自行测量（PopupPositionProvider 已给量好的尺寸，"
+          "自行测量即回到鸡生蛋死锁）"); fail = True
+if "clipToBounds" in _heat3_code:
+    print("[FAIL] 网格区不得再靠 clipToBounds 兜底——浮窗已不在图里"); fail = True
 
 # ⑤ 卡片高度须锁死：顶行两处注解、两个大数字、脚注全部 maxLines = 1，
 #    文案长短不一（大字号/小屏下会换行）不得撑高整张卡

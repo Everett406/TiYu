@@ -16,8 +16,8 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 70
-        versionName = "2.19.14"
+        versionCode = 71
+        versionName = "2.19.15"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }

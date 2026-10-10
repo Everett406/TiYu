@@ -27,11 +27,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +75,27 @@ import kotlin.math.floor
  * · **周数 22 而非 18/26。** 用户反馈卡片"略显过盛"；26 周格子太小（8dp），
  *   18 周则高 113dp。22 周格子约 10dp、网格高约 92dp，比 18 周矮约 21dp，
  *   格子仍够看清深浅。
+ *
+ * ## 详情浮窗：**真·浮层**（v2.19.15）
+ *
+ * 用户原话："让这个小浮窗完完全全浮在上面，不要占用其他的空间，就是刚好浮在
+ * 这个位置，定位到这个位置。"
+ *
+ * 此前四版都是把浮窗当作网格 Box 的子节点、用 `offset` 摆位置——于是陷入两难：
+ * 窗比格子大（窗高约 50dp，格子只有 10dp），夹在网格内就必然盖住旁边几列；
+ * 想不盖就得允许越界，一越界就压住脚注、图例，甚至冲出卡片被圆角裁掉
+ * （v2.19.14 的截图）。**这是架构选错了，不是参数没调好。**
+ *
+ * 现改为 **`androidx.compose.ui.window.Popup`**：独立窗口绘制在整棵视图树之上，
+ * **不占布局、不被父级裁剪、可自由定位到屏幕任意位置**——"完完全全浮在上面"。
+ * 附带解决两件旧账：
+ * · `PopupPositionProvider.calculatePosition` 拿得到**已量好的 popup 尺寸**，
+ *   v2.19.11 那处"先量尺寸才渲染、渲染了才量得到"的鸡生蛋死锁彻底消失，
+ *   不再需要 `tipW/tipH` 两个状态；
+ * · `dismissOnClickOutside` 白送"点别处收起"，此前要靠事件分发自己实现，
+ *   且容易和列表滚动打架。
+ *
+ * 网格区不再需要 `clipToBounds()`——浮窗已不在图里。
  *
  * ## 详情浮窗（v2.19.12 重做）
  *
@@ -223,6 +251,33 @@ internal fun StreakHeatmapLegend(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * 浮窗定位：**上方放得下就上方，否则下方**，左右与上下都夹在窗口内不出界。
+ * `popupContentSize` 是**已量好的**浮窗尺寸——这正是 Popup 相较"offset + 自测量"的关键优势，
+ * 不再需要"先量尺寸才渲染、渲染了才量得到"的自我循环。
+ */
+private class TooltipPositionProvider(
+    private val cellCenterX: () -> Float,
+    private val cellTop: () -> Float,
+    private val cellBottom: () -> Float
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val w = popupContentSize.width
+        val h = popupContentSize.height
+        val maxX = (windowSize.width - w).coerceAtLeast(0).toFloat()
+        val maxY = (windowSize.height - h).coerceAtLeast(0).toFloat()
+        val x = (cellCenterX() - w / 2f).coerceIn(0f, maxX)
+        val above = cellTop() - h - 10f
+        val below = cellBottom() + 10f
+        val y = if (above >= 0f) above else below
+        return IntOffset(x.toInt(), y.coerceIn(0f, maxY).toInt())
+    }
+}
 @Composable
 internal fun StreakHeatmap(
     days: List<Repo.HeatDay>,
@@ -234,20 +289,16 @@ internal fun StreakHeatmap(
     val density = LocalDensity.current.density
 
     var tipIndex by remember(days) { mutableIntStateOf(-1) }
-    var tipW by remember { mutableIntStateOf(0) }
-    var tipH by remember { mutableIntStateOf(0) }
-    var gridW by remember { mutableIntStateOf(0) }
-    var gridH by remember { mutableIntStateOf(0) }
-    // 自动消失。点同一格再次可立即收起（见 onTap 的 toggle 逻辑）
+    // 热力图在**窗口**中的位置，供浮窗（Popup）定位
+    var gridPosInWindow by remember { mutableStateOf(Offset.Zero) }
     LaunchedEffect(tipIndex) {
         if (tipIndex >= 0) { kotlinx.coroutines.delay(TIP_LINGER_MS); tipIndex = -1 }
     }
 
     BoxWithConstraints(modifier) {
-        // 列宽**取整后由每一列自己声明**：既保证 22 列严丝合缝铺满可用宽，
-        // 又不会出现最后一列被约束压扁的情况（v2.19.10 的"狭长挤压"就是丢了这层保证）
-        val rawPitch = (maxWidth.value / HEATMAP_WEEKS)
-        val pitch: Dp = Dp(floor(rawPitch))
+        // 列宽取整后由每一列自己声明：既保证 22 列严丝合缝铺满可用宽，
+        // 又不会出现最后一列被约束压扁（v2.19.10 的"狭长挤压"就是丢了这层保证）
+        val pitch: Dp = Dp(kotlin.math.floor(maxWidth.value / HEATMAP_WEEKS))
             .coerceIn(CellMin + HeatGap, CellMax)
         val cell = pitch - HeatGap
 
@@ -275,16 +326,15 @@ internal fun StreakHeatmap(
                     }
                 }
             }
-            // ---- 格子矩阵 + 长按浮窗 ----
+            // ---- 格子矩阵 ----
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .clipToBounds()          // ② 兜底：窗无论算成什么样都画不出网格区
-                    .onSizeChanged { gridW = it.width; gridH = it.height }
+                    .onGloballyPositioned { gridPosInWindow = it.positionInWindow() }
                     .pointerInput(grid.cells, pitch) {
                         // PointerInputScope 本身即 Density，就地换算 px
                         val pitchPx = pitch.toPx()
-                        fun cellAt(pos: androidx.compose.ui.geometry.Offset): Int? {
+                        fun cellAt(pos: Offset): Int? {
                             val w = (pos.x / pitchPx).toInt()
                             val d = (pos.y / pitchPx).toInt()
                             return if (w in 0 until HEATMAP_WEEKS && d in 0 until 7) w * 7 + d else null
@@ -329,57 +379,47 @@ internal fun StreakHeatmap(
                         }
                     }
                 }
-                // ---- 详情浮窗：坐标与箭头方向共用同一个 showBelow，杜绝二者打架 ----
-                if (tipIndex >= 0) {
-                    val c = grid.cells[tipIndex]
-                    val col = tipIndex / 7
-                    val row = tipIndex % 7
-                    // 放得下就放上方；放不下翻到下方。首帧 tipH 未知，先假定上方，
-                    // 量到尺寸后下面的 showBelow 会自动纠正。
-                    // 上方放不下时，窗必定落在下方（含贴底那一态），箭头朝上
-                    val showBelow = tipH > 0 && gridH > 0 &&
-                            pitch.value * density * row - tipH - 10f < 0f
-                    DayTip(
-                        date = c.date,
-                        answered = c.answered,
-                        correct = c.correct,
-                        below = showBelow,
-                        modifier = Modifier
-                            .onSizeChanged { tipW = it.width; tipH = it.height }
-                            .offset {
-                                // DensityScope 亦提供 toPx()
-                                val pitchPx = pitch.toPx()
-                                val cx = pitchPx * col + (pitchPx - HeatGap.toPx()) / 2f
-                                val tipWf = tipW.toFloat()
-                                val tipHf = tipH.toFloat()
-                                val gridWf = gridW.toFloat()
-                                val gridHf = gridH.toFloat()
-                                val x = (cx - tipWf / 2f)
-                                    .coerceIn(0f, (gridWf - tipWf).coerceAtLeast(0f))
-                                    .toInt()
-                                // 三态定位：上方 → 下方 → 贴底。上界永远不越出网格区域
-                                val aboveY = pitchPx * row - tipHf - 10f
-                                val belowY = pitchPx * (row + 1) + 8f
-                                val y = when {
-                                    aboveY >= 0f -> aboveY
-                                    belowY + tipHf <= gridHf -> belowY
-                                    else -> (gridHf - tipHf).coerceAtLeast(0f)
-                                }
-                                IntOffset(x, y.toInt())
-                            }
-                    )
-                }
+            }
+        }
+
+        // ---- 详情浮窗：独立窗口，完完全全浮在整棵视图树之上 ----
+        // 声明在 BoxWithConstraints 作用域内只是为了取到 pitch/maxWidth；它渲染到
+        // 独立窗口，声明位置不影响绘制。Popup 不占布局、不被父级裁剪，
+        // calculatePosition 拿到的还是**已量好**的尺寸——所以不再需要自测量。
+        if (tipIndex >= 0) {
+            val c = grid.cells[tipIndex]
+            val col = tipIndex / 7
+            val row = tipIndex % 7
+            val pitchPx = pitch.value * density
+            val gapPx = HeatGap.value * density
+            Popup(
+                popupPositionProvider = TooltipPositionProvider(
+                    cellCenterX = {
+                        gridPosInWindow.x + pitchPx * col + (pitchPx - gapPx) / 2f
+                    },
+                    cellTop = { gridPosInWindow.y + pitchPx * row },
+                    cellBottom = { gridPosInWindow.y + pitchPx * row + (pitchPx - gapPx) }
+                ),
+                onDismissRequest = { tipIndex = -1 },
+                properties = PopupProperties(
+                    focusable = true,          // 让 dismissOnClickOutside 生效（点别处收起）
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true,
+                    clippingEnabled = false
+                )
+            ) {
+                DayTip(date = c.date, answered = c.answered, correct = c.correct)
             }
         }
     }
 }
 
+/** 深色小窗 + 指向格子的三角；位置由 TooltipPositionProvider 决定，箭头恒朝下（浮在格子上方） */
 @Composable
 private fun DayTip(
     date: String,
     answered: Int,
     correct: Int,
-    below: Boolean,
     modifier: Modifier = Modifier
 ) {
     val cal = remember(date) {
@@ -393,27 +433,14 @@ private fun DayTip(
     val fg = Color(0xFFF2F4F8)
     val fgSub = Color(0xFFA8B0C0)
 
-    // 箭头：旋转 45° 的小方块，一半压在窗体上、一半露在外面；
-    // 浮在格子上方时朝下（在下边），翻到下方时朝上（在上边）。
-    val arrow: @Composable () -> Unit = {
-        Box(
-            Modifier
-                .offset(y = if (below) 4.dp else (-4).dp)
-                .size(8.dp)
-                .rotate(if (below) -45f else 45f)
-                .background(bg)
-        )
-    }
-
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        if (below) arrow()
         Column(
             Modifier
                 .clip(RoundedCornerShape(7.dp))
                 .background(bg)
                 .padding(horizontal = 8.dp, vertical = 5.dp)
         ) {
-            // 三行分排而非拼成一行——拼一行时窗宽到能盖住五六列，压住图例与月份标签
+            // 三行分排而非拼成一行——拼一行时窗宽到能盖住五六列
             Text(md, color = fgSub, fontSize = 9.sp, maxLines = 1)
             Text(
                 if (answered > 0) "答了 $answered 题" else "未练习",
@@ -428,6 +455,13 @@ private fun DayTip(
                 )
             }
         }
-        if (!below) arrow()
+        // 指向格子的三角：旋转 45° 的小方块，一半压在窗体上、一半露在外面
+        Box(
+            Modifier
+                .offset(y = (-4).dp)
+                .size(8.dp)
+                .rotate(45f)
+                .background(bg)
+        )
     }
 }
