@@ -489,6 +489,12 @@ if "floor(rawPitch)" not in _heat3 or "Modifier.width(pitch)" not in _heat3:
     print("[FAIL] 列宽须取整后由每列 width(pitch) 声明——靠 Row 自适应会压扁最后一列"
           "（v2.19.10『右侧一列狭长如被挤压』）"); fail = True
 # ③ 详情浮窗：交互按图表惯例走**轻点**（不是长按），且渲染条件不得依赖自身尺寸
+#    箭头方向与浮窗坐标必须共用同一个 showBelow 判定（v2.19.12 二者各算各的，
+#    窗被翻到下方而箭头仍朝下）
+if "below = showBelow" not in _heat3 or "if (showBelow)" not in _heat3:
+    print("[FAIL] 浮窗坐标与箭头方向须共用同一个 showBelow 判定"); fail = True
+if "pitchPxOf" in _heat3 or "d.value * 3f" in _heat3:
+    print("[FAIL] Dp→px 换算不得硬编码密度，须用 LocalDensity"); fail = True
 for _needle in ("detectTapGestures", "onTap", "DayTip", "正确率"):
     if _needle not in _heat3:
         print(f"[FAIL] 热力图缺详情浮窗要素：{_needle}"); fail = True

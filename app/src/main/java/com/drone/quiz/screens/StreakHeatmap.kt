@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -81,6 +82,19 @@ import kotlin.math.floor
  *
  * 外观按用户给的参考图：深色圆角小窗 + 指向格子的三角，默认浮在格子上方，
  * 顶上卡片边缘则改浮下方；左右始终夹在图内不出界。
+ *
+ * ## v2.19.13 按真机截图修的三处
+ *
+ * ① **窗太宽、盖住半个图。** v2.19.12 把日期和题量拼在一行
+ *    （`9月5日 · 答了 206 题`），十几个字排成一行，窗宽到能盖住五六列、
+ *    还压到下面的图例和上面的月份标签。现拆成三行（日期 / 题量 / 正确率），
+ *    字号各降一档，窗宽压到约 5 列、窗高约 50dp。**没练的日子只出两行。**
+ * ② **箭头方向不跟着位置走。** 「放上方还是下方」在 offset 里算了一遍给坐标，
+ *    在 `DayTip` 里却写死 `below = false` 给箭头——于是窗被翻到下方、
+ *    箭头还朝下。现把判断**抽成一个 `showBelow` 状态**，坐标与箭头共用同一份，
+ *    不可能再不一致。
+ * ③ **选中描边太重。** 1.5dp 的 `ui.text` 黑圈在小方格上像套了个相框，
+ *    降到 1dp、透明度 55%。
  */
 private const val HEATMAP_WEEKS = 22
 private val HeatGap = 3.dp
@@ -202,11 +216,13 @@ internal fun StreakHeatmap(
     val ui = LocalUi.current
     val grid = rememberHeatGrid(days)
     val scale = heatScale()
+    val density = LocalDensity.current.density
 
     var tipIndex by remember(days) { mutableIntStateOf(-1) }
     var tipW by remember { mutableIntStateOf(0) }
     var tipH by remember { mutableIntStateOf(0) }
     var gridW by remember { mutableIntStateOf(0) }
+    var gridH by remember { mutableIntStateOf(0) }
     // 自动消失。点同一格再次可立即收起（见 onTap 的 toggle 逻辑）
     LaunchedEffect(tipIndex) {
         if (tipIndex >= 0) { kotlinx.coroutines.delay(TIP_LINGER_MS); tipIndex = -1 }
@@ -248,7 +264,7 @@ internal fun StreakHeatmap(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .onSizeChanged { gridW = it.width }
+                    .onSizeChanged { gridW = it.width; gridH = it.height }
                     .pointerInput(grid.cells, pitch) {
                         // PointerInputScope 本身即 Density，就地换算 px
                         val pitchPx = pitch.toPx()
@@ -282,7 +298,7 @@ internal fun StreakHeatmap(
                                         .then(
                                             when {
                                                 idx == tipIndex -> Modifier.border(
-                                                    1.5.dp, ui.text,
+                                                    1.dp, ui.text.copy(alpha = 0.55f),
                                                     RoundedCornerShape(3.dp)
                                                 )
                                                 idx == grid.todayIndex -> Modifier.border(
@@ -297,16 +313,20 @@ internal fun StreakHeatmap(
                         }
                     }
                 }
-                // ---- 详情浮窗：深色小窗 + 指向格子的三角，默认浮于格子上方 ----
+                // ---- 详情浮窗：坐标与箭头方向共用同一个 showBelow，杜绝二者打架 ----
                 if (tipIndex >= 0) {
                     val c = grid.cells[tipIndex]
                     val col = tipIndex / 7
                     val row = tipIndex % 7
+                    // 放得下就放上方；放不下翻到下方。首帧 tipH 未知，先假定上方，
+                    // 量到尺寸后下面的 showBelow 会自动纠正。
+                    val showBelow = tipH > 0 && gridH > 0 &&
+                            pitch.value * density * row - tipH - 10f < 0f
                     DayTip(
                         date = c.date,
                         answered = c.answered,
                         correct = c.correct,
-                        below = false,          // 首帧先按上方摆，量到尺寸后再修正
+                        below = showBelow,
                         modifier = Modifier
                             .onSizeChanged { tipW = it.width; tipH = it.height }
                             .offset {
@@ -314,14 +334,15 @@ internal fun StreakHeatmap(
                                 val pitchPx = pitch.toPx()
                                 val cx = pitchPx * col + (pitchPx - HeatGap.toPx()) / 2f
                                 val tipWf = tipW.toFloat()
-                                val tipHf = tipH.toFloat()
                                 val gridWf = gridW.toFloat()
                                 val x = (cx - tipWf / 2f)
                                     .coerceIn(0f, (gridWf - tipWf).coerceAtLeast(0f))
                                     .toInt()
-                                // 上方放得下就放上方，否则翻到格子下方
-                                val above = pitchPx * row - tipHf - 10f
-                                val y = if (above >= -tipHf * 0.35f) above else pitchPx * (row + 1) + 10f
+                                val y = if (showBelow) {
+                                    pitchPx * (row + 1) + 8f
+                                } else {
+                                    pitchPx * row - tipH - 10f
+                                }
                                 IntOffset(x, y.toInt())
                             }
                     )
@@ -346,35 +367,45 @@ private fun DayTip(
     }
     val md = remember(date) { "${cal.get(Calendar.MONTH) + 1}月${cal.get(Calendar.DAY_OF_MONTH)}日" }
     val rate = if (answered > 0) (correct * 100) / answered else 0
-    // 深色小窗：与参考图一致——深底浅字，浮在格子之上
-    val bg = Color(0xF21F2430)
+    val bg = Color(0xF2222733)      // 深色小窗，与参考图一致
     val fg = Color(0xFFF2F4F8)
-    val fgSub = Color(0xFFB6BECD)
+    val fgSub = Color(0xFFA8B0C0)
 
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Column(
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(bg)
-                .padding(horizontal = 10.dp, vertical = 7.dp)
-        ) {
-            Text(
-                if (answered > 0) "$md · 答了 $answered 题" else "$md · 未练习",
-                color = fg, fontSize = 10.sp, fontWeight = FontWeight.Medium
-            )
-            Text(
-                if (answered > 0) "正确率 $rate%" else "",
-                color = fgSub, fontSize = 10.sp,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
-        // 指向格子的三角：旋转 45° 的小方块，一半压在窗体上、一半露在外面
+    // 箭头：旋转 45° 的小方块，一半压在窗体上、一半露在外面；
+    // 浮在格子上方时朝下（在下边），翻到下方时朝上（在上边）。
+    val arrow: @Composable () -> Unit = {
         Box(
             Modifier
-                .offset(y = (-4).dp)
+                .offset(y = if (below) 4.dp else (-4).dp)
                 .size(8.dp)
                 .rotate(if (below) -45f else 45f)
                 .background(bg)
         )
+    }
+
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        if (below) arrow()
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(7.dp))
+                .background(bg)
+                .padding(horizontal = 8.dp, vertical = 5.dp)
+        ) {
+            // 三行分排而非拼成一行——拼一行时窗宽到能盖住五六列，压住图例与月份标签
+            Text(md, color = fgSub, fontSize = 9.sp, maxLines = 1)
+            Text(
+                if (answered > 0) "答了 $answered 题" else "未练习",
+                color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, modifier = Modifier.padding(top = 1.dp)
+            )
+            if (answered > 0) {
+                Text(
+                    "正确率 $rate%",
+                    color = fgSub, fontSize = 9.sp, maxLines = 1,
+                    modifier = Modifier.padding(top = 1.dp)
+                )
+            }
+        }
+        if (!below) arrow()
     }
 }
