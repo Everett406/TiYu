@@ -9,14 +9,11 @@
     <!-- v2.17.0：拍照搜题整体下线 → CAMERA 权限与 camera.any 特性随之移除，
          应用不再声明任何相机能力，无相机设备/不授予相机的用户零影响 -->
 
-    <!-- v2.19.20：「同步系统壁纸」所必需。
-         Android 13 起 WallpaperManager 不再返回用户壁纸（13 给的是系统默认图，
-         14 直接抛 SecurityException），官方文档写明只有持
-         MANAGE_EXTERNAL_STORAGE 的应用才能在所有版本读到真实壁纸。
-         该权限**不主动申请**：仅当用户在设置页主动点「同步系统壁纸」时，
-         才引导去系统设置开启；不开启则完全不影响应用其余功能。
-         用户可在系统设置随时收回。 -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- v2.19.21：v2.19.20 曾为「同步系统壁纸」声明过 MANAGE_EXTERNAL_STORAGE，
+         随二级面板一并撤回。原因：为一个可有可无的功能要「所有文件访问权限」不划算，
+         且入口已撤、权限无用途。清单回到「不声明任何敏感权限」的状态。
+         同步系统壁纸的实现仍保留在 screens/WallpaperSync.kt（无入口、无权限），
+         日后若要接回去，需同时在本清单重新声明该权限。 -->
 
     <!-- v2.15.0：每日提醒后台保活——调度引擎换 AlarmManager 精确闹钟（进程死也准时）：
          RECEIVE_BOOT_COMPLETED 开机/升级后重排；SCHEDULE_EXACT_ALARM 管 12/12L（默认授予），

@@ -3,6 +3,30 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.21] - 2026-10-12
+
+### 「更换壁纸」整体撤回二级面板，回到点一下直接开相册（用户反馈不需要）
+
+v2.19.20 我在「更换壁纸」按钮下加了个二级面板，先让你选
+「从相册选取」还是「同步系统壁纸」。用户反馈不需要——**已整体撤回**：
+
+- 删除 `WallpaperSourceRow` 面板与相关状态（`showWallpaperSheet` / `wallpaperMsg` /
+  `syncingWallpaper`）。
+- 按钮 `onClick` 改回直接 `wallpaperPicker.launch(PickVisualMedia)`，**一步到位，同 v2.19.19**。
+- **清单撤掉 `MANAGE_EXTERNAL_STORAGE`**：该权限当初只为读系统壁纸而加，
+  为一个可有可无的功能要「所有文件访问权限」不划算，且入口已撤、权限无用途。
+  清单回到「不声明任何敏感权限」的状态。
+- `WallpaperSync.kt` **整份保留但无入口、不声明权限**，等于不存在。保留是因为
+  Android 13/14 的平台限制这段来之不易，日后想接回「同步系统壁纸」，
+  加个入口 + 补回权限声明即可，不必重新踩坑。
+- `static_check` 新增两条禁令：`WallpaperSourceRow` 不得复活、清单不得出现
+  `MANAGE_EXTERNAL_STORAGE`。
+
+### v2.19.20 的「底栏模糊」改动全部保留
+
+「底栏玻璃模糊」→「底栏模糊」；液态玻璃 = **关 / 轻 / 重**（关档完全不挂 blur 效果），
+亚克力 = 低 / 中 / 高。副标题按两种模式分文案，均单行 + 省略号。
+
 ## [2.19.20] - 2026-10-12
 
 ### 「底栏模糊」改名与分档重做 + 更换壁纸二级面板（新增同步系统壁纸）

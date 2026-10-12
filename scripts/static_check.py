@@ -685,3 +685,20 @@ else:
 
 print("PASS" if not fail else "STATIC CHECK FAILED")
 sys.exit(1 if fail else 0)
+
+
+# 4.x) 「更换壁纸」二级面板残留禁令（v2.19.21：用户反馈不需要，整体撤回）
+#      v2.19.20 曾在「更换壁纸」按钮下加二级面板（相册 / 同步系统壁纸）。
+#      用户要求改回最直接的做法：点按钮直接开系统相册选择器，多一次点击没意义。
+#      同步系统壁纸还额外要求「所有文件访问权限」——为一个可有可无的功能要这种
+#      敏感权限不划算，故清单也一并撤了。以下 token 若再次出现即为回归。
+_sheet_hits = grep_hits("WallpaperSourceRow")
+if _sheet_hits:
+    print("[FAIL] 「更换壁纸」二级面板已被撤回（用户要求直接开相册），不得复活：")
+    for _h in _sheet_hits[:5]:
+        print("   ", _h)
+    fail = True
+_manifest = load(_repo_root + "/app/src/main/AndroidManifest.xml")
+if "MANAGE_EXTERNAL_STORAGE" in _manifest:
+    print("[FAIL] 清单里不得声明 MANAGE_EXTERNAL_STORAGE（v2.19.21 已随二级面板撤回）")
+    fail = True

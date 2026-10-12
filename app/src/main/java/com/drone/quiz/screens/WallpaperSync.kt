@@ -29,6 +29,11 @@ import java.io.File
  * 并在**用户主动点「同步系统壁纸」时**才引导去系统设置开启——
  * 不主动申请、不静默索取。
  */
+// v2.19.21：**当前没有任何入口调用本文件**（二级面板已整体撤回），清单也不再声明
+// MANAGE_EXTERNAL_STORAGE，故 sync() 在 Android 13+ 必然返回 NeedAllFilesAccess。
+// 代码整份保留是因为平台限制这段来之不易：日后若要接回「同步系统壁纸」，
+// 直接在设置页加一个入口 + 清单里补回权限声明即可，不必重新踩一遍 Android 13/14 的坑。
+// 若长期不再启用，可连同本文件一并删除。
 object WallpaperSync {
 
     sealed interface Result2 {
