@@ -578,6 +578,27 @@ if _vpos < 0 or (_opos > 0 and _vpos < _opos):
 if "ParseBlock(q.explanation)" not in _exam:
     print("[FAIL] 考试页解析须用共用 ParseBlock（与刷题页同构）"); fail = True
 
+# v2.19.19：即时判定开关必须真的生效；设置项副标题一律单行
+_exam2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+# v2.19.18 照搬刷题页的 `ua == null` 判据，但两页 ua 语义不同：
+# 刷题页 ua 是「提交后才写入」，模考页 ua 是「点一下就写入」——于是关掉即时判定
+# 也会当场点亮正确答案。且 enabled = ua == null 把「可改选」也一并禁掉了。
+if "val state = if (verdict == null || ua == null) 0" not in _exam2:
+    print("[FAIL] 模考选项 state 须以 verdict 为判据，不得用 ua —— "
+          "模考的 ua 是点一下就写入的，用 ua 会让『关掉即时判定仍当场亮答案』"); fail = True
+_opt_blk = _exam2[_exam2.index("// v2.19.19 修回归"):]
+_opt_blk = _opt_blk[:_opt_blk.index(")")] if ")" in _opt_blk else _opt_blk
+if "enabled = true," not in _exam2:
+    print("[FAIL] 模考单选/判断须保持可改选（enabled = true）——"
+          "v2.19.18 误传 enabled = ua == null，把已选即锁死了"); fail = True
+# 设置项副标题：单行 + 省略号兜底，且不得再用长句
+if "overflow = TextOverflow.Ellipsis" not in _exam2:
+    print("[FAIL] 模考配置项副标题须加 TextOverflow.Ellipsis —— 用户反馈长副标题换行很难受"); fail = True
+for _long in ("逐题作答，当场验正误；已判定的题不再改动", "全卷交卷后统核正误（传统模考口径）",
+              "简答题提交后对照参考答案自评计分", "题型顺序 · 长按拖动调整（先做哪种题型）"):
+    if _long in _exam2:
+        print(f"[FAIL] 配置项副标题须 ≤10 字，长句不得保留：{_long}"); fail = True
+
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
 #          电池白名单请求 + Receiver 注册 + 权限齐全。

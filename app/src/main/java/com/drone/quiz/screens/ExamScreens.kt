@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -547,9 +548,13 @@ fun ExamConfigScreen(
                                     Column(Modifier.weight(1f)) {
                                         Text("即时判定", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                         Text(
-                                            if (instantJudge) "逐题作答，当场验正误；已判定的题不再改动"
-                                            else "全卷交卷后统核正误（传统模考口径）",
+                                            // v2.19.19：副标题一律 ≤10 字（用户反馈原来的长文换行很别扭），
+                                            // 再加 maxLines=1 + 省略号兜底——将来文案变长也不会换行。
+                                            if (instantJudge) "逐题作答，当场验正误"
+                                            else "交卷后统核正误",
                                             color = ui.textSub, fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
@@ -572,8 +577,9 @@ fun ExamConfigScreen(
                                         Column(Modifier.weight(1f)) {
                                             Text("含简答题", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                             Text(
-                                                "简答题提交后对照参考答案自评计分",
+                                                "提交后对照答案自评",
                                                 color = ui.textSub, fontSize = 11.sp,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.padding(top = 2.dp)
                                             )
                                         }
@@ -588,8 +594,9 @@ fun ExamConfigScreen(
                                     }
                                 }
                                 Text(
-                                    "题型顺序 · 长按拖动调整（先做哪种题型）",
+                                    "长按拖动调整先后",
                                     color = ui.textSub, fontSize = 11.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(top = 14.dp)
                                 )
                                 ReorderableTypeList(
@@ -601,7 +608,7 @@ fun ExamConfigScreen(
                                 )
                                 // v2.8.3：解释可排序的题型范围（只有单选+判断的题库用户会疑惑"怎么只有两个"）
                                 Text(
-                                    "当前题库共 ${bankTypes.size} 种题型，未导入的题型不参与排序",
+                                    "共 ${bankTypes.size} 种题型 · 未导入的不参与",
                                     color = ui.textSub, fontSize = 10.sp,
                                     modifier = Modifier.padding(top = 2.dp, start = 4.dp)
                                 )
@@ -1385,7 +1392,15 @@ private fun ExamQuestionCard(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         q.optionsOrJudge.forEachIndexed { i, opt ->
-                            val state = if (ua == null) 0
+                            // v2.19.19 修回归：v2.19.18 直接照搬了刷题页的 `ua == null` 判据，
+                            // 但两页的 ua 语义根本不同 ——
+                            //   刷题页 ua 是「提交后才写入的作答」，点一下只是选中；
+                            //   模考页 ua 是「点一下就写入的作答」，即刻非空。
+                            // 于是模考里点完选项 ua 立刻非空，state 立刻变 1/2，
+                            // **把正确答案当场点亮**——即使即时判定是关的。
+                            // 正确判据是 `verdict`（已带 reveal/instantJudge 前置），
+                            // 不是 `ua`。
+                            val state = if (verdict == null || ua == null) 0
                             else when {
                                 i == q.answer -> 1
                                 i == ua.picked -> 2
@@ -1401,7 +1416,9 @@ private fun ExamQuestionCard(
                                 label = optionLabel(i, q.isJudge),
                                 text = opt,
                                 state = state,
-                                enabled = ua == null,
+                                // 模考作答期内可改选（v2.19.18 误传 ua == null，
+                                // 把"已选即锁定"带了过来，等于不让改答案——现恢复原行为）
+                                enabled = true,
                                 onClick = { onAnswer(UserAnswer(picked = i)) }
                             )
                         }
