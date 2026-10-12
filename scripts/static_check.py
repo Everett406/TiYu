@@ -548,9 +548,10 @@ if "includeFontPadding = false" not in _qb:
     print("[FAIL] 选项圆标的字母须设 includeFontPadding=false —— Android 默认的 CJK "
           "字形留白会把字压在圆心下方（用户反馈『字母偏下』）"); fail = True
 # 判断题 √/× 自绘；系统字符太细不好看
-for _needle in ("JudgeGlyph", "StrokeCap.Round", "JUDGE_CHECK", "JUDGE_CROSS"):
+for _needle in ("JudgeGlyph", "drawPath(path, color)", "JUDGE_CHECK", "JUDGE_CROSS"):
     if _needle not in _qb:
-        print(f"[FAIL] 判断题圆标须自绘（缺 {_needle}）——系统字符『√』是根号且字重不可控"); fail = True
+        print(f"[FAIL] 判断题圆标须自绘且用**填充多边形**（缺 {_needle}）——"
+              "描边折线在真机上『极丑而且不居中』：包围盒居中≠视觉重心居中"); fail = True
 _fmt = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
 if 'internal const val JUDGE_CHECK = "√"' not in _fmt:
     print("[FAIL] JUDGE_CHECK/JUDGE_CROSS 须与 optionLabel 同源定义，避免标签与自绘分支漂移"); fail = True

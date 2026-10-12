@@ -37,11 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Canvas
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -238,33 +234,47 @@ private fun OptionBadge(label: String, state: Int) {
     }
 }
 
-/** 判断题圆标：**自绘**的对勾 / 叉号。系统字符 `√` 是根号不是对勾，字重也不受控。 */
+/**
+ * 判断题圆标：**自绘**的对勾 / 叉号。
+ *
+ * **为什么是填充多边形而不是描边折线**：v2.19.16 那一版用 `drawLine`/`drawPath`
+ * 手搓折线，坐标是凭感觉拍的，结果真机上是「极丑无比，而且还不居中」——
+ * 折线的**几何包围盒居中 ≠ 视觉重心居中**：勾形的长臂墨量远大于短臂，
+ * 整块墨的重心被拽到左下，看着就是歪的。描边还额外受 `stroke/2` 的圆头外扩影响。
+ *
+ * 现改为**填充多边形**，按 24 单位视口里的标准比例作图再等比缩放：
+ * 勾的墨迹在 x∈[3.4,21]、y∈[5.6,19]，叉在 x,y∈[5,19]，两者都以视口中心对称，
+ * 缩放后自然落在圆心，且笔画粗实、不受系统字重影响。
+ */
 @Composable
 private fun JudgeGlyph(isCheck: Boolean, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier.size(13.dp)) {
-        val w = size.width
-        val h = size.height
-        val stroke = 2.1.dp.toPx()
+        val k = size.minDimension / 24f
+        val path = Path()
         if (isCheck) {
-            val p = Path().apply {
-                moveTo(w * 0.24f, h * 0.52f)
-                lineTo(w * 0.43f, h * 0.71f)
-                lineTo(w * 0.76f, h * 0.30f)
-            }
-            drawPath(
-                path = p, color = color,
-                style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            )
+            path.moveTo(9f * k, 16.2f * k)
+            path.lineTo(4.8f * k, 12f * k)
+            path.lineTo(3.4f * k, 13.4f * k)
+            path.lineTo(9f * k, 19f * k)
+            path.lineTo(21f * k, 7f * k)
+            path.lineTo(19.6f * k, 5.6f * k)
+            path.close()
         } else {
-            drawLine(
-                color, Offset(w * 0.29f, h * 0.29f), Offset(w * 0.71f, h * 0.71f),
-                strokeWidth = stroke, cap = StrokeCap.Round
-            )
-            drawLine(
-                color, Offset(w * 0.71f, h * 0.29f), Offset(w * 0.29f, h * 0.71f),
-                strokeWidth = stroke, cap = StrokeCap.Round
-            )
+            path.moveTo(19f * k, 6.4f * k)
+            path.lineTo(17.6f * k, 5f * k)
+            path.lineTo(12f * k, 10.6f * k)
+            path.lineTo(6.4f * k, 5f * k)
+            path.lineTo(5f * k, 6.4f * k)
+            path.lineTo(10.6f * k, 12f * k)
+            path.lineTo(5f * k, 17.6f * k)
+            path.lineTo(6.4f * k, 19f * k)
+            path.lineTo(12f * k, 13.4f * k)
+            path.lineTo(17.6f * k, 19f * k)
+            path.lineTo(19f * k, 17.6f * k)
+            path.lineTo(13.4f * k, 12f * k)
+            path.close()
         }
+        drawPath(path, color)
     }
 }
 
