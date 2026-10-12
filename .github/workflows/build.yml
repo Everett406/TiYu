@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION_NAME: 2.19.16
-  APP_VERSION_TAG: v2.19.16
+  APP_VERSION_NAME: 2.19.17
+  APP_VERSION_TAG: v2.19.17
 
 jobs:
   build:
