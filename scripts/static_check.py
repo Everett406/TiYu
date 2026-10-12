@@ -541,6 +541,20 @@ if "maxLines = 1" not in _foot:
 
 # ⑥ 底栏不再有渐隐模糊（v2.19.12 已整体移除），本条随之作废
 
+# 选项圆标：字母必须真居中；判断题对勾/叉号必须自绘
+_qb = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
+# Android includeFontPadding 默认 true（为 CJK 留白），会把 24dp 圆标里的字形整体压低
+if "includeFontPadding = false" not in _qb:
+    print("[FAIL] 选项圆标的字母须设 includeFontPadding=false —— Android 默认的 CJK "
+          "字形留白会把字压在圆心下方（用户反馈『字母偏下』）"); fail = True
+# 判断题 √/× 自绘；系统字符太细不好看
+for _needle in ("JudgeGlyph", "StrokeCap.Round", "JUDGE_CHECK", "JUDGE_CROSS"):
+    if _needle not in _qb:
+        print(f"[FAIL] 判断题圆标须自绘（缺 {_needle}）——系统字符『√』是根号且字重不可控"); fail = True
+_fmt = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
+if 'internal const val JUDGE_CHECK = "√"' not in _fmt:
+    print("[FAIL] JUDGE_CHECK/JUDGE_CROSS 须与 optionLabel 同源定义，避免标签与自绘分支漂移"); fail = True
+
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
 #          电池白名单请求 + Receiver 注册 + 权限齐全。

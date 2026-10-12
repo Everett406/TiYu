@@ -80,8 +80,16 @@ fun displayUserAnswer(q: Question, ua: UserAnswer?): String {
     }
 }
 
+/**
+ * 判断题圆标的两个标签。圆标据此判定走"自绘对勾/叉号"分支而非字母分支
+ * （系统字符 `√` 实为根号、`×` 字重随系统字体而变，用户反馈太细不好看）。
+ * 与 [optionLabel] 同源定义，避免两边漂移。
+ */
+internal const val JUDGE_CHECK = "√"
+internal const val JUDGE_CROSS = "×"
+
 internal fun optionLabel(i: Int, isJudge: Boolean): String =
-    if (isJudge) listOf("√", "×")[i.coerceIn(0, 1)] else ('A' + i).toString()
+    if (isJudge) listOf(JUDGE_CHECK, JUDGE_CROSS)[i.coerceIn(0, 1)] else ('A' + i).toString()
 
 // ==================== 导入（CSV / ZIP） ====================
 

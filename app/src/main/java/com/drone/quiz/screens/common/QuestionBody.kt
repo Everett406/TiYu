@@ -36,6 +36,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
@@ -61,6 +68,8 @@ import com.drone.quiz.ui.theme.LocalReadingFont
 import com.drone.quiz.ui.theme.LocalUi
 import com.drone.quiz.ui.theme.backdropIsDark
 import com.kyant.backdrop.Backdrop
+import com.drone.quiz.data.repo.JUDGE_CHECK
+import com.drone.quiz.data.repo.JUDGE_CROSS
 
 /**
  * 题型作答组件族（v2.8.0）：刷题页与模考页共用。
@@ -182,9 +191,24 @@ fun OptionToggleRow(
     }
 }
 
+/**
+ * 选项圆标。
+ *
+ * **字母为什么看着偏下**：Android 的 `PlatformTextStyle.includeFontPadding` 默认是
+ * `true`——那是为中日韩字形预留的上下留白。圆标只有 24.dp，行盒被这层留白撑高后
+ * 再由 `contentAlignment = Center` 居中，于是**字形本身被整体压低了约半号**。
+ * 置 `includeFontPadding = false` 并把 `lineHeight` 收到与 `fontSize` 相同，
+ * 字形才真正落在圆心。
+ *
+ * **判断题的 √/× 自绘**（用户反馈系统字形太细、不好看）：
+ * 原先直接用字符 `√` / `×`，前者是根号而非对勾、后者字重也随系统字体而变。
+ * 现改为 Canvas 描边绘制：圆头圆角、粗细可控，两个符号视觉重量一致。
+ * ABCD 仍用默认字母，不自绘。
+ */
 @Composable
 private fun OptionBadge(label: String, state: Int) {
     val ui = LocalUi.current
+    val fg = if (state > 0) Color.White else ui.textSub
     Box(
         Modifier
             .size(24.dp)
@@ -198,12 +222,49 @@ private fun OptionBadge(label: String, state: Int) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            label,
-            color = if (state > 0) Color.White else ui.textSub,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
+        when (label) {
+            JUDGE_CHECK -> JudgeGlyph(isCheck = true, color = fg)
+            JUDGE_CROSS -> JudgeGlyph(isCheck = false, color = fg)
+            else -> Text(
+                label,
+                color = fg,
+                fontSize = 11.sp,
+                // lineHeight 收到与 fontSize 相同，行盒不再被字体行高撑高
+                lineHeight = 11.sp,
+                fontWeight = FontWeight.Bold,
+                style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
+            )
+        }
+    }
+}
+
+/** 判断题圆标：**自绘**的对勾 / 叉号。系统字符 `√` 是根号不是对勾，字重也不受控。 */
+@Composable
+private fun JudgeGlyph(isCheck: Boolean, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(13.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = 2.1.dp.toPx()
+        if (isCheck) {
+            val p = Path().apply {
+                moveTo(w * 0.24f, h * 0.52f)
+                lineTo(w * 0.43f, h * 0.71f)
+                lineTo(w * 0.76f, h * 0.30f)
+            }
+            drawPath(
+                path = p, color = color,
+                style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            )
+        } else {
+            drawLine(
+                color, Offset(w * 0.29f, h * 0.29f), Offset(w * 0.71f, h * 0.71f),
+                strokeWidth = stroke, cap = StrokeCap.Round
+            )
+            drawLine(
+                color, Offset(w * 0.71f, h * 0.29f), Offset(w * 0.29f, h * 0.71f),
+                strokeWidth = stroke, cap = StrokeCap.Round
+            )
+        }
     }
 }
 

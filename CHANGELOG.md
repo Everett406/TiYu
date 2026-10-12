@@ -3,6 +3,36 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.16] - 2026-10-10
+
+### 选项圆标：字母真正居中 + 判断题对勾/叉号自绘
+
+用户真机截图反馈两条：① 选项圆标里的字母**偏下**，不是居中状态；
+② 判断题的勾叉太细、不好看，要求自绘；ABC 则维持默认字母。
+
+**① 字母偏下的根因**（不是随手加个偏移能解决的）。
+Android 的 `PlatformTextStyle.includeFontPadding` 默认是 `true`——那是**为中日韩
+字形预留的上下留白**。选项圆标只有 24.dp，这层留白把行盒撑高，行盒再被
+`contentAlignment = Center` 居中，于是**字形本身被整体压低了约半号**。
+
+修法两条同时上：`includeFontPadding = false` 去掉 CJK 留白，
+`lineHeight` 从默认字体行高收到与 `fontSize` 相同（11.sp），
+让行盒不再被额外撑高。字形这才真正落在圆心。
+
+**② 判断题对勾/叉号自绘。**
+原先直接用字符 `√` / `×`：`√` 其实是**根号**而非对勾，字形不对；
+`×` 的字重随系统字体而变，用户反馈"太细、不太好看"。
+现改为 Canvas 描边绘制（`JudgeGlyph`）：圆头圆角、笔画 2.1.dp 可控，
+两个符号视觉重量一致。
+**ABCD 维持默认字母，不自绘**（用户原话"默认这些吧，不用自己再画那个字母"）。
+
+`JUDGE_CHECK` / `JUDGE_CROSS` 两个常量与 `optionLabel()` **同源定义**于
+`QuestionFormats.kt`——标签与"走自绘分支"的判定若分两处定义，迟早会漂。
+
+**`static_check` 新增三条**：圆标须设 `includeFontPadding = false`；
+判断题圆标须自绘（`JudgeGlyph` / `StrokeCap.Round` / 两个常量缺一即失败）；
+两个常量须与 `optionLabel` 同源。
+
 ## [2.19.15] - 2026-10-10
 
 ### 详情浮窗改用 Popup：真·浮层，不占布局
