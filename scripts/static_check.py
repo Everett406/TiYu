@@ -583,14 +583,25 @@ _exam2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreen
 # v2.19.18 照搬刷题页的 `ua == null` 判据，但两页 ua 语义不同：
 # 刷题页 ua 是「提交后才写入」，模考页 ua 是「点一下就写入」——于是关掉即时判定
 # 也会当场点亮正确答案。且 enabled = ua == null 把「可改选」也一并禁掉了。
-if "val state = if (verdict == null || ua == null) 0" not in _exam2:
-    print("[FAIL] 模考选项 state 须以 verdict 为判据，不得用 ua —— "
-          "模考的 ua 是点一下就写入的，用 ua 会让『关掉即时判定仍当场亮答案』"); fail = True
-_opt_blk = _exam2[_exam2.index("// v2.19.19 修回归"):]
-_opt_blk = _opt_blk[:_opt_blk.index(")")] if ")" in _opt_blk else _opt_blk
-if "enabled = true," not in _exam2:
-    print("[FAIL] 模考单选/判断须保持可改选（enabled = true）——"
-          "v2.19.18 误传 enabled = ua == null，把已选即锁死了"); fail = True
+# v2.19.22：这条禁令本身在 v2.19.22 被修正过一次。它当年只认「三态写法」，
+# 而三态写法把『选中态』和『判定态』挤在一个变量里，一关判定选中态就没了
+# （用户报告：关掉即时判定后点选项毫无反应）。现在要求**四态**：
+#   verdict != null → 才判对错（绿/红）；否则 ua.picked → 已选中（state 3）。
+# 意图不变：对错只能由 verdict 决定，绝不能用 ua 直接点亮正确答案。
+if "verdict != null -> when {" not in _exam2 or "i == ua.picked -> 3" not in _exam2:
+    print("[FAIL] 模考选项 state 须为四态：对错由 verdict 决定，未判定只显『已选中』—— "
+          "绝不能只用 ua 判对错（会当场亮答案），也不能退回三态（选中态会消失）")
+    fail = True
+# v2.19.22：这条禁令本身被修正过两次，教训记在这里。
+#   v2.19.18 传 enabled = ua == null → 关判定时也锁死，用户报"点不了"；
+#   v2.19.19 改成写死 enabled = true → 开判定时能反复改，用户裁定不对
+#            （口径：「选了就是选了，然后只能下一题」）。
+# 正确判据是 **是否已判定**：`enabled = !judged`，即 verdict != null 才锁。
+# 既不能拿 ua 当锁的判据（未判定就被锁死），也不能写死 true（已判定仍能改）。
+if "enabled = !judged," not in _exam2:
+    print("[FAIL] 模考单选/判断锁定判据须为 enabled = !judged——"
+          "判定后锁定只能下一题；未判定（含关掉即时判定）仍可改选。"
+          "既不能写死 true，也不能拿 ua 当判据"); fail = True
 # 设置项副标题：单行 + 省略号兜底，且不得再用长句
 if "overflow = TextOverflow.Ellipsis" not in _exam2:
     print("[FAIL] 模考配置项副标题须加 TextOverflow.Ellipsis —— 用户反馈长副标题换行很难受"); fail = True
@@ -702,3 +713,24 @@ _manifest = load(_repo_root + "/app/src/main/AndroidManifest.xml")
 if "MANAGE_EXTERNAL_STORAGE" in _manifest:
     print("[FAIL] 清单里不得声明 MANAGE_EXTERNAL_STORAGE（v2.19.21 已随二级面板撤回）")
     fail = True
+
+
+# 4.y) 模考单选/判断「已选中未判定」态残留禁令（v2.19.22）
+#      用户报告：关掉模考「即时判定」后点选项毫无反应，误以为点不动。
+#      根因是 OptionRow.state 只有 0/1/2 三态，判定一关 verdict 恒 null，
+#      state 跟着恒 0，选中态被一并抹掉。三处必须同时在位：
+#        1) OptionRow 注释里声明 3 态
+#        2) optionColors 有 3 分支
+#        3) 模考 state 计算有 `i == ua.picked -> 3`
+_exam = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+_qb = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
+for _tok, _where, _txt in [
+    ("i == ua.picked -> 3", _exam, "模考单选/判断 state 计算缺『已选中未判定』分支"),
+    ("3 -> ui.ink.copy(alpha = 0.10f) to ui.ink.copy(alpha = 0.35f)", _qb,
+     "optionColors 缺 state 3（已选中未判定）配色"),
+    ("3 -> ui.ink                      // 已选中未判定：实心 ink 底 + 白字", _qb,
+     "OptionBadge 缺 state 3 徽标底色"),
+]:
+    if _tok not in _where:
+        print("[FAIL] " + _txt)
+        fail = True

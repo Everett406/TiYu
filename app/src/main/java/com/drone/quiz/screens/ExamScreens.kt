@@ -1346,6 +1346,9 @@ private fun ExamQuestionCard(
     val ui = LocalUi.current
     // v2.18.0 即时判定：仅显示时机变化，judgeAnswer 与交卷判分是同一套口径
     val verdict: Boolean? = if (reveal) judgeAnswer(q, ua) else null
+    // 本题是否已被判定（= 选项是否锁定）。判据是 verdict，绝不是 ua：
+    // 模考的 ua 是「点一下就写入」的，拿它当锁会误伤"关掉即时判定"的正常改选。
+    val judged = verdict != null
     GlassCard(
         backdrop = backdrop,
         modifier = Modifier
@@ -1391,6 +1394,14 @@ private fun ExamQuestionCard(
                             .padding(top = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // 与模考多选对称的一行状态说明。锁了就得说清楚为什么锁，
+                        // 否则用户会以为是点不动（v2.19.22 用户正是这么反馈的）。
+                        Text(
+                            if (judged) (if (q.isJudge) "判断题 · 已判定，不能再改 —— 下一题继续"
+                                          else "单选题 · 已判定，不能再改 —— 下一题继续")
+                            else (if (q.isJudge) "判断题 · 点一下即为作答" else "单选题 · 点一下即为作答"),
+                            color = ui.textSub, fontSize = 11.sp
+                        )
                         q.optionsOrJudge.forEachIndexed { i, opt ->
                             // v2.19.19 修回归：v2.19.18 直接照搬了刷题页的 `ua == null` 判据，
                             // 但两页的 ua 语义根本不同 ——
@@ -1400,10 +1411,19 @@ private fun ExamQuestionCard(
                             // **把正确答案当场点亮**——即使即时判定是关的。
                             // 正确判据是 `verdict`（已带 reveal/instantJudge 前置），
                             // 不是 `ua`。
-                            val state = if (verdict == null || ua == null) 0
-                            else when {
-                                i == q.answer -> 1
-                                i == ua.picked -> 2
+                            // v2.19.22 修用户报告的"关掉即时判定后连点选项都点不了"：
+                            // v2.19.19 把判据从 ua 换成 verdict 是对的（否则会当场点亮
+                            // 正确答案），但 state 只有 0/1/2 三态，一关判定 verdict 恒为
+                            // null → state 恒 0 → **选中态被一并抹掉，点下去毫无反应**。
+                            // 现在拆成四态：已判定才显对错，未判定只显"选中了"。
+                            val state = when {
+                                ua == null -> 0
+                                verdict != null -> when {      // 已判定 → 绿/红
+                                    i == q.answer -> 1
+                                    i == ua.picked -> 2
+                                    else -> 0
+                                }
+                                i == ua.picked -> 3            // 已选中，未判定
                                 else -> 0
                             }
                             // v2.19.18：改用共用 OptionRow —— 此前考试页自己内联画了一整套
@@ -1416,9 +1436,15 @@ private fun ExamQuestionCard(
                                 label = optionLabel(i, q.isJudge),
                                 text = opt,
                                 state = state,
-                                // 模考作答期内可改选（v2.19.18 误传 ua == null，
-                                // 把"已选即锁定"带了过来，等于不让改答案——现恢复原行为）
-                                enabled = true,
+                                // v2.19.22 修正：能不能改，取决于**这一题判定了没有**，
+                                // 而不是"写了答案没有"。
+                                //   · 即时判定开 → 点一下即判定 → 锁，只能下一题
+                                //     （用户口径：「选了就是选了」，改答案等于改判分依据）
+                                //   · 即时判定关 → verdict 恒 null → 永远可改选
+                                //     （全卷交后统核，本来就该允许反复斟酌）
+                                // 绝不能用 ua 当锁的判据：模考的 ua 是点一下就写入的，
+                                // 拿它当判据会在没开判定时也把选项锁死（v2.19.18 的老坑）。
+                                enabled = !judged,
                                 onClick = { onAnswer(UserAnswer(picked = i)) }
                             )
                         }

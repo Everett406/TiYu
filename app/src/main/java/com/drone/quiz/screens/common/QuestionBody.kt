@@ -86,7 +86,11 @@ fun QuestionTypeTag(type: String) {
 fun OptionRow(
     label: String,
     text: String,
-    state: Int, // 0 默认 1 正确 2 误选
+    // 0 默认 / 1 正确 / 2 误选 / 3 已选中但**未判定**
+    // state 3 是 v2.19.22 加的：模考关掉「即时判定」时，点完选项 verdict 恒为 null，
+    // 若仍只用 0/1/2 则选中态会一并消失——点下去毫无反应，用户会以为选项点不动。
+    // 3 只表达"你选了这个"，**不泄露对错**，交卷判分口径不变。
+    state: Int,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -213,6 +217,7 @@ private fun OptionBadge(label: String, state: Int) {
                 when (state) {
                     1 -> ui.correct
                     2 -> ui.wrong
+                    3 -> ui.ink                      // 已选中未判定：实心 ink 底 + 白字
                     else -> ui.ink.copy(alpha = 0.08f)
                 }
             ),
@@ -293,6 +298,10 @@ private fun optionColors(state: Int): Pair<Color, Color> {
     return when (state) {
         1 -> ui.correct.copy(alpha = 0.14f) to ui.correct.copy(alpha = 0.6f)
         2 -> ui.wrong.copy(alpha = 0.14f) to ui.wrong.copy(alpha = 0.6f)
+        // 已选中未判定：走 ink 系而非绿/红，避免在关掉即时判定时提前泄露对错。
+        // 数值刻意与模考多选的"selected"分支保持一致（ui.ink 0.10 / 0.35），
+        // 两处视觉语言统一。
+        3 -> ui.ink.copy(alpha = 0.10f) to ui.ink.copy(alpha = 0.35f)
         else -> ui.ink.copy(alpha = 0.05f) to ui.ink.copy(alpha = 0.08f)
     }
 }
