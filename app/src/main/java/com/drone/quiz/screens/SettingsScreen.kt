@@ -53,6 +53,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,6 +163,11 @@ fun SettingsScreen(backdrop: Backdrop) {
             ReminderScheduler.requestRunInBackground(context)
         }
     }
+
+    // v2.19.20：更换壁纸改为二级选择面板（相册 / 同步系统壁纸）
+    var showWallpaperSheet by remember { mutableStateOf(false) }
+    var wallpaperMsg by remember { mutableStateOf<String?>(null) }
+    var syncingWallpaper by remember { mutableStateOf(false) }
 
     // 壁纸选择器：导入后复制到私有目录（重启/源文件删除后仍可用）。
     // v2.6.3 修复"更换壁纸不生效"：此前固定写 wallpaper.jpg，DataStore 路径字符串不变，
@@ -421,14 +427,26 @@ fun SettingsScreen(backdrop: Backdrop) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("底栏玻璃模糊", color = ui.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("底栏模糊", color = ui.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            listOf("轻透", "适中", "朦胧").getOrElse(settings.glassBlur) { "适中" },
-                            color = ui.textSub, fontSize = 12.sp
+                            // 亚克力维持原三档描述；液态玻璃多一档"纯玻璃"
+                            if (settings.effects) {
+                                listOf("纯玻璃 · 不模糊", "轻微模糊", "明显模糊")
+                                    .getOrElse(settings.glassBlur) { "轻微模糊" }
+                            } else {
+                                listOf("轻度模糊", "中度模糊", "高度模糊")
+                                    .getOrElse(settings.glassBlur) { "中度模糊" }
+                            },
+                            color = ui.textSub, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                     }
                     SegmentedRow(
-                        options = listOf("低", "中", "高"),
+                        // 档位名按画面特效切换（v2.19.20）：
+                        // 亚克力仍是低/中/高；液态玻璃是 关/轻/重 —— 用户明确不要
+                        // "低/中"这种直白写法，改用描述模糊轻重的单字。
+                        options = if (settings.effects) listOf("关", "轻", "重")
+                                  else listOf("低", "中", "高"),
                         selectedIndex = settings.glassBlur,
                         onSelect = { scope.launch { ServiceLocator.settings.setGlassBlur(it) } },
                         modifier = Modifier.width(150.dp)
@@ -619,12 +637,10 @@ fun SettingsScreen(backdrop: Backdrop) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // v2.19.20：点「更换壁纸」进二级面板选来源（相册 / 同步系统壁纸）。
+                    // 卡片右上角不再塞第三个按钮——屏幕宽度有限，挤进去必然换行或过小。
                     GlassButton(
-                        onClick = { wallpaperPicker.launch(
-                            androidx.activity.result.PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly
-                            )
-                        ) },
+                        onClick = { showWallpaperSheet = true },
                         backdrop = backdrop,
                         surfaceColor = ui.ink,
                         heightDp = 40.dp
@@ -1059,7 +1075,82 @@ fun SettingsScreen(backdrop: Backdrop) {
             }
         }
     )
-}
+        // ---- 更换壁纸：二级选择面板（v2.19.20）----
+        GlassBottomSheet(
+            visible = showWallpaperSheet,
+            backdrop = backdrop,
+            onDismiss = { showWallpaperSheet = false }
+        ) {
+            Text(
+                "更换壁纸",
+                color = ui.text, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            // 来源一：相册（系统照片选择器，**零权限**）
+            WallpaperSourceRow(
+                iconTitle = "从相册选取",
+                iconSub = "挑一张图作为全局背景",
+                enabled = !syncingWallpaper,
+                onClick = {
+                    showWallpaperSheet = false
+                    wallpaperPicker.launch(
+                        androidx.activity.result.PickVisualMediaRequest(
+                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                        )
+                    )
+                }
+            )
+            // 来源二：同步系统壁纸（Android 13+ 需「所有文件访问权限」，按需引导）
+            WallpaperSourceRow(
+                iconTitle = "同步系统壁纸",
+                iconSub = if (WallpaperSync.hasAllFilesAccess(context))
+                    "直接沿用手机当前那张壁纸"
+                else "需开启「所有文件访问权限」",
+                enabled = !syncingWallpaper,
+                onClick = {
+                    showWallpaperSheet = false
+                    if (!WallpaperSync.hasAllFilesAccess(context)) {
+                        wallpaperMsg = "Android 13 起系统不再允许应用读取用户壁纸，" +
+                                "需开启「所有文件访问权限」才能同步。开启后可再次点击本项。"
+                        WallpaperSync.openAllFilesAccessSettings(context)
+                        return@WallpaperSourceRow
+                    }
+                    syncingWallpaper = true
+                    scope.launch {
+                        when (val r = WallpaperSync.sync(context)) {
+                            is WallpaperSync.Result2.Ok -> {
+                                val old = settings.wallpaper
+                                ServiceLocator.settings.setWallpaper(r.file.absolutePath)
+                                if (old.startsWith(context.filesDir.absolutePath) &&
+                                    old != r.file.absolutePath
+                                ) java.io.File(old).delete()
+                                wallpaperMsg = "已同步系统壁纸"
+                            }
+                            is WallpaperSync.Result2.NeedAllFilesAccess ->
+                                wallpaperMsg = "尚未开启「所有文件访问权限」"
+                            is WallpaperSync.Result2.Failed ->
+                                wallpaperMsg = "同步失败：${r.reason}"
+                        }
+                        syncingWallpaper = false
+                    }
+                }
+            )
+            wallpaperMsg?.let { msg ->
+                Text(
+                    msg,
+                    color = ui.textSub, fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+                Spacer(Modifier.height(48.dp))   // 给提示留出消散时间
+            }
+            if (wallpaperMsg != null) {
+                LaunchedEffect(wallpaperMsg) {
+                    kotlinx.coroutines.delay(6000)
+                    wallpaperMsg = null
+                }
+            }
+        }
+    }
 
 // ==================== 关于弹窗（v2.8.9，用户口径：从下面弹出来的那种） ====================
 
@@ -1193,6 +1284,46 @@ private fun AboutSheet(
                         .padding(top = 10.dp)
                 )
             }
+        }
+    }
+}
+
+/** 「更换壁纸」二级面板里的一行来源。标题 + 说明两行，不塞图标以免挤宽度。 */
+@Composable
+private fun WallpaperSourceRow(
+    iconTitle: String,
+    iconSub: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val ui = LocalUi.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(ui.ink.copy(alpha = if (enabled) 0.06f else 0.03f))
+            .then(
+                if (enabled) Modifier.clickable(
+                    interactionSource = null, indication = null, onClick = onClick
+                ) else Modifier
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                iconTitle,
+                color = if (enabled) ui.text else ui.textSub,
+                fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Text(
+                iconSub,
+                color = ui.textSub, fontSize = 11.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
+            )
         }
     }
 }

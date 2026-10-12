@@ -88,9 +88,18 @@ fun GlassBottomTabs(
     val accentColor = ui.ink // 选中项透玻璃呈现墨色（浅色主题）/奶油色（深色主题）
     val containerColor = ui.surface.copy(alpha = if (ui.isDark) 0.4f else 0.35f)
 
-    // 玻璃模糊度三档（设置-外观可调）：低 4dp / 中 8dp / 高 14dp
+    // 底栏模糊度三档（设置-外观可调）。**按画面特效分两套解释**（v2.19.20）：
+    //   液态玻璃：0 关（纯玻璃，0dp）/ 1 轻 6dp / 2 重 14dp
+    //   亚克力  ：0 低 4dp / 1 中 8dp / 2 高 14dp（维持原值不变）
+    // 用户要求液态玻璃增加一档"完全没有模糊"，故只在液态玻璃下把 0 解释为零模糊；
+    // 亚克力的三档保持原样。
     val glassSettings by ServiceLocator.settings.settings.collectAsState(initial = AppSettings())
-    val barBlurDp = when (glassSettings.glassBlur) { 0 -> 4.dp; 2 -> 14.dp; else -> 8.dp }
+    val barBlurDp = if (glassSettings.effects) {
+        when (glassSettings.glassBlur) { 0 -> 0.dp; 2 -> 14.dp; else -> 6.dp }
+    } else {
+        when (glassSettings.glassBlur) { 0 -> 4.dp; 2 -> 14.dp; else -> 8.dp }
+    }
+    val barBlurPx = with(LocalDensity.current) { barBlurDp.toPx() }
 
     // 关闭特效（亚克力）/崩溃兑底（平涂）：无折射管线，保留选中胶囊与切换
     if (!GlassRuntime.enabled) {
@@ -99,8 +108,9 @@ fun GlassBottomTabs(
             // 无 goo 融合拖尾：胶囊本身快 spring 追到选中位，图标层永远锐利。
             val reduced = rememberReducedMotion()
             val density = LocalDensity.current
-            // glassBlur 三档 → 亚克力模糊 dp（低 4/中 8/高 14 由 barBlurDp 统一口径）
-            val acrylicBlurPx = barBlurDp.let { with(density) { it.toPx() } }
+            // 亚克力档位 → 模糊 px（低 4 / 中 8 / 高 14，由 barBlurDp 统一口径；
+            // 亚克力下 0 档仍是 4dp，不会退化成纯玻璃）
+            val acrylicBlurPx = barBlurPx
             val acrylicSurface = ui.surface.copy(alpha = if (ui.isDark) 0.45f else 0.6f)
 
             val selectedProvider = rememberUpdatedState(selectedTabIndex)
@@ -323,7 +333,8 @@ fun GlassBottomTabs(
                     shape = { Capsule() },
                     effects = {
                         vibrancy()
-                        blur(barBlurDp.toPx())
+                        // 关档：完全不放 blur 效果，bar 退化为纯玻璃
+                        if (barBlurPx > 0f) blur(barBlurPx)
                         lens(24.dp.toPx(), 24.dp.toPx())
                     },
                     layerBlock = {
@@ -361,7 +372,7 @@ fun GlassBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
-                            blur(barBlurDp.toPx())
+                            if (barBlurPx > 0f) blur(barBlurPx)
                             lens(
                                 24.dp.toPx() * progress,
                                 24.dp.toPx() * progress

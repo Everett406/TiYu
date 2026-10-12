@@ -599,6 +599,31 @@ for _long in ("逐题作答，当场验正误；已判定的题不再改动", "�
     if _long in _exam2:
         print(f"[FAIL] 配置项副标题须 ≤10 字，长句不得保留：{_long}"); fail = True
 
+# 底栏模糊档位：同一存储值在两种画面特效下含义不同，改一处必须同步三处
+_set = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SettingsScreen.kt")
+_bar = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/GlassBottomBar.kt")
+_store = load(_repo_root + "/app/src/java/../java/com/drone/quiz/data/settings/SettingsStore.kt") \
+    if False else load(_repo_root + "/app/src/main/java/com/drone/quiz/data/settings/SettingsStore.kt")
+if '"底栏玻璃模糊"' in _set:
+    print("[FAIL] 设置项标题应为『底栏模糊』（用户要求去掉『玻璃』二字）"); fail = True
+if '"底栏模糊"' not in _set:
+    print("[FAIL] 找不到『底栏模糊』设置项"); fail = True
+# 亚克力维持低/中/高；液态玻璃为 关/轻/重
+if 'if (settings.effects) listOf("关", "轻", "重")' not in _set:
+    print("[FAIL] 液态玻璃下档位名须为 关/轻/重（含一档纯玻璃）；亚克力维持 低/中/高"); fail = True
+if 'else listOf("低", "中", "高")' not in _set:
+    print("[FAIL] 亚克力下档位名须维持 低/中/高 不变"); fail = True
+# 底栏须按 effects 分别解释同一档位，且零模糊时不挂 blur 效果
+if "if (glassSettings.effects)" not in _bar:
+    print("[FAIL] GlassBottomBar 的模糊档位须按 glassSettings.effects 分别解释"); fail = True
+if "if (barBlurPx > 0f) blur(barBlurPx)" not in _bar:
+    print("[FAIL] 液态玻璃『关』档须完全不放 blur 效果，退化为纯玻璃"); fail = True
+if "blur(barBlurDp.toPx())" in _bar:
+    print("[FAIL] 不得再无条件挂 blur(barBlurDp)（关档会退化成极轻模糊而非纯玻璃）"); fail = True
+if "亚克力（effects=false）：" not in _store:
+    print("[FAIL] SettingsStore.glassBlur 注释须写明两种特效下的不同解释，"
+          "避免后续改动只改一半"); fail = True
+
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
 #          电池白名单请求 + Receiver 注册 + 权限齐全。

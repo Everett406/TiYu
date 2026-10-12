@@ -72,7 +72,15 @@ data class AppSettings(
     val practiceOrder: Int = 0,  // 0 顺序 1 随机
     val effects: Boolean = true, // 画面特效（液态玻璃）；异常退出后自动降级时为 false 效果
     val bankVersion: Int = 0,    // 已加载题库的版本（与 assets questions.json 的 version 比对）
-    val glassBlur: Int = 1,      // 底栏玻璃模糊档位：0 低 / 1 中 / 2 高
+    /**
+     * 底栏模糊档位 0/1/2。**同一个值在两种画面特效下含义不同**（v2.19.20）：
+     * · 液态玻璃（effects=true）：0 关（纯玻璃，零模糊）/ 1 轻 / 2 重
+     * · 亚克力（effects=false）：  0 低 / 1 中 / 2 高（维持原值 4/8/14dp）
+     * 用户反馈液态玻璃要能"完全没有模糊"的一档，故 0 在液态玻璃下改为零模糊；
+     * 亚克力保留原三档不动，故同一存储值需按 effects 分别解释——改这里务必同步
+     * GlassBottomBar 的档位映射与 SettingsScreen 的档位文案。
+     */
+    val glassBlur: Int = 1,      // 见上：档位 0/1/2
     val wallpaper: String = "",  // 全局壁纸文件路径（空 = 默认渐变）
     val wallpaperBlur: Boolean = false, // 壁纸是否模糊化（作玻璃背景纹路）
     val nickname: String = "",   // 用户昵称（空 = 首页只按时间问候，不带称呼）
