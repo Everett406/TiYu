@@ -556,6 +556,28 @@ _fmt = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFo
 if 'internal const val JUDGE_CHECK = "√"' not in _fmt:
     print("[FAIL] JUDGE_CHECK/JUDGE_CROSS 须与 optionLabel 同源定义，避免标签与自绘分支漂移"); fail = True
 
+# v2.19.18：抽题随机性 + 考试页与刷题页对齐
+_repo2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+_start = _repo2[_repo2.index("suspend fun startExam("):]
+_start = _start[:_start.index("suspend fun startExam(", 10)] if "suspend fun startExam(" in _start[10:] else _start
+if "sortedBy { typeRank[it.type]" not in _start:
+    print("[FAIL] startExam 须用稳定排序只按题型分组——追加 `, { it.id }` 会把"
+          "shuffled 后的组内顺序重排回 id 升序，用户反馈『抽题不太随机』"); fail = True
+if "sortedWith(compareBy({ typeRank[it.type] ?: 99 }, { it.id }))" in _start:
+    print("[FAIL] startExam 不得再按 id 次序排序（会抹掉随机顺序）"); fail = True
+
+_exam = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+if "OptionRow(" not in _exam:
+    print("[FAIL] 考试页单选/判断须复用共用 OptionRow —— 内联自绘会导致："
+          "判断题自绘勾叉不生效、无答错抖动动画、字号与刷题页不同步"); fail = True
+# 判定结果必须在**作答区之后**
+_vpos = _exam.find("ResultHeader(")
+_opos = _exam.find("OptionRow(")
+if _vpos < 0 or (_opos > 0 and _vpos < _opos):
+    print("[FAIL] 判定结果与解析须排在作答区**之后**（用户反馈『排版上把解析放到了前面』）"); fail = True
+if "ParseBlock(q.explanation)" not in _exam:
+    print("[FAIL] 考试页解析须用共用 ParseBlock（与刷题页同构）"); fail = True
+
 # 3.16) 每日提醒后台保活（v2.15.0 引入，v2.16.0 维持，v2.17.0 维持）：
 #       每日提醒调度引擎维持 AlarmManager（WorkManager 全移除）：精确闹钟 + 开机重排 +
 #          电池白名单请求 + Receiver 注册 + 权限齐全。

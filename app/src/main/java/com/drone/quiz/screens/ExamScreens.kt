@@ -72,6 +72,9 @@ import com.drone.quiz.data.repo.judgeAnswer
 import com.drone.quiz.data.repo.isAnswered
 import com.drone.quiz.data.repo.optionLabel
 import com.drone.quiz.screens.common.BlankInlineFields
+import com.drone.quiz.screens.common.OptionRow
+import com.drone.quiz.screens.common.ResultHeader
+import com.drone.quiz.screens.common.ParseBlock
 import com.drone.quiz.screens.common.QuestionImageStrip
 import com.drone.quiz.screens.common.ScreenTitle
 import com.drone.quiz.screens.common.SectionLabel
@@ -1368,43 +1371,6 @@ private fun ExamQuestionCard(
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
-            // v2.18.0 即时判定横幅：当场亮正误，并给出正解与解析。
-            // 只在开了即时判定且本题已判定时出现；交卷判分口径与之完全一致。
-            if (verdict != null) {
-                val ok = verdict
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background((if (ok) ui.correct else ui.wrong).copy(alpha = 0.12f))
-                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        if (ok) "✓" else "✗",
-                        color = if (ok) ui.correct else ui.wrong,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        if (ok) "回答正确" else "回答错误 · 正确答案 ${q.correctAnswerText()}",
-                        color = ui.text,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (q.explanation.isNotBlank()) {
-                    Text(
-                        q.explanation,
-                        color = ui.textSub,
-                        fontSize = 12.sp,
-                        lineHeight = 19.sp,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-            }
             // v2.8.5：题目图片（ZIP 导入的带图题库）——题干后、作答区前，小图点按展开
             QuestionImageStrip(q)
             when (q.type) {
@@ -1419,91 +1385,45 @@ private fun ExamQuestionCard(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         q.optionsOrJudge.forEachIndexed { i, opt ->
-                            val selected = ua?.picked == i
-                            // 即时判定态：选中项按对错着色；答错时额外标出正解
-                            val isAnswerKey = q.type == QuestionTypes.SINGLE ||
-                                q.type == QuestionTypes.JUDGE
-                            val right = verdict != null && isAnswerKey && i == q.answer
-                            val pickedRight = verdict == true && selected
-                            val pickedWrong = verdict == false && selected
-                            val bg = when {
-                                pickedRight -> ui.correct.copy(alpha = 0.16f)
-                                pickedWrong -> ui.wrong.copy(alpha = 0.16f)
-                                right -> ui.correct.copy(alpha = 0.10f)
-                                selected -> ui.ink
-                                else -> ui.ink.copy(alpha = 0.05f)
+                            val state = if (ua == null) 0
+                            else when {
+                                i == q.answer -> 1
+                                i == ua.picked -> 2
+                                else -> 0
                             }
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(bg)
-                                    .then(
-                                        if (verdict != null && isAnswerKey && right)
-                                            Modifier.border(
-                                                1.dp, ui.correct.copy(alpha = 0.5f),
-                                                RoundedCornerShape(16.dp)
-                                            )
-                                        else Modifier
-                                    )
-                                    .clickable(
-                                        interactionSource = null,
-                                        indication = null,
-                                        // 已判定的题不再改动，否则「随验得失」失去意义
-                                        enabled = !(verdict != null && isAnswerKey)
-                                    ) { onAnswer(UserAnswer(picked = i)) }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            when {
-                                                pickedRight -> ui.correct
-                                                pickedWrong -> ui.wrong
-                                                selected -> ui.onInk
-                                                else -> ui.ink.copy(alpha = 0.08f)
-                                            }
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        optionLabel(i, q.isJudge),
-                                        color = when {
-                                            pickedRight || pickedWrong -> Color.White
-                                            selected -> ui.ink
-                                            else -> ui.textSub
-                                        },
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    opt,
-                                    color = when {
-                                        pickedRight || pickedWrong || right -> ui.text
-                                        selected -> ui.onInk
-                                        else -> ui.text
-                                    },
-                                    fontSize = 14.sp,
-                                    lineHeight = 20.sp,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 10.dp)
-                                )
-                                if (pickedRight || pickedWrong) {
-                                    Text(
-                                        if (pickedRight) "✓" else "✗",
-                                        color = if (pickedRight) ui.correct else ui.wrong,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                            // v2.19.18：改用共用 OptionRow —— 此前考试页自己内联画了一整套
+                            // 选项，导致三处不一致：
+                            //   · 判断题的勾叉没走 OptionBadge → v2.19.16/17 自绘的符号在校考页不生效；
+                            //   · 没有答错时的抖动动画与对错配色（刷题页有）；
+                            //   · 选项行高、字号与刷题页不同步。
+                            // 交卷判分口径不变，仍由 submitExam 统一算。
+                            OptionRow(
+                                label = optionLabel(i, q.isJudge),
+                                text = opt,
+                                state = state,
+                                enabled = ua == null,
+                                onClick = { onAnswer(UserAnswer(picked = i)) }
+                            )
                         }
                     }
+                }
+            }
+
+            // ---- 判定结果 + 解析：放在**作答区之后**（v2.19.18）----
+            // 此前这段排在选项**上方**（"先看答案再看题"），与刷题页顺序相反。
+            // 现与刷题页同构：选项 → 判定 → 正确答案 → 解析。
+            // AnimatedVisibility 常驻组合、由 verdict 的空值变化触发入场，
+            // 否则首次出现不会播动画（与刷题页同一处理法）。
+            AnimatedVisibility(
+                visible = verdict != null,
+                enter = expandVertically(tween(260)) + fadeIn(tween(220))
+            ) {
+                Column(Modifier.padding(top = 16.dp)) {
+                    ResultHeader(
+                        verdict,
+                        " · 正确答案：${q.correctAnswerText()}"
+                    )
+                    ParseBlock(q.explanation)
                 }
             }
         }

@@ -492,8 +492,13 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         if (pickedIds.isEmpty()) return@withContext 0L to emptyList()
         val byId = qDao.byIds(pickedIds).associateBy { it.id }
         val typeRank = order.withIndex().associate { (i, t) -> t to i }
+        // v2.19.18 修「抽题不够随机」：此前末尾的 `, { it.id }` 把同一题型内的
+        // 随机顺序**重排回了 id 升序**——集合是随机的、顺序却每次一模一样，
+        // 用户每次模考看到的题型内题目次序完全相同（用户反馈）。
+        // 现只按题型分组（用 Kotlin 的稳定排序），**保留 shuffled 后的组内顺序**；
+        // 题型之间的先后仍按用户在配置页拖的 examTypeOrder 走。
         val qs = pickedIds.mapNotNull { byId[it]?.toQuestion() }
-            .sortedWith(compareBy({ typeRank[it.type] ?: 99 }, { it.id }))
+            .sortedBy { typeRank[it.type] ?: 99 }
         val examId = db.withTransaction {
             val id = eDao.insertExam(
                 ExamRecordEntity(
