@@ -91,6 +91,21 @@ internal const val JUDGE_CROSS = "×"
 internal fun optionLabel(i: Int, isJudge: Boolean): String =
     if (isJudge) listOf(JUDGE_CHECK, JUDGE_CROSS)[i.coerceIn(0, 1)] else ('A' + i).toString()
 
+/**
+ * 用户实际作答的可读文本（多选判定区「你的答案：A、B、C」）。
+ *
+ * v2.19.23：多选判定原本只给「正确答案：X、Y、Z」，用户看不出自己到底勾了哪几个——
+ * 漏选一个却只笼统显示"回答错误"，无法定位失分点。故补上这一行，
+ * 与 `Question.correctAnswerText()` 的多选分支同一套字母转换，两行必然对得上。
+ */
+internal fun pickedAnswerText(options: List<String>, picked: Int?): String {
+    val m = picked ?: return "未作答"
+    val letters = (0 until options.size.coerceAtLeast(31))
+        .filter { m and (1 shl it) != 0 }
+        .joinToString("、") { optionLabel(it, false) }
+    return letters.ifBlank { "未作答" }
+}
+
 // ==================== 导入（CSV / ZIP） ====================
 
 @Serializable

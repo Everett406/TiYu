@@ -734,3 +734,24 @@ for _tok, _where, _txt in [
     if _tok not in _where:
         print("[FAIL] " + _txt)
         fail = True
+
+
+# 4.z) 多选「漏选 / 错选」四态残留禁令（v2.19.23）
+#      用户反馈：勾了 A、B、C 漏了 D，四个选项却全标"正确"，完全看不出漏在哪。
+#      根因：多选 resultState 把「是正确答案」一律记 1，没区分"选没选"。
+#      现在必须四态（1 正确 / 2 错选 / 3 漏选），且 3 要用 accent 琥珀色——
+#      用绿会和"正确"混、用红会被误读成"你选错了"。
+_pr = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt")
+_qb2 = load(_repo_root + "/app/src/java/com/drone/quiz/screens/common/QuestionBody.kt")
+_qf = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
+for _tok, _src, _msg in [
+    ("isKey -> 3", _pr, "刷题页多选 resultState 缺『漏选』分支（该选没选也显示『正确』）"),
+    ("3 -> Text(\"漏选\"", _qb2, "多选选项行缺『漏选』标签"),
+    ('2 -> Text("错选"', _qb2, "多选错选标签须叫『错选』（旧文案『你选的』看不出是选错了）"),
+    ("3 -> ui.accent.copy(alpha = 0.12f) to ui.accent.copy(alpha = 0.55f)", _qb2,
+     "多选漏选须用 accent 琥珀色（绿会和正确混、红会被读成你选错了）"),
+    ("fun pickedAnswerText(", _qf, "缺位掩码→字母的反解工具（多选『你的答案：A、B、C』要用）"),
+]:
+    if _tok not in _src:
+        print("[FAIL] " + _msg)
+        fail = True

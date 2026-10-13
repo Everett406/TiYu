@@ -129,20 +129,39 @@ fun OptionRow(
     }
 }
 
-/** 多选选项行：state 同 OptionRow；selected = 提交前已勾选；resultState ≥0 表示已提交。 */
+/**
+ * 多选选项行。
+ *
+ * **v2.19.23：resultState 扩到四态，并刻意不与 OptionRow 共用配色/标签。**
+ *   -1 未提交 · 0 无关（既没选也不是答案）· 1 正确（选了且命中）· 2 错选（选了但没命中）· 3 漏选（该选却没选）
+ *
+ * 旧版只有三态，且「是正确答案」一律记 1 —— 于是**漏选的项也显示"正确"**
+ * （用户反馈：选了 A、B、C 漏了 D，四个选项全标"正确"，完全看不出漏在哪）。
+ * 2 的文案也从"你选的"改成 **"错选"**（用户口径：漏选 / 错选 要能一眼分开）。
+ *
+ * ⚠️ 这里的 3 与 OptionRow 的 3 **语义不同**（那里是「已选中但未判定」）。
+ * 共用 optionColors/ResultTag 会把单选的"刚选中"显示成"漏选"，故各自配色各自标签。
+ */
 @Composable
 fun OptionToggleRow(
     label: String,
     text: String,
     selected: Boolean,
-    resultState: Int, // -1 未提交（勾选态），0/1/2 已提交
+    resultState: Int, // -1 未提交（勾选态），0/1/2/3 已提交
     enabled: Boolean,
     onToggle: () -> Unit
 ) {
     val ui = LocalUi.current
     val submitted = resultState >= 0
-    val (bg, borderColor) = if (submitted) optionColors(resultState)
-    else if (selected) ui.ink.copy(alpha = 0.10f) to ui.ink.copy(alpha = 0.35f)
+    val missed = submitted && resultState == 3
+    val (bg, borderColor) = if (submitted) when (resultState) {
+        1 -> ui.correct.copy(alpha = 0.16f) to ui.correct.copy(alpha = 0.5f)
+        2 -> ui.wrong.copy(alpha = 0.16f) to ui.wrong.copy(alpha = 0.5f)
+        // 漏选走 accent（琥珀）：它既是"该选的"又是"你没选的"，用绿会和"正确"混、
+        // 用红又会被误读成"你选错了"。琥珀是唯一的第三色。
+        3 -> ui.accent.copy(alpha = 0.12f) to ui.accent.copy(alpha = 0.55f)
+        else -> ui.ink.copy(alpha = 0.05f) to ui.ink.copy(alpha = 0.08f)
+    } else if (selected) ui.ink.copy(alpha = 0.10f) to ui.ink.copy(alpha = 0.35f)
     else ui.ink.copy(alpha = 0.05f) to ui.ink.copy(alpha = 0.08f)
     Row(
         Modifier
@@ -163,11 +182,16 @@ fun OptionToggleRow(
                     when {
                         submitted && resultState == 1 -> ui.correct
                         submitted && resultState == 2 -> ui.wrong
+                        missed -> ui.accent.copy(alpha = 0.18f)   // 空心琥珀：该勾没勾
                         selected -> ui.ink
                         else -> ui.ink.copy(alpha = 0.08f)
                     }
                 )
-                .border(1.dp, ui.ink.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                .border(
+                    1.dp,
+                    if (missed) ui.accent.copy(alpha = 0.55f) else ui.ink.copy(alpha = 0.12f),
+                    RoundedCornerShape(8.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
             if (selected || (submitted && resultState == 1)) {
@@ -187,7 +211,14 @@ fun OptionToggleRow(
                 .weight(1f)
                 .padding(horizontal = 10.dp)
         )
-        ResultTag(resultState.takeIf { submitted })
+        // 多选专用标签（不走 ResultTag：那里的 3 是"已选中未判定"，语义不同）
+        if (submitted) {
+            when (resultState) {
+                1 -> Text("正确", color = ui.correct, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                2 -> Text("错选", color = ui.wrong, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                3 -> Text("漏选", color = ui.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 

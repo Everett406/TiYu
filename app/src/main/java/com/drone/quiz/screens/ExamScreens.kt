@@ -67,6 +67,7 @@ import androidx.compose.ui.zIndex
 import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.repo.Question
 import com.drone.quiz.data.repo.QuestionTypes
+import com.drone.quiz.data.repo.pickedAnswerText
 import com.drone.quiz.data.repo.Repo
 import com.drone.quiz.data.repo.UserAnswer
 import com.drone.quiz.data.repo.judgeAnswer
@@ -1496,11 +1497,22 @@ private fun ExamMultiSection(
             else "多选题 · 可选多项，全对才算对" + if (hasPick) "（选好后点下方确认）" else "",
             color = ui.textSub, fontSize = 11.sp
         )
+        // v2.19.23：判定后直接写出"你到底勾了哪几个"，与刷题页同口径。
+        // 漏选/错选现在会逐项标在选项上，但组合答案仍需一行文字才看得清全貌。
+        if (judged) {
+            Text(
+                "你的答案：" + pickedAnswerText(q.options, ua?.picked),
+                color = ui.textSub, fontSize = 12.sp
+            )
+        }
         q.options.forEachIndexed { i, opt ->
             val selected = pickedMask and (1 shl i) != 0
             val isKey = judged && answerMask and (1 shl i) != 0
             val pickedRight = judged && selected && isKey
             val pickedWrong = judged && selected && !isKey
+            // v2.19.23：漏选 —— 该勾没勾。与刷题页 OptionToggleRow 同口径：
+            // 琥珀色、空心勾选框、"漏选"标签；错选则叫"错选"而非"你选的"。
+            val missed = judged && !selected && answerMask and (1 shl i) != 0
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -1509,6 +1521,7 @@ private fun ExamMultiSection(
                         when {
                             pickedRight -> ui.correct.copy(alpha = 0.16f)
                             pickedWrong -> ui.wrong.copy(alpha = 0.16f)
+                            missed -> ui.accent.copy(alpha = 0.12f)
                             isKey -> ui.correct.copy(alpha = 0.10f)
                             selected -> ui.ink.copy(alpha = 0.10f)
                             else -> ui.ink.copy(alpha = 0.05f)
@@ -1517,6 +1530,7 @@ private fun ExamMultiSection(
                     .border(
                         1.dp,
                         when {
+                            missed -> ui.accent.copy(alpha = 0.55f)
                             judged && isKey -> ui.correct.copy(alpha = 0.5f)
                             selected -> ui.ink.copy(alpha = 0.35f)
                             else -> ui.ink.copy(alpha = 0.08f)
@@ -1542,11 +1556,16 @@ private fun ExamMultiSection(
                             when {
                                 pickedRight -> ui.correct
                                 pickedWrong -> ui.wrong
+                                missed -> ui.accent.copy(alpha = 0.18f)   // 空心琥珀
                                 selected -> ui.ink
                                 else -> ui.ink.copy(alpha = 0.08f)
                             }
                         )
-                        .border(1.dp, ui.ink.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                        .border(
+                            1.dp,
+                            if (missed) ui.accent.copy(alpha = 0.55f) else ui.ink.copy(alpha = 0.12f),
+                            RoundedCornerShape(8.dp)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (selected) {
@@ -1566,11 +1585,19 @@ private fun ExamMultiSection(
                         .weight(1f)
                         .padding(end = 14.dp, top = 12.dp, bottom = 12.dp)
                 )
-                if (pickedRight || pickedWrong) {
+                if (pickedRight || pickedWrong || missed) {
                     Text(
-                        if (pickedRight) "✓" else "✗",
-                        color = if (pickedRight) ui.correct else ui.wrong,
-                        fontSize = 16.sp,
+                        when {
+                            pickedRight -> "正确"
+                            pickedWrong -> "错选"
+                            else -> "漏选"
+                        },
+                        color = when {
+                            pickedRight -> ui.correct
+                            pickedWrong -> ui.wrong
+                            else -> ui.accent
+                        },
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
