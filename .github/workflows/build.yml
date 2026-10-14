@@ -15,9 +15,9 @@ env:
   # IS_PREVIEW=true 时走**草稿预览**通道：APK 内部版本号带 -preview 后缀、
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
-  IS_PREVIEW: 'true'
-  APP_VERSION_NAME: 2.19.26-preview
-  APP_VERSION_TAG: v2.19.26-preview
+  IS_PREVIEW: 'false'
+  APP_VERSION_NAME: 2.19.24
+  APP_VERSION_TAG: v2.19.24
 
 jobs:
   build:
@@ -69,38 +69,48 @@ jobs:
           prerelease: ${{ env.IS_PREVIEW == 'true' }}
           files: dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
           body: |
-            ## 题屿 TiYu v2.19.26-preview（草稿预览版 · 第 3 稿）
+            ## 题屿 TiYu v2.19.24
 
-            > **这是一个 draft 预览版**：你能看到、能下载，但它**没有公开发布**。
-            > 验证没问题后我再走正式发布。
+            ### 先说清楚：切题库闪退是我的锅，已修
 
-            ### 这稿修的（其中第 1 条是真 bug，之前是我写错了）
+            你报的崩溃堆栈很明确：
 
-            **1. AI 的回复跑进了你的提问框里** —— 这是我的锅，代码写错了。
-            一句话解释：`slot` 本身已经是 AI 消息的下标，我又多减了一次 1，
-            结果每个字都追加到了**你那条消息**上。所以你看到的是一个巨大的黑色气泡，
-            前半句是你的问题、后半句是 AI 的回答。
+            ```
+            java.lang.NullPointerException
+              at PracticeScreenKt.MultiSection(PracticeScreen.kt:943)
+              ← PagerState.scrollToPage ← PracticeScreen.kt:326
+            ```
 
-            （顺带一提：截图里 `**` 没被渲染，恰恰是这个 bug 的破绽——
-            你的气泡本来就不做 Markdown 处理，而 AI 回复是渲染的。）
+            **根因**：`MultiSection` 里算多选状态的这一行写了 `ua!!.picked`，
+            而它位于**选项渲染循环内** —— 没作答时 `ua` 就是 null，循环照跑，直接 NPE。
 
-            **2. 配置页左右还是没留白** —— 上一版我只给聊天面板加了，配置页漏了。这次补上。
+            怎么来的：v2.19.23 我把多选改成「正确 / 错选 / 漏选」四态时，
+            原本老老实实待在 `else if (!submitted)` 分支里的 `ua!!`，
+            被我**提到了循环顶部挪出了保护范围**。典型的重构事故。
 
-            **3. 聊天窗口太憋屈** —— 两件事一起做了：
-            · 对话区默认从 360dp 提到 **440dp**，内容少的时候自动变矮，不空占屏幕；
-            · **小把手现在可以往上拉了**，最多再加 300dp。往下拉还是原来的下滑关闭。
+            所以触发条件是：**切到一道没答过的多选题就崩**。
+            你换题库后 `details` 被清空，滚过去就撞上了——
+            难怪"以前的版本没出现过"，那个 `ua!!` 是 v2.19.23 才有的。
 
-            ### 上一稿（v2.19.25-preview）的改动仍然有效
+            顺带把同类隐患一起清了（行为不变，零风险）：
 
-            思考过程可见 / 折叠成「已思考 N 秒」、吐字去光标、输入框与按钮对齐、
-            Markdown 正确渲染 + 公式降级。想看思考记得把模型换成 `deepseek-reasoner`。
+            · `AnimatedVisibility(visible = submitted)` 的内容在**退出动画期间仍在组合**，
+              此时 visible 已经是 false 而 `ua` 可能已为 null —— 所以连"看着在保护里"的
+              `ua!!` 也不能用，填空、简答的几处同样换成了安全调用；
+            · 全工程已无 `ua!!`，并写进 static_check 逐行扫，出现即 FAIL。
 
-            ### 其它一切照旧
+            ### AI 助手：仍在（三轮草稿的成果保留）
+
+            刷题页每题底部「问 AI」→ 多轮对话，当前题自动进上下文，
+            流式 + 吐字、思考过程可见并折叠成「已思考 N 秒」、Markdown 正确渲染、
+            思考/正文双通道。配置在「设置 → AI 助手」。
+
+            想看思考记得把模型名换成 `deepseek-reasoner`。
 
             ### 其余一切照旧
 
-            模考即时判定与锁定、多选漏选/错选标注、底栏模糊、更换壁纸，全都在。
+            多选漏选/错选标注、模考即时判定与锁定、底栏模糊、更换壁纸，全都在。
 
             ---
 
-            **安装**：下载下方 `TiYu-2.19.24-preview.apk` **覆盖安装**即可，学习数据自动迁移。
+            **安装**：下载下方 `TiYu-2.19.24.apk` **覆盖安装**即可，学习数据自动迁移。

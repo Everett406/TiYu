@@ -853,3 +853,27 @@ for _f in ["AiChatSheet.kt", "AiSettingsSheet.kt"]:
     if "Modifier.padding(horizontal = 20.dp)" not in _src:
         print("[FAIL] " + _f + " 内容须留左右 20dp（用户反馈：贴边，字顶到圆角）")
         fail = True
+
+
+# 6.x) 可空作答不得用 `!!` 强解（v2.19.24 崩溃修复）
+#      用户真机崩溃报告：
+#        java.lang.NullPointerException
+#          at PracticeScreenKt.MultiSection(PracticeScreen.kt:943)
+#          ← PagerState.scrollToPage ← PracticeScreen.kt:326
+#      触发路径：切换题库 → 刷另一题库 → 滚到**未作答的多选题**必崩。
+#      根因：v2.19.23 把多选改成四态时，原本藏在 `else if (!submitted)` 分支里的
+#      `ua!!.picked` 被提到了选项渲染循环顶部，**挪出了 submitted 的保护范围**——
+#      未作答时 ua 为 null，而循环照跑。这是最典型的重构事故：保护圈被挪破了。
+#      编译与 static_check 全绿，只有真机能撞上（切题库 → details 清空 → 滚到多选题）。
+#
+#      还有一类同源隐患：`AnimatedVisibility(visible = submitted)` 的 content
+#      在**退出动画期间仍然组合**，此时 visible 已 false 而 ua 可能已是 null，
+#      所以连"看起来在保护里的" `ua!!` 也不能用。
+for _f in ["screens/PracticeScreen.kt", "screens/ExamScreens.kt"]:
+    _src = load(_repo_root + "/app/src/main/java/com/drone/quiz/" + _f)
+    for _ln, _l in enumerate(_src.split("\n"), 1):
+        _c = _l.split("//")[0]
+        if "ua!!" in _c:
+            print(f"[FAIL] {_f}:{_ln} 可空作答不得用 ua!! —— 未作答或退出动画期间 ua 可能为 null"
+                  f"（v2.19.24 崩溃）: {_l.strip()[:60]}")
+            fail = True

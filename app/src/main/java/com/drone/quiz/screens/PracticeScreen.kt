@@ -940,7 +940,12 @@ private fun MultiSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
         q.options.forEachIndexed { i, opt ->
             // v2.19.23 四态：旧版把"是正确答案"一律记 1，导致**漏选的项也显示"正确"**
             // （用户反馈：勾了 A、B、C 漏了 D，四项全标"正确"，看不出漏在哪）。
-            val picked = ua!!.picked?.let { it and (1 shl i) != 0 } == true
+            // v2.19.24 崩溃修复：原来是 ua!!。这行在**选项渲染循环里**，
+            // 未作答（ua == null）时也会执行 —— 于是"滚到一道没答过的多选题"必崩。
+            // 根因是 v2.19.23 重构成四态时，把原本藏在 `else if (!submitted)` 分支里的
+            // ua!! 提到了循环顶部，**挪出了 submitted 的保护范围**。
+            // 触发路径：切题库 → details 清空 → 滚到多选题 → NPE。
+            val picked = ua?.picked?.let { it and (1 shl i) != 0 } == true
             val isKey = i in q.multiAnswerSet
             val resultState = if (!submitted) -1 else when {
                 picked && isKey -> 1      // 正确
@@ -952,7 +957,7 @@ private fun MultiSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
                 label = optionLabel(i, false),
                 text = opt,
                 selected = if (submitted) {
-                    ua!!.picked?.let { it and (1 shl i) != 0 } == true
+                    ua?.picked?.let { it and (1 shl i) != 0 } == true
                 } else i in sel,
                 resultState = resultState,
                 enabled = !submitted,
@@ -982,7 +987,9 @@ private fun MultiSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
             // v2.19.23：多选必须先说清"你到底勾了哪几个"，否则用户无法定位失分点。
             // 单选/判断不加这行——错在哪一项会直接红在选项上，无需再罗列一遍。
             if (q.type == QuestionTypes.MULTI) {
-                YourAnswerLine(pickedAnswerText(q.options, ua!!.picked))
+                // AnimatedVisibility 的 content 在**退出动画期间仍然组合**，
+                // 此时 visible 已为 false 而 ua 可能已是 null —— 不能用 ua!!
+                YourAnswerLine(pickedAnswerText(q.options, ua?.picked))
             }
             CorrectAnswerLine(q.correctAnswerText())
             ParseBlock(q.explanation)
@@ -1002,7 +1009,7 @@ private fun BlankSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
         // v2.8.3：题干内嵌输入（在 ____ 空位处直接点入），替代第一空/第二空分行
         BlankInlineFields(
             text = q.text,
-            values = if (submitted) ua!!.texts else texts,
+            values = if (submitted) ua?.texts ?: emptyList() else texts,
             onValueChange = { i, v -> texts = texts.toMutableList().also { it[i] = v } },
             enabled = !submitted,
             showResult = submitted,
@@ -1039,7 +1046,7 @@ private fun ShortSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
     var draft by remember(q.id, submitted) { mutableStateOf("") }
     Column(Modifier.padding(top = 14.dp)) {
         ShortDraftField(
-            value = if (submitted) ua!!.text else draft,
+            value = if (submitted) ua?.text.orEmpty() else draft,
             onValueChange = { draft = it },
             enabled = !submitted
         )
@@ -1060,11 +1067,11 @@ private fun ShortSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
         } else {
             ShortReferenceCard(
                 reference = q.answerText,
-                yourText = ua!!.text,
-                graded = ua.graded,
-                selfCorrect = if (ua.graded) ua.picked == 1 else null,
+                yourText = ua?.text.orEmpty(),
+                graded = ua?.graded == true,
+                selfCorrect = if (ua?.graded == true) ua.picked == 1 else null,
                 onGrade = { correct ->
-                    onCommit(ua.copy(picked = if (correct) 1 else 0, graded = true))
+                    onCommit((ua ?: UserAnswer()).copy(picked = if (correct) 1 else 0, graded = true))
                 }
             )
             // v2.8.3：自评后判定+解析丝滑展开

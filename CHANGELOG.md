@@ -3,6 +3,42 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.24] - 2026-10-14
+
+### 修：切换题库后刷题崩溃（NPE）
+
+用户真机崩溃报告：
+
+```
+java.lang.NullPointerException
+  at PracticeScreenKt.MultiSection(PracticeScreen.kt:943)
+  ← PagerState.scrollToPage ← PracticeScreen.kt:326
+```
+
+**触发条件**：切到一道**没答过的多选题**即崩。用户切换题库后 `details` 被清空，
+滚过去就撞上——"以前的版本没出现过"属实，那个 `ua!!` 是 v2.19.23 才引入的。
+
+**根因**：v2.19.23 把多选改成「正确 / 错选 / 漏选」四态时，
+原本藏在 `else if (!submitted)` 分支里的 `ua!!.picked` 被**提到了选项渲染循环顶部，
+挪出了 `submitted` 的保护范围**。未作答时 `ua` 为 null，而循环照跑 —— NPE。
+典型重构事故：编译通过、static_check 通过，只有真机能撞上。
+
+**修复**：
+- `MultiSection` 三处 `ua!!` → `ua?.`（943 行主因，另两处在 AnimatedVisibility 内）
+- 同源隐患一并加固（行为不变）：**`AnimatedVisibility(visible = submitted)` 的内容在
+  退出动画期间仍然组合**，此时 visible 已 false 而 `ua` 可能已是 null——
+  连"看着在保护里"的 `ua!!` 也不能用。填空、简答、简答自评共 5 处换安全调用。
+- **全工程已无 `ua!!`**，`static_check` 逐行扫描，出现即 FAIL。
+
+### AI 助手转为正式版
+
+v2.19.24/25/26-preview 三轮草稿的成果全部保留并转正：刷题页「问 AI」多轮对话、
+当前题自动进上下文、SSE 流式 + 吐字动画、思考/正文双通道（思考可见 → 折叠成
+「已思考 N 秒」）、自研 Markdown 渲染 + LaTeX 降级、聊天面板上拉可调高。
+配置在「设置 → AI 助手」二级弹窗（含测试连接）。
+
+三个 preview 草稿 release 与 tag 已删除。
+
 ## [2.19.26-preview] - 2026-10-14
 
 ### 修 AI 回复写错位置的真 bug + 配置页留白 + 聊天面板可拉高

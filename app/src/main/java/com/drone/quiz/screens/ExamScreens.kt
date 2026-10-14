@@ -1653,7 +1653,7 @@ private fun ExamShortSection(
     var draft by remember(q.id, submitted) { mutableStateOf("") }
     Column(Modifier.padding(top = 14.dp)) {
         com.drone.quiz.screens.common.ShortDraftField(
-            value = if (submitted) ua!!.text else draft,
+            value = if (submitted) ua?.text.orEmpty() else draft,
             onValueChange = { draft = it },
             enabled = !submitted
         )
@@ -1668,7 +1668,7 @@ private fun ExamShortSection(
         } else {
             com.drone.quiz.screens.common.ShortReferenceCard(
                 reference = q.answerText,
-                yourText = ua!!.text,
+                yourText = ua?.text.orEmpty(),
                 graded = ua.graded,
                 selfCorrect = if (ua.graded) ua.picked == 1 else null,
                 onGrade = { correct ->
