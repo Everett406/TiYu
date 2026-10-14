@@ -77,6 +77,7 @@ class AiClient(
      */
     suspend fun stream(
         messages: List<AiMessage>,
+        onReasoning: (String) -> Unit = {},
         onDelta: (String) -> Unit
     ): String = withContext(Dispatchers.IO) {
         val req = requestOf(buildRequest(messages, stream = true))
@@ -87,6 +88,7 @@ class AiClient(
                 val body = resp.body ?: throw AiError("返回体为空")
                 val source = body.source()
                 val sb = StringBuilder()
+                val reasoning = StringBuilder()
                 while (!source.exhausted()) {
                     // 协程被取消（用户关闭弹窗 / 点了停止）时立刻断开，别让请求挂着
                     coroutineContext.ensureActive()
@@ -95,15 +97,24 @@ class AiClient(
                     val payload = line.removePrefix("data:").trim()
                     if (payload.isEmpty()) continue
                     if (payload == "[DONE]") break
-                    val delta = runCatching {
+                    val obj = runCatching {
                         json.parseToJsonElement(payload).jsonObject
-                            .getContentText()
                     }.getOrNull() ?: continue
+
+                    // 思考通道（deepseek-reasoner / o1 系列）：
+                    // 走 delta.reasoning_content，与正文 delta.content 是**两个字段**，
+                    // 同一包里可能只有其一。不能把它当正文吐，否则用户看到一堆自言自语。
+                    obj.getReasoningText()?.let { r ->
+                        reasoning.append(r)
+                        onReasoning(r)
+                    }
+
+                    val delta = obj.getContentText() ?: continue
                     if (delta.isEmpty()) continue
                     sb.append(delta)
                     onDelta(delta)
                 }
-                if (sb.isEmpty()) throw AiError("模型没有返回任何内容")
+                if (sb.isEmpty() && reasoning.isEmpty()) throw AiError("模型没有返回任何内容")
                 sb.toString()
             }
         } catch (e: IOException) {
@@ -137,6 +148,18 @@ class AiClient(
                 }
             })
         }.toString()
+
+    /** 取 choices[0].delta.reasoning_content（部分模型叫 reasoning / thinking）。 */
+    private fun JsonObject.getReasoningText(): String? {
+        val first = this["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: return null
+        val d = first["delta"]?.jsonObject ?: return null
+        for (k in listOf("reasoning_content", "reasoning", "thinking")) {
+            val v = d[k] ?: continue
+            if (v is kotlinx.serialization.json.JsonNull) continue
+            return runCatching { v.jsonPrimitive.content }.getOrNull()?.takeIf { it.isNotEmpty() }
+        }
+        return null
+    }
 
     /** 取 choices[0].delta.content（非流式则是 message.content）。 */
     private fun JsonObject.getContentText(): String? {

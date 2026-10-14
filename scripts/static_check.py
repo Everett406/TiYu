@@ -800,3 +800,34 @@ if "setAiBaseUrl(" in _set or "AiTextField(" in _set:
     print("[FAIL] AI 的配置项不得平铺进主设置页——用户口径『更多设置放弹窗/新页面』，"
           "主设置页只保留一行入口")
     fail = True
+
+
+# 5.y) AI 聊天渲染三原则禁令（v2.19.25，用户真机反馈轮）
+#      1) Markdown 必须全程正确渲染 —— 不能因"正在吐字"退回纯文本。
+#         正确做法：先 Md.parse 再按**可见字符数**截断（Md.build 的 showChars），
+#         而不是把 Markdown 源码本身截断（那会让屏幕上出现裸的 `**` 和没闭合的 `|`）。
+#         servllama 踩过这个坑：为了渐显把 GptMarkdown 换成纯 Text.rich。
+#      2) 思考与正文是两条流 —— reasoning_content 与 content 分开收、分开渲染。
+#      3) 思考计时不得放进 widget State —— LazyColumn 会销毁重建行，秒数每次归零
+#         （servllama 踩过），必须放 ThinkingClock 静态表。
+_chat = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/AiChatSheet.kt")
+_md = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/Markdown.kt")
+_client = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/AiClient.kt")
+_clock = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/ThinkingClock.kt")
+for _tok, _src, _msg in [
+    ("Md.build(", _chat, "AI 回复必须走 Markdown 渲染（Md.build），不能直接 Text(text)"),
+    ("showChars = shown", _chat, "吐字必须按可见字符数截断，不能截 Markdown 源码"),
+    ("reasoning_content", _client, "SSE 未解析 reasoning_content，思考过程收不到"),
+    ("onReasoning", _chat, "思考流与正文流未分开渲染"),
+    ("object ThinkingClock", _clock, "思考计时必须用静态表，不能放 widget State"),
+    ("private val table = LinkedHashMap", _clock, "ThinkingClock 的静态表被改动"),
+    ("fun visibleLen(", _md, "Markdown 缺可见字符数计算（吐字按源码长度会一蹦一蹦）"),
+    ("dematex", _md, "Markdown 缺 LaTeX 降级（截图里满屏 \\frac12、\\( \\)）"),
+]:
+    if _tok not in _src:
+        print("[FAIL] " + _msg)
+        fail = True
+# 不得再出现光标字符（用户明确：不要那个一闪一闪的竖线）
+if "\u258d" in _chat or "▍" in _chat:
+    print("[FAIL] 吐字光标 ▍ 已按用户要求移除，勿加回来")
+    fail = True
