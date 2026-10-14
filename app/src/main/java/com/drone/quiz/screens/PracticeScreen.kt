@@ -103,8 +103,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import com.drone.quiz.ui.ai.AiChatSheet
-import com.drone.quiz.ui.ai.AiSettingsSheet
 
 internal val answerJson = Json { ignoreUnknownKeys = true }
 
@@ -171,12 +169,6 @@ fun PracticeRunScreen(
     var roundCovered by remember { mutableStateOf<List<Long>>(emptyList()) }
 
     val pagerState = rememberPagerState { questions.size }
-    // v2.19.24 AI 助手：askAiFor 存题目 id（存 null = 关闭）。用 id 不用对象，
-    // 换页重建卡片时不会误判成"另一道题"从而清空对话。
-    var askAiFor by remember { mutableStateOf<Long?>(null) }
-    var showAiSettings by remember { mutableStateOf(false) }
-    val aiSettings by ServiceLocator.settings.settings
-        .collectAsState(initial = com.drone.quiz.data.settings.AppSettings())
 
     // 打赏门槛计时口径：只有真实停在答题页才累计刷题时长（v2.9.2，与弹窗文案「累计刷题」对齐）
     DisposableEffect(Unit) {
@@ -501,7 +493,6 @@ fun PracticeRunScreen(
                         }
                     ) {
                         QuestionCard(
-                            onAskAi = { askAiFor = q.id },
                             q = q,
                             ua = details[q.id],
                             index = page + 1,
@@ -562,29 +553,6 @@ fun PracticeRunScreen(
             }
         }
     }
-
-    // ---- v2.19.24 AI 助手 ----
-    askAiFor?.let { qid ->
-        val q = questions.firstOrNull { it.id == qid }
-        if (q != null) {
-            AiChatSheet(
-                visible = true,
-                backdrop = backdrop,
-                question = q,
-                myAnswer = details[qid]?.picked,
-                hasSubmitted = details[qid] != null,
-                settings = aiSettings,
-                onOpenSettings = { showAiSettings = true },
-                onDismiss = { askAiFor = null }
-            )
-        }
-    }
-    AiSettingsSheet(
-        visible = showAiSettings,
-        backdrop = backdrop,
-        store = ServiceLocator.settings,
-        onDismiss = { showAiSettings = false }
-    )
 
     // ---- 题号面板（渲染在 AppRoot 顶层传送门：内容层模糊不波及面板自身） ----
     GlassBottomSheet(
@@ -799,7 +767,6 @@ internal fun QuestionCard(
     ua: UserAnswer?,
     index: Int,
     backdrop: Backdrop,
-    onAskAi: () -> Unit,
     onCommit: (UserAnswer) -> Unit
 ) {
     GlassCard(
@@ -840,38 +807,6 @@ internal fun QuestionCard(
                 QuestionTypes.BLANK -> BlankSection(q, ua, backdrop, onCommit)
                 QuestionTypes.SHORT -> ShortSection(q, ua, backdrop, onCommit)
                 else -> ChoiceSection(q, ua, onCommit)
-            }
-            // v2.19.24 AI 助手：入口放在卡片最底部，且做得很轻（文字 + 小图标，无底色块）。
-            // 用户口径「AI 要淡一点、不是主要内容」——不做常驻 FAB、不做角标、不抢配色，
-            // 就是一个安安静静的小按钮，答完题想深究再点。
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(interactionSource = null, indication = null, onClick = onAskAi)
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    AppIcons.Sparkle, null,
-                    tint = LocalUi.current.textSub,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    "问 AI",
-                    color = LocalUi.current.textSub,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    "就这道题深究一下",
-                    color = LocalUi.current.textSub.copy(alpha = 0.6f),
-                    fontSize = 11.sp
-                )
             }
         }
     }

@@ -59,34 +59,6 @@ private fun filledIcon(
 
 object AppIcons {
 
-    /**
-     * AI 助手：四角星（Material AutoAwesome 风格）。
-     * 大星 + 小星各一组，呼应"生成/灵光"；14dp 下也能看清，
-     * 故比单画一个点更不容易和普通圆点图标混淆。
-     */
-    val Sparkle: ImageVector by lazy {
-        filledIcon("AppSparkle") {
-            moveTo(9.6f, 2.2f)
-            lineTo(11.1f, 6.6f)
-            lineTo(15.5f, 8.1f)
-            lineTo(11.1f, 9.6f)
-            lineTo(9.6f, 14.0f)
-            lineTo(8.1f, 9.6f)
-            lineTo(3.7f, 8.1f)
-            lineTo(8.1f, 6.6f)
-            close()
-            moveTo(17.4f, 11.4f)
-            lineTo(18.3f, 14.1f)
-            lineTo(21.0f, 15.0f)
-            lineTo(18.3f, 15.9f)
-            lineTo(17.4f, 18.6f)
-            lineTo(16.5f, 15.9f)
-            lineTo(13.8f, 15.0f)
-            lineTo(16.5f, 14.1f)
-            close()
-        }
-    }
-
     /** 首页：填充小屋 + 门洞（EvenOdd 挖空）。 */
     val Home: ImageVector by lazy {
         filledIcon("AppHome", evenOdd = true) {

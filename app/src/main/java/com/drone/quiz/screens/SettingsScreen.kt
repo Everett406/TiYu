@@ -86,7 +86,6 @@ import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-import com.drone.quiz.ui.ai.AiSettingsSheet
 
 @Composable
 fun SettingsScreen(backdrop: Backdrop) {
@@ -117,14 +116,6 @@ fun SettingsScreen(backdrop: Backdrop) {
     // 跑到题库管理那个地方”），改用独立状态、只渲染在关于弹窗内
     var updateMsg by remember { mutableStateOf<String?>(null) }
     // v2.8.9 关于页由内联卡片改为底部弹窗（用户口径：从下面弹出来的那种）
-    // v2.19.24 AI 助手：配置项全在二级弹窗，主设置页只留一行入口
-    var showAiSettings by remember { mutableStateOf(false) }
-    val aiSettings by ServiceLocator.settings.settings
-        .collectAsState(initial = com.drone.quiz.data.settings.AppSettings())
-    // 副标题一行说清现状：没配就提示去配，配了就报模型名
-    val aiCfgLine = if (aiSettings.aiApiKey.isBlank()) "未配置 · 去填 API Key"
-    else "${aiSettings.aiModel.ifBlank { "deepseek-chat" }} · 已配置"
-
     var showAboutSheet by remember { mutableStateOf(false) }
 
     fun checkUpdate() {
@@ -1050,14 +1041,6 @@ fun SettingsScreen(backdrop: Backdrop) {
             onDismiss = { updateFound = null }
         )
     }
-
-    // v2.19.24 AI 助手设置弹窗
-    AiSettingsSheet(
-        visible = showAiSettings,
-        backdrop = backdrop,
-        store = ServiceLocator.settings,
-        onDismiss = { showAiSettings = false }
-    )
 
     // 关于弹窗（v2.8.9）：内容/状态提升在设置页，关闭重开不丢检查结果；打开时清旧提示
     AboutSheet(

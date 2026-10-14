@@ -16,8 +16,8 @@ env:
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
   IS_PREVIEW: 'false'
-  APP_VERSION_NAME: 2.19.24
-  APP_VERSION_TAG: v2.19.24
+  APP_VERSION_NAME: 2.19.25
+  APP_VERSION_TAG: v2.19.25
 
 jobs:
   build:
@@ -69,43 +69,31 @@ jobs:
           prerelease: ${{ env.IS_PREVIEW == 'true' }}
           files: dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
           body: |
-            ## 题屿 TiYu v2.19.24
+            ## 题屿 TiYu v2.19.25
 
-            ### 先说清楚：切题库闪退是我的锅，已修
+            ### AI 助手整个拿掉了
 
-            你报的崩溃堆栈很明确：
+            上一版我自作主张把「问 AI」转成了正式版——**这次撤回**，
+            现在回到干净的离线状态：
 
-            ```
-            java.lang.NullPointerException
-              at PracticeScreenKt.MultiSection(PracticeScreen.kt:943)
-              ← PagerState.scrollToPage ← PracticeScreen.kt:326
-            ```
+            · 刷题页每题底部的「问 AI」入口已删
+            · 设置页的「AI 助手」入口已删
+            · 全部 AI 代码（客户端、聊天面板、设置面板、Markdown 渲染、思考计时）已删
+            · SettingsStore 里的 API Key / 接口地址 / 模型 / 上下文轮数等配置已删
+            · **OkHttp 依赖一并撤掉**（网络层本来只有 AI 在用）
 
-            **根因**：`MultiSection` 里算多选状态的这一行写了 `ua!!.picked`，
-            而它位于**选项渲染循环内** —— 没作答时 `ua` 就是 null，循环照跑，直接 NPE。
+            应用回到「**零联网依赖**」的纯离线形态。
 
-            怎么来的：v2.19.23 我把多选改成「正确 / 错选 / 漏选」四态时，
-            原本老老实实待在 `else if (!submitted)` 分支里的 `ua!!`，
-            被我**提到了循环顶部挪出了保护范围**。典型的重构事故。
+            ### 但 INTERNET 权限留着——这个有别的用途
 
-            所以触发条件是：**切到一道没答过的多选题就崩**。
-            你换题库后 `details` 被清空，滚过去就撞上了——
-            难怪"以前的版本没出现过"，那个 `ua!!` 是 v2.19.23 才有的。
+            别看有 AI 被删了就把网络权限也去掉：**应用更新检查还在用它**
+            （`AppUpdater` 拿最新版版本号）。所以 `INTERNET` 权限保持原样，
+            只是不再有任何 AI 相关的网络请求。
 
-            顺带把同类隐患一起清了（行为不变，零风险）：
+            ### 上一版的崩溃修复保留
 
-            · `AnimatedVisibility(visible = submitted)` 的内容在**退出动画期间仍在组合**，
-              此时 visible 已经是 false 而 `ua` 可能已为 null —— 所以连"看着在保护里"的
-              `ua!!` 也不能用，填空、简答的几处同样换成了安全调用；
-            · 全工程已无 `ua!!`，并写进 static_check 逐行扫，出现即 FAIL。
-
-            ### AI 助手：仍在（三轮草稿的成果保留）
-
-            刷题页每题底部「问 AI」→ 多轮对话，当前题自动进上下文，
-            流式 + 吐字、思考过程可见并折叠成「已思考 N 秒」、Markdown 正确渲染、
-            思考/正文双通道。配置在「设置 → AI 助手」。
-
-            想看思考记得把模型名换成 `deepseek-reasoner`。
+            多选题那个 NPE（切题库后滚到没答过的多选题必崩）是 v2.19.23 引入的，
+            **与 AI 无关**，已修且继续生效。全工程无 `ua!!`。
 
             ### 其余一切照旧
 
@@ -113,4 +101,4 @@ jobs:
 
             ---
 
-            **安装**：下载下方 `TiYu-2.19.24.apk` **覆盖安装**即可，学习数据自动迁移。
+            **安装**：下载下方 `TiYu-2.19.25.apk` **覆盖安装**即可，学习数据自动迁移。

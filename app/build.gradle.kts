@@ -19,9 +19,9 @@ android {
         // 预览包（draft release）：`-PtiyuPreview=true` 切版本号，源码保持干净。
         // 预览包 versionCode 抬高，可覆盖安装线上正式版；versionName 带 preview 后缀，
         // 一眼能分清手上装的是哪一版。
-        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 82 else 83
+        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 82 else 84
         versionName = if (providers.gradleProperty("tiyuPreview").orNull == "true")
-            "2.19.26-preview" else "2.19.24"
+            "2.19.26-preview" else "2.19.25"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
@@ -114,23 +114,6 @@ dependencies {
     // WorkManager OneTime 自续在 ROM 杀后台下蒸发（「打开 APP 才通知」根因），全仓已无 androidx.work 引用
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-    // v2.19.24 AI 助手：SSE 流式对话。选 OkHttp 而非 HttpURLConnection——
-    // 流式读取要处理分块、超时与连接复用，OkHttp 这三样都现成；HttpURLConnection
-    // 在 Android 上流式体验差且容易在 readLine 卡死。
-    //
-    // 沙箱与 Actions 的依赖来源必须分开，否则 Actions 会同时拿到坐标解出的
-    // okio 3.9.1 和 libs 里的本地 jar，报 Duplicate class（checkReleaseDuplicateClasses 挂）。
-    //   · 沙箱：Gradle 的 Java 证书链与出网代理对不上（curl 能通、Gradle 报 PKIX），
-    //     坐标依赖拉不下来 → 用 app/libs 下的本地 jar（该目录已 .gitignore，不入库）
-    //   · Actions：libs 不存在 → 走正常 Maven 坐标
-    // 两边拿到的 OkHttp/okio 版本一致（4.12.0 / 3.9.1），行为一致。
-    val _localNet = listOf("libs/okhttp-4.12.0.jar", "libs/okio-jvm-3.9.1.jar")
-        .map { file(it) }.filter { it.exists() }
-    if (_localNet.isNotEmpty()) {
-        implementation(files(_localNet))          // 沙箱：本地 jar
-    } else {
-        implementation("com.squareup.okhttp3:okhttp:4.12.0")   // Actions / 普通克隆：Maven 坐标
-    }
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // v2.17.0：拍照搜题整体下线，随之移除的依赖包括 ML Kit 中文离线识别（bundled，约 18MB）、
     // 拍照 EXIF 摆正库、以及自建取景页用的 CameraX 四件套。

@@ -3,6 +3,32 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.25] - 2026-10-15
+
+### 撤回 AI 助手 entirety，回到零联网依赖的纯离线形态
+
+v2.19.24 我把「问 AI」擅自转成了正式版，用户要求撤回。**整体删除**：
+
+- `ui/ai/` 整个包：`AiClient.kt`（OpenAI 兼容 SSE）、`AiChatSheet.kt`、
+  `AiSettingsSheet.kt`、`Markdown.kt`（自研 Markdown + LaTeX 降级）、`ThinkingClock.kt`
+- 刷题页每题底部的「问 AI」入口与 `askAiFor` 状态
+- 设置页的「AI 助手」入口与 `AiSettingsSheet` 调用
+- `AppIcons.Sparkle`（仅 AI 在用）
+- `SettingsStore` 的 7 项 AI 配置：`aiApiKey` / `aiBaseUrl` / `aiModel` /
+  `aiContextTurns` / `aiTemperature` / `aiMaxTokens` / `aiSystemPrompt`
+- **OkHttp 依赖**——网络层本来只有 AI 在用（`AppUpdater` 用的是 HttpURLConnection）
+- `static_check` 里 4 段 AI 禁令（`ua!!` 那段**保留**，见下）
+
+### INTERNET 权限**保留**（重要）
+
+别因为 AI 被删就把网络权限也去掉：**应用更新检查在用它**
+（`AppUpdater` 读 GitHub 上的最新版版本号）。只是不再有任何 AI 相关的网络请求。
+
+### 保留 v2.19.24 的崩溃修复
+
+多选题 NPE（切题库后滚到未作答的多选题必崩）与 AI 无关，是 v2.19.23 多选四态
+重构留下的，继续生效。全工程无 `ua!!`，`static_check` 6.x 段逐行扫描锁定。
+
 ## [2.19.24] - 2026-10-14
 
 ### 修：切换题库后刷题崩溃（NPE）
