@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -100,6 +101,10 @@ fun AiChatSheet(
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var curQuestionId by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
+    // v2.19.26：上拉把手可把面板继续拉高（对话区太小太憋屈）。
+    // 上限 300dp：再高就顶到状态栏了，且超过后手感会变得"拉不动"。
+    var expandDp by remember { mutableFloatStateOf(0f) }
+    val listMax = (440f + expandDp).dp
 
     val configured = settings.aiApiKey.isNotBlank()
 
@@ -161,9 +166,9 @@ fun AiChatSheet(
                     onDelta = { d ->
                         // 正文开始 → 冻结思考耗时，别把"吐正文"的时间算成思考时间
                         ThinkingClock.close(slot)
-                        if (slot - 1 in messages.indices) {
-                            messages[slot - 1] = messages[slot - 1].copy(
-                                content = messages[slot - 1].content + d
+                        if (slot in messages.indices) {
+                            messages[slot] = messages[slot].copy(
+                                content = messages[slot].content + d
                             )
                         }
                     }
@@ -180,6 +185,7 @@ fun AiChatSheet(
     GlassBottomSheet(
         visible = visible,
         backdrop = backdrop,
+        onDragUp = { d -> expandDp = (expandDp + d).coerceIn(0f, 300f) },
         onDismiss = { if (!streaming) onDismiss() }
     ) {
         // v2.19.25：面板左右统一留白。之前内容直接贴边，「问 AI」两个字都顶到圆角了。
@@ -224,7 +230,8 @@ fun AiChatSheet(
 
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                // 少则矮（不空占屏幕）、多则高、还能上拉再加 300dp
+                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = listMax),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {

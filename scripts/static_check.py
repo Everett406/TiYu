@@ -831,3 +831,25 @@ for _tok, _src, _msg in [
 if "\u258d" in _chat or "▍" in _chat:
     print("[FAIL] 吐字光标 ▍ 已按用户要求移除，勿加回来")
     fail = True
+
+
+# 5.z) AI 消息写入下标越界禁令（v2.19.26 真机事故）
+#      用户截图：AI 的回复整段显示在**用户的黑色气泡**里，且 `**` 未渲染
+#      （user 气泡本就不走 Markdown，所以标记原样露出——正是这个细节暴露了真相）。
+#      根因：`slot` 已经是 assistant 占位在 messages 里的下标，却又写成了
+#      `messages[slot - 1]`，于是每个 token 都追加进上一条（= user）消息。
+#      编译能过、static_check 能过，只有真机能看出来——所以必须锁死。
+_chat2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/AiChatSheet.kt")
+if "slot - 1 in messages.indices" in _chat2 or "messages[slot - 1]" in _chat2:
+    print("[FAIL] AI 流式回写不得写成 messages[slot - 1]——slot 已是 assistant 的下标，"
+          "减 1 会把回复写进用户气泡（v2.19.26 真机事故）")
+    fail = True
+if "messages[slot] = messages[slot].copy(" not in _chat2:
+    print("[FAIL] AI 流式回写须为 messages[slot]（slot 是 assistant 占位下标）")
+    fail = True
+# 两个 AI 弹窗都必须留白（用户连续两轮都提到）
+for _f in ["AiChatSheet.kt", "AiSettingsSheet.kt"]:
+    _src = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/" + _f)
+    if "Modifier.padding(horizontal = 20.dp)" not in _src:
+        print("[FAIL] " + _f + " 内容须留左右 20dp（用户反馈：贴边，字顶到圆角）")
+        fail = True

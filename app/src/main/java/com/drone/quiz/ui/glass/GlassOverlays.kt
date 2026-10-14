@@ -248,6 +248,17 @@ fun GlassBottomSheet(
     visible: Boolean,
     backdrop: Backdrop,
     onDismiss: () -> Unit,
+    /**
+     * v2.19.26：**可选**的"上拉调高"回调（单位 dp）。
+     *
+     * 原行为里，上拉把手只做 rubber-band 过冲（面板顶缘被轻轻拽起又弹回），
+     * 对题号面板这类一次性操作够用；但聊天面板需要**真的把面板拉高**——
+     * 内容多时一个 360dp 的小窗口太憋屈。
+     *
+     * 给了本参数后，上拉手势改为通知外部调高（而不是过冲），外部自己 clamp 上限。
+     * 不给则完全保持原行为，其他调用点零影响。
+     */
+    onDragUp: ((Float) -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     GlassOverlayRegistration(visible, onDismiss) {
@@ -312,6 +323,13 @@ fun GlassBottomSheet(
                                     onDragStart = { dragScope.launch { dragY.stop() } },
                                     onVerticalDrag = { change, dy ->
                                         change.consume()
+                                        // 上拉 + 有 onDragUp → 交给外部调高，不做过冲
+                                        if (onDragUp != null && dy < 0) {
+                                            dragScope.launch {
+                                                onDragUp(with(density) { (-dy).toDp().value })
+                                            }
+                                            return@detectVerticalDragGestures
+                                        }
                                         dragScope.launch {
                                             rawDragY += dy
                                             val disp = if (rawDragY >= 0f) rawDragY

@@ -80,6 +80,9 @@ fun AiSettingsSheet(
         backdrop = backdrop,
         onDismiss = onDismiss
     ) {
+        // v2.19.26：配置页左右同样没留白（用户反馈第二轮），统一 20dp。
+        // 只给这一个 sheet 加，不去动 GlassBottomSheet 本身——那是所有弹窗共用的基础设施。
+        Column(Modifier.padding(horizontal = 20.dp)) {
         Text(
             "AI 助手",
             color = ui.text, fontSize = 17.sp, fontWeight = FontWeight.Bold,
@@ -218,6 +221,7 @@ fun AiSettingsSheet(
                     color = ui.onInk, fontSize = 13.sp, fontWeight = FontWeight.Bold
                 )
             }
+        }
         }
     }
 }

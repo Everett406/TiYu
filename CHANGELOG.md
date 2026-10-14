@@ -3,6 +3,35 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.26-preview] - 2026-10-14
+
+### 修 AI 回复写错位置的真 bug + 配置页留白 + 聊天面板可拉高
+
+#### 1. AI 回复整段跑进用户气泡（真 bug，用户截图发现）
+
+`slot` 本身就是 assistant 占位在 `messages` 里的下标，回写时却又写成了
+`messages[slot - 1]` —— **每个 token 都追加进了上一条（= user）消息**。
+用户看到的是一个巨大的黑色气泡：前半句自己的问题、后半句 AI 的回答。
+
+**破绽在于 `**` 没被渲染**：user 气泡本就不走 Markdown（纯回显），AI 回复才渲染，
+这个细节直接指认了内容被写进了错误的那一条。
+
+编译通过、static_check 通过——只有真机能看出来。新增禁令：
+流式回写必须是 `messages[slot]`，出现 `messages[slot - 1]` 直接 FAIL。
+
+#### 2. 配置页左右无留白
+
+上一版只给 `AiChatSheet` 加了 20dp 留白，`AiSettingsSheet` 漏了。补上。
+**刻意不去改 GlassBottomSheet 本身**——那是全 app 共用的弹窗基础设施，
+给它加默认 padding 会波及题号面板、题库导入等所有弹窗；只在需要的那两个 sheet 内部加。
+
+#### 3. 聊天面板可拉高 + 默认更高
+
+- `GlassBottomSheet` 新增**可选**参数 `onDragUp`：给定时，上拉把手从
+  rubber-band 过冲改为"通知外部调高"；不给则完全保持原行为，其他弹窗零影响。
+- 聊天面板：对话区默认 360dp → **440dp**，再上拉最多 +300dp；
+  少内容时自动收矮（`heightIn(min=180, max=...)`），不空占屏幕。
+
 ## [2.19.25-preview] - 2026-10-14
 
 ### AI 聊天渲染修 5 处（用户真机反馈轮）
