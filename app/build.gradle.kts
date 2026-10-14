@@ -16,8 +16,12 @@ android {
         applicationId = "com.drone.quiz"
         minSdk = 31
         targetSdk = 35
-        versionCode = 79
-        versionName = "2.19.23"
+        // 预览包（draft release）：`-PtiyuPreview=true` 切版本号，源码保持干净。
+        // 预览包 versionCode 抬高，可覆盖安装线上正式版；versionName 带 preview 后缀，
+        // 一眼能分清手上装的是哪一版。
+        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 80 else 79
+        versionName = if (providers.gradleProperty("tiyuPreview").orNull == "true")
+            "2.19.24-preview" else "2.19.23"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
@@ -110,6 +114,15 @@ dependencies {
     // WorkManager OneTime 自续在 ROM 杀后台下蒸发（「打开 APP 才通知」根因），全仓已无 androidx.work 引用
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // v2.19.24 AI 助手：SSE 流式对话。选 OkHttp 而非 HttpURLConnection——
+    // 流式读取要处理分块、超时与连接复用，OkHttp 这三样都现成；HttpURLConnection
+    // 在 Android 上流式体验差且容易在 readLine 卡死。
+    //
+    // ⚠️ 走的是 app/libs 下的本地 jar 而非 Maven 坐标：沙箱里 Gradle 的 Java 证书链
+    // 与出网代理对不上（curl 能通、Gradle 报 PKIX path building failed），
+    // 坐标依赖拉不下来。本地 jar 让本地构建与 GitHub Actions 两边都稳定——
+    // Actions 侧 Maven 正常，但同样能命中 libs，行为一致。
+    implementation(files("libs/okhttp-4.12.0.jar", "libs/okio-jvm-3.6.0.jar"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // v2.17.0：拍照搜题整体下线，随之移除的依赖包括 ML Kit 中文离线识别（bundled，约 18MB）、
     // 拍照 EXIF 摆正库、以及自建取景页用的 CameraX 四件套。

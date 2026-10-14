@@ -95,6 +95,15 @@ data class AppSettings(
     val examAutoMix: Boolean = true, // 模考题型构成：自动按题库各题型占比配比（关 = 手动拖比例，v2.8.3）
     // v2.18.0 模考即时判定：关 = 全卷交后统核正误（传统模考口径，默认）；
     // 开 = 逐题作答、当场验得失。仅改显示时机，判分与成绩单口径完全不变。
+    // ---- v2.19.24 AI 助手（刷题页「问 AI」，RAG 暂不做）----
+    // 默认接 DeepSeek（OpenAI 兼容格式），换厂商只需改 baseUrl + model。
+    val aiApiKey: String = "",                                   // 用户自己的 key，本地存储
+    val aiBaseUrl: String = "https://api.deepseek.com/v1",       // OpenAI 兼容根路径
+    val aiModel: String = "deepseek-chat",
+    val aiContextTurns: Int = 6,        // 带入最近几轮对话（0 = 只带当前题，不带历史）
+    val aiTemperature: Double = 0.7,
+    val aiMaxTokens: Int = 1024,
+    val aiSystemPrompt: String = "",    // 留空用内置；填了则以用户为准
     val examInstantJudge: Boolean = false,
     val eyeCareReminder: Boolean = false, // v2.8.6 护眼提醒：连续刷题 20 分钟弹窗提醒休息（考试不受影响）
     val onboardingDone: Boolean = false, // v2.9.0 首启功能引导已完成/已跳过（跳过即不再自动弹）
@@ -150,6 +159,15 @@ class SettingsStore(private val context: Context) {
         val examTypeOrder = stringPreferencesKey("exam_type_order")
         val examAutoMix = booleanPreferencesKey("exam_auto_mix")
         val examInstantJudge = booleanPreferencesKey("exam_instant_judge")
+        // v2.19.24 AI 助手
+        val aiApiKey = stringPreferencesKey("ai_api_key")
+        val aiBaseUrl = stringPreferencesKey("ai_base_url")
+        val aiModel = stringPreferencesKey("ai_model")
+        val aiContextTurns = intPreferencesKey("ai_context_turns")
+        // Preferences 没有 doublePreferencesKey，只有 float —— 0~2 的小数用 float 足够
+        val aiTemperature = floatPreferencesKey("ai_temperature")
+        val aiMaxTokens = intPreferencesKey("ai_max_tokens")
+        val aiSystemPrompt = stringPreferencesKey("ai_system_prompt")
         // v2.8.6 护眼提醒
         val eyeCareReminder = booleanPreferencesKey("eye_care_reminder")
         // v2.9.0 首启功能引导
@@ -200,6 +218,15 @@ class SettingsStore(private val context: Context) {
             } ?: emptyList(),
             examAutoMix = p[K.examAutoMix] ?: true,
             examInstantJudge = p[K.examInstantJudge] ?: false,
+            // v2.19.24 AI 助手。baseUrl/model 允许留空回落到默认——
+            // 用户清空输入框不该让功能彻底不可用。
+            aiApiKey = p[K.aiApiKey] ?: "",
+            aiBaseUrl = p[K.aiBaseUrl] ?: "https://api.deepseek.com/v1",
+            aiModel = p[K.aiModel] ?: "deepseek-chat",
+            aiContextTurns = p[K.aiContextTurns] ?: 6,
+            aiTemperature = (p[K.aiTemperature] ?: 0.7f).toDouble(),
+            aiMaxTokens = p[K.aiMaxTokens] ?: 1024,
+            aiSystemPrompt = p[K.aiSystemPrompt] ?: "",
             eyeCareReminder = p[K.eyeCareReminder] ?: false,
             onboardingDone = p[K.onboardingDone] ?: false,
             dailyGoal = p[K.dailyGoal] ?: 30,
@@ -399,6 +426,20 @@ class SettingsStore(private val context: Context) {
 
     /** v2.18.0：模考即时判定开关（关=全卷交后统核，开=逐题当场验得失）。 */
     suspend fun setExamInstantJudge(v: Boolean) = context.dataStore.edit { it[K.examInstantJudge] = v }
+
+    // ---- v2.19.24 AI 助手 ----
+
+    suspend fun setAiApiKey(v: String) = context.dataStore.edit { it[K.aiApiKey] = v.trim() }
+    suspend fun setAiBaseUrl(v: String) =
+        context.dataStore.edit { it[K.aiBaseUrl] = v.trim().trimEnd('/') }
+    suspend fun setAiModel(v: String) = context.dataStore.edit { it[K.aiModel] = v.trim() }
+    suspend fun setAiContextTurns(v: Int) =
+        context.dataStore.edit { it[K.aiContextTurns] = v.coerceIn(0, 20) }
+    suspend fun setAiTemperature(v: Double) =
+        context.dataStore.edit { it[K.aiTemperature] = v.coerceIn(0.0, 2.0).toFloat() }
+    suspend fun setAiMaxTokens(v: Int) =
+        context.dataStore.edit { it[K.aiMaxTokens] = v.coerceIn(256, 8192) }
+    suspend fun setAiSystemPrompt(v: String) = context.dataStore.edit { it[K.aiSystemPrompt] = v }
 
     suspend fun setExamTypeOrder(list: List<String>) {
         context.dataStore.edit { p ->

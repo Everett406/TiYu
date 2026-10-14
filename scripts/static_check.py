@@ -274,15 +274,28 @@ for _mime in ["application/zip", "application/x-zip-compressed", "application/oc
 import re as _re
 _gradle_src = load(_repo_root + "/app/build.gradle.kts")
 _wf_src = load(_repo_root + "/.github/workflows/build.yml")
-_vname = _re.search(r'versionName = "([\d.]+)"', _gradle_src)
-_vcode = _re.search(r'versionCode = (\d+)', _gradle_src)
-_wf_name = _re.search(r'APP_VERSION_NAME: ([\d.]+)', _wf_src)
-_wf_tag = _re.search(r'APP_VERSION_TAG: v?([\d.]+)', _wf_src)
+# v2.19.24 起 gradle 里版本号可能是 `-PtiyuPreview=true` 的条件表达式（草稿预览包）。
+# 正则须兼容两种写法：取**正式版**那一支（条件为 false / else 的那侧），
+# 这样 static_check 校验的始终是要发的正式版本，而不是预览版本。
+_vname = (_re.search(r'versionName\s*=\s*if\b[\s\S]*?"([^"]+)"\s*else\s*"([^"]+)"', _gradle_src)
+          or _re.search(r'versionName\s*=\s*"([^"]+)"', _gradle_src))
+_vcode = (_re.search(r'versionCode\s*=\s*if\b[\s\S]*?\s(\d+)\s+else\s+(\d+)', _gradle_src)
+          or _re.search(r'versionCode\s*=\s*(\d+)', _gradle_src))
+# gradle 里可能是 `-PtiyuPreview=true` 的条件表达式（草稿预览包），两个分支都可能有值：
+#   group(1) = preview 分支（2.19.24-preview），group(2) = 正式分支（2.19.23）
+# build.yml 侧若是 preview（名字带 -preview）就比对 group(1)，否则比对 group(2)。
+_is_preview = "APP_VERSION_NAME:" in _wf_src and "-preview" in _wf_src.split("APP_VERSION_NAME:")[1].split("\n")[0]
+_vi = 1 if _is_preview else 2
+_vn = _vname.group(_vi) if _vname.re.groups >= 2 else _vname.group(1)
+_vc = _vcode.group(_vi) if _vcode.re.groups >= 2 else _vcode.group(1)
+# 预览包的版本名带 -preview 后缀（与 gradle 的 preview 分支对齐）
+_wf_name = _re.search(r'APP_VERSION_NAME: ([\w.\-]+)', _wf_src)
+_wf_tag = _re.search(r'APP_VERSION_TAG: v?([\w.\-]+)', _wf_src)
 if not (_vname and _vcode and _wf_name and _wf_tag):
     print("[FAIL] 版本号解析失败（gradle / build.yml 格式变更，请修 3.9 节正则）"); fail = True
 else:
-    if not (_vname.group(1) == _wf_name.group(1) == _wf_tag.group(1)):
-        print(f"[FAIL] 版本号三处不一致: gradle={_vname.group(1)} "
+    if not (_vn == _wf_name.group(1) == _wf_tag.group(1)):
+        print(f"[FAIL] 版本号三处不一致: gradle={_vn} "
               f"build.yml name={_wf_name.group(1)} tag={_wf_tag.group(1)}")
         fail = True
 
@@ -755,3 +768,35 @@ for _tok, _src, _msg in [
     if _tok not in _src:
         print("[FAIL] " + _msg)
         fail = True
+
+
+# 5.x) AI 助手（v2.19.24）关键件禁令
+#      用户定位很明确：AI 是"淡一点的旁白"，不是主功能。故以下几件事不能被后来人
+#      以"简化"为名摘掉，否则会退化成半残：
+#        · 刷题页入口（唯一的对外入口）
+#        · 当前题自动进上下文（用户不用手贴任何东西）
+#        · 主设置页只有一行入口（配置项必须留在二级弹窗，别平铺进来撑爆长页面）
+_ai_client = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/AiClient.kt")
+_ai_chat = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/AiChatSheet.kt")
+_ai_set = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/ai/AiSettingsSheet.kt")
+_prac = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt")
+_set = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SettingsScreen.kt")
+_store = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/settings/SettingsStore.kt")
+for _tok, _src, _msg in [
+    ('put("stream", stream)', _ai_client, "AI 必须走流式（SSE），不能退化成一次性请求"),
+    ("fun QuestionContext", _ai_client, "缺当前题上下文注入（换题得自动带题干/选项/正确答案）"),
+    ("正确答案：", _ai_client, "上下文里必须含正确答案，否则模型只能猜"),
+    ("produceState", _ai_chat, "缺吐字动画（直接贴 SSE 增量会一跳一跳）"),
+    ("fun AiSettingsSheet", _ai_set, "缺 AI 设置二级弹窗"),
+    ("onAskAi", _prac, "刷题页缺『问 AI』入口"),
+    ("AiSettingsSheet(", _set, "设置页缺 AI 助手入口"),
+    ("val aiApiKey", _store, "SettingsStore 缺 AI 配置项"),
+]:
+    if _tok not in _src:
+        print("[FAIL] " + _msg)
+        fail = True
+# 主设置页不得平铺 AI 配置项（用户明确说过主设置已经很长）
+if "setAiBaseUrl(" in _set or "AiTextField(" in _set:
+    print("[FAIL] AI 的配置项不得平铺进主设置页——用户口径『更多设置放弹窗/新页面』，"
+          "主设置页只保留一行入口")
+    fail = True

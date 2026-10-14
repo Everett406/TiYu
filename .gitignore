@@ -10,3 +10,6 @@ cxx/
 app/build/
 .kotlin/
 .cxx/
+
+# v2.19.24 预览构建临时产物（本地解出的 keystore 等，绝不入库）
+.preview/
