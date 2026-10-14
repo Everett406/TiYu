@@ -118,11 +118,19 @@ dependencies {
     // 流式读取要处理分块、超时与连接复用，OkHttp 这三样都现成；HttpURLConnection
     // 在 Android 上流式体验差且容易在 readLine 卡死。
     //
-    // ⚠️ 走的是 app/libs 下的本地 jar 而非 Maven 坐标：沙箱里 Gradle 的 Java 证书链
-    // 与出网代理对不上（curl 能通、Gradle 报 PKIX path building failed），
-    // 坐标依赖拉不下来。本地 jar 让本地构建与 GitHub Actions 两边都稳定——
-    // Actions 侧 Maven 正常，但同样能命中 libs，行为一致。
-    implementation(files("libs/okhttp-4.12.0.jar", "libs/okio-jvm-3.6.0.jar"))
+    // 沙箱与 Actions 的依赖来源必须分开，否则 Actions 会同时拿到坐标解出的
+    // okio 3.9.1 和 libs 里的本地 jar，报 Duplicate class（checkReleaseDuplicateClasses 挂）。
+    //   · 沙箱：Gradle 的 Java 证书链与出网代理对不上（curl 能通、Gradle 报 PKIX），
+    //     坐标依赖拉不下来 → 用 app/libs 下的本地 jar（该目录已 .gitignore，不入库）
+    //   · Actions：libs 不存在 → 走正常 Maven 坐标
+    // 两边拿到的 OkHttp/okio 版本一致（4.12.0 / 3.9.1），行为一致。
+    val _localNet = listOf("libs/okhttp-4.12.0.jar", "libs/okio-jvm-3.9.1.jar")
+        .map { file(it) }.filter { it.exists() }
+    if (_localNet.isNotEmpty()) {
+        implementation(files(_localNet))          // 沙箱：本地 jar
+    } else {
+        implementation("com.squareup.okhttp3:okhttp:4.12.0")   // Actions / 普通克隆：Maven 坐标
+    }
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // v2.17.0：拍照搜题整体下线，随之移除的依赖包括 ML Kit 中文离线识别（bundled，约 18MB）、
     // 拍照 EXIF 摆正库、以及自建取景页用的 CameraX 四件套。

@@ -13,3 +13,7 @@ app/build/
 
 # v2.19.24 预览构建临时产物（本地解出的 keystore 等，绝不入库）
 .preview/
+
+# v2.19.24：OkHttp/okio 的本地 jar，仅供沙箱离线编译用（Actions 与普通克隆走 Maven 坐标）。
+# **绝不入库** —— 否则 Actions 会同时拿到坐标解出的 okio 与这里的 jar，checkReleaseDuplicateClasses 直接失败。
+app/libs/
