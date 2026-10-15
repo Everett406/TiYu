@@ -3,6 +3,34 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.26] - 2026-10-14
+
+### 墨色主按钮改用星空纹理底（用户提供的星空图，原样使用）
+
+用户给了张星空图要求"直接用这个裁"，明确不要任何星点生成 / 噪点合成 / 亮度增强。
+照办：原图存 `res/drawable-nodpi/btn_starfield.jpg`（56KB），**仅尺寸存进项目**，
+像素零处理。
+
+**判据用「`surfaceColor == ui.ink`」而非新增参数**：全 app 17 处墨色按钮自动一致，
+将来新加的墨色按钮也不会漏。深色模式下 `ui.ink` 是浅米色，判据天然不成立，
+所以深色模式保持原来的浅底深字。
+
+**等比裁切而非拉伸**：按钮宽度可变（`Modifier.weight(1f)` 撑满 or 定宽），
+横向拉伸会把星点扯成椭圆。用 Cover 缩放（`max(w/bmpW, h/bmpH)`）+ 居中平移。
+
+**三个渲染分支都改**（亚克力 / 材质 / 真折射）——`drawBackdrop` 有三条不同路径，
+漏一条就出现"某些模式下按钮没星空"的不一致。
+
+**踩了三个坑**：
+1. `ImageBitmap.imageResource()` 是 @Composable 扩展，塞进 `LaunchedEffect` 报错；
+2. 换 `remember { runCatching { imageResource() } }` —— **照样报**，
+   因为 `remember` 的 lambda 不是 @Composable 上下文；
+3. 最终改用框架层 `BitmapFactory.decodeResource`（本就不需要组合上下文），
+   `LocalContext.current` 在组合期读出，remember 保证只解码一次。
+
+`drawable-nodpi` 是必须的：这张图就是给高密度屏当底纹的，
+让系统再按密度缩放一遍只会糊。
+
 ## [2.19.25] - 2026-10-15
 
 ### 撤回 AI 助手 entirety，回到零联网依赖的纯离线形态

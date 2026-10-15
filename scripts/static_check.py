@@ -790,3 +790,25 @@ for _f in ["screens/PracticeScreen.kt", "screens/ExamScreens.kt"]:
             print(f"[FAIL] {_f}:{_ln} 可空作答不得用 ua!! —— 未作答或退出动画期间 ua 可能为 null"
                   f"（v2.19.24 崩溃）: {_l.strip()[:60]}")
             fail = True
+
+
+# 7.x) 星空按钮底纹（v2.19.26）
+#      墨色主按钮改用星空纹理。三个渲染分支（亚克力 / 材质 / 真折射）都必须处理，
+#      漏一个就会出现「某种模式下按钮没星空」的不一致——所以三条都锁。
+_tex = _repo_root + "/app/src/main/res/drawable-nodpi/btn_starfield.jpg"
+import os as _os
+if not _os.path.exists(_tex):
+    print("[FAIL] 星空纹理 btn_starfield.jpg 缺失（drawable-nodpi/）——"
+          "墨色主按钮会退回纯色块"); fail = True
+_gk = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/GlassKit.kt")
+# 必须等比裁切：横向拉宽的按钮会把星点拉成椭圆，一眼穿帮
+if "max(size.width / bmpW, size.height / bmpH)" not in _gk:
+    print("[FAIL] 星空底纹必须等比裁切（Cover + 居中平移），不得横向拉伸")
+    fail = True
+# 判据必须是「surfaceColor == ui.ink」而不是新增参数：全 app 17 处墨色按钮自动一致
+if "surfaceColor == ui.ink" not in _gk:
+    print("[FAIL] 星空底纹判据应为 surfaceColor == ui.ink（深色模式 ui.ink 是浅米色，"
+          "判据天然不成立，故深色模式仍走浅底深字）"); fail = True
+if _gk.count("drawStarfieldCropped(") < 4:
+    print("[FAIL] 星空底纹须在三个渲染分支都绘制（亚克力 / 材质 / 真折射），"
+          "漏一个会出现模式间不一致"); fail = True

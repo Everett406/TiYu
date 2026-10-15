@@ -85,6 +85,17 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.tanh
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.platform.LocalContext
+import kotlin.math.max
+import androidx.compose.ui.graphics.ImageBitmap
+import com.drone.quiz.R
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import android.graphics.BitmapFactory
 
 /**
  * 全局画面特效状态（三级体系）。
@@ -299,6 +310,14 @@ fun GlassButton(
         label = "btnPressScale"
     )
 
+    // v2.19.26：主按钮（墨色）改用星空纹理底。
+    // 判据是「surfaceColor 恰好等于墨色」而不是新加参数——全 app 17 处墨色按钮
+    // 自动一致，将来新加的墨色按钮也不会漏。深色模式下 ui.ink 是浅米色，
+    // 判据天然不成立，所以深色模式仍走原来的浅底深字。
+    val useStarfield = !ui.isDark &&
+        surfaceColor != Color.Unspecified && surfaceColor == ui.ink
+    val starTex = rememberStarfieldTexture()
+
     val glassActive = refracts && GlassRuntime.enabled
     val acrylicActive = !glassActive && GlassRuntime.mode == GlassRuntime.MODE_ACRYLIC
 
@@ -316,7 +335,8 @@ fun GlassButton(
                     shape = { Capsule() },
                     effects = { blur(8f.dp.toPx()) },
                     onDrawSurface = {
-                        if (surfaceColor != Color.Unspecified) drawRect(surfaceColor)
+                        if (useStarfield) drawStarfieldCropped(starTex)
+                        else if (surfaceColor != Color.Unspecified) drawRect(surfaceColor)
                         else drawRect(if (ui.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.72f))
                     }
                 )
@@ -346,10 +366,15 @@ fun GlassButton(
             }
             .shadow(5.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.12f))
             .clip(RoundedCornerShape(50))
+            .then(if (useStarfield) Modifier.starfieldBase(starTex) else Modifier)
             .background(
-                if (surfaceColor != Color.Unspecified) surfaceColor
-                else if (ui.isDark) Color.White.copy(alpha = 0.14f)
-                else Color.White.copy(alpha = 0.72f)
+                when {
+                    // 星空层已经铺了底，background 必须让位，否则会盖住纹理
+                    useStarfield -> Color.Transparent
+                    surfaceColor != Color.Unspecified -> surfaceColor
+                    ui.isDark -> Color.White.copy(alpha = 0.14f)
+                    else -> Color.White.copy(alpha = 0.72f)
+                }
             )
             .border(
                 0.75.dp,
@@ -415,7 +440,9 @@ fun GlassButton(
                         drawRect(tint, blendMode = BlendMode.Hue)
                         drawRect(tint.copy(alpha = 0.75f))
                     }
-                    if (surfaceColor != Color.Unspecified) {
+                    if (useStarfield) {
+                        drawStarfieldCropped(starTex)
+                    } else if (surfaceColor != Color.Unspecified) {
                         drawRect(surfaceColor)
                     }
                 }
@@ -497,6 +524,7 @@ fun GlassSlider(
     refracts: Boolean = true
 ) {
     val ui = LocalUi.current
+
     val glassActive = refracts && GlassRuntime.enabled
     val trackColor =
         if (!ui.isDark) Color(0xFF787878).copy(0.2f) else Color(0xFF787880).copy(0.36f)
@@ -891,5 +919,73 @@ fun GlassToggle(
                     .size(40f.dp, 24f.dp)
             )
         }
+    }
+}
+
+
+
+
+/**
+ * 星空底纹修饰符（v2.19.26）。
+ *
+ * **不用 ImageShader**：本项目 Compose 版本的 ImageShader 没有 fitScale / translationX
+ * 参数，做不出「等比裁切铺满」，只能横向拉伸——星点会被拉成椭圆。
+ * 改用 nativeCanvas 手绘：算好缩放比与居中偏移，一次 drawBitmap 到位。
+ *
+ * **为什么放在 clip 之后、background 之前**：clip 保证不溢出胶囊轮廓；
+ * 排在 background 之前才能被后续描边盖住——若排在最后，会把 0.75dp 的边缘高光也盖掉。
+ */
+private fun Modifier.starfieldBase(tex: ImageBitmap?): Modifier {
+    if (tex == null) return this
+    return this.drawBehind { drawStarfieldCropped(tex) }
+}
+
+/**
+ * 把星空纹理**等比裁切**铺满当前区域（居中）。
+ *
+ * 取 `max(w/bmpW, h/bmpH)` = Cover 缩放，再把超出部分平移掉。
+ * 必须是等比：按钮宽度可变（`Modifier.weight(1f)`），若直接横向拉伸，
+ * 星点会被拉成椭圆，一眼就穿帮。
+ *
+ * 裁剪责任在调用方：drawBackdrop 的 `shape = { Capsule() }` 或 background 的
+ * `clip(RoundedCornerShape(50))` 会兜住边界，本函数只管铺。
+ */
+private fun DrawScope.drawStarfieldCropped(tex: ImageBitmap?) {
+    val bmp = tex?.asAndroidBitmap() ?: return
+    if (bmp.width <= 0 || bmp.height <= 0) return
+    if (size.width <= 0f || size.height <= 0f) return
+    val bmpW = bmp.width.toFloat()
+    val bmpH = bmp.height.toFloat()
+    val sc = max(size.width / bmpW, size.height / bmpH)
+    val dx = (size.width - bmpW * sc) / 2f
+    val dy = (size.height - bmpH * sc) / 2f
+    drawIntoCanvas { canvas ->
+        val m = android.graphics.Matrix()
+        m.postScale(sc, sc)
+        m.postTranslate(dx, dy)
+        canvas.nativeCanvas.drawBitmap(bmp, m, null)
+    }
+}
+
+/**
+ * 星空纹理：只解码一次并缓存住，别在每次重组里重新读资源。
+ *
+ * ⚠️ 两个坑都踩过：
+ *  1. `ImageBitmap.imageResource()` 是 @Composable 扩展，塞进 LaunchedEffect 会报
+ *     「@Composable invocations can only happen from the context of a @Composable function」；
+ *  2. 换个 lambda 包一层（`remember { runCatching { imageResource(...) } }`）**照样报**——
+ *     remember 的 lambda 不是 @Composable 上下文。
+ *
+ * 所以干脆用框架层的 `BitmapFactory.decodeResource`，它本来就不需要组合上下文；
+ * `LocalContext.current` 在组合期读出来，remember 保证只解码一次。
+ * 56KB 的 JPEG 解码是毫秒级，只在第一次显示墨色按钮时付这个代价。
+ */
+@Composable
+private fun rememberStarfieldTexture(): ImageBitmap? {
+    val res = LocalContext.current.resources
+    return remember {
+        runCatching {
+            BitmapFactory.decodeResource(res, R.drawable.btn_starfield)?.asImageBitmap()
+        }.getOrNull()
     }
 }
