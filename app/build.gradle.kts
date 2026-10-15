@@ -19,9 +19,9 @@ android {
         // 预览包（draft release）：`-PtiyuPreview=true` 切版本号，源码保持干净。
         // 预览包 versionCode 抬高，可覆盖安装线上正式版；versionName 带 preview 后缀，
         // 一眼能分清手上装的是哪一版。
-        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 82 else 85
+        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 82 else 86
         versionName = if (providers.gradleProperty("tiyuPreview").orNull == "true")
-            "2.19.26-preview" else "2.19.26"
+            "2.19.26-preview" else "2.19.27"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
@@ -84,13 +84,20 @@ dependencies {
     // 进而牵动 AGP 9 / Gradle 9 / 内置 Kotlin 迁移——代价与收益不成比例。
     // 渐进模糊改走 ui/glass/ProgressiveBlur.kt（分层固定半径，API 31+ 可用），
     // BOM 升级留作独立一轮，在有 Android Studio 的机器上用 Upgrade Assistant 做更稳妥。
+    // v2.19.27 **刻意不升** compose-bom（2025.06.01 → 2026.09.00，跨 15 个月）：
+    // ① 液态玻璃（com.kyant.backdrop + shapes）是 vendor 进源码的，且重度依赖
+    //    实验性 API（drawBackdrop / LayerBackdrop / AGSL），大版本 Compose 的
+    //    API 变动最可能砸在这套 vendor 代码上；
+    // ② 沙箱 Gradle 与出网代理的证书链对不上，新依赖拉不到，**无法本地编译验证**，
+    //    一旦炸了只能靠 CI 试错，代价太大。
+    // 待 CI 通道稳定后单独发一版试升，不与其它改动混在一起。
     val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
     implementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.activity:activity-compose:1.12.4")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
+    implementation("androidx.core:core-ktx:1.18.0")          // v2.19.27：1.17.0 → 1.18.0（1.19.1 要 compileSdk 37 + AGP 9.1，本轮升不了）
+    implementation("androidx.activity:activity-compose:1.13.0")  // v2.19.27：1.12.4 → 1.13.0
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")  // v2.19.27：2.9.4 → 2.10.0（2.11.0 要 compileSdk 37 + AGP 9.1）
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")  // v2.19.27：2.9.4 → 2.10.0（同上）
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -99,7 +106,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.animation:animation")
 
-    implementation("androidx.navigation:navigation-compose:2.9.8")
+    implementation("androidx.navigation:navigation-compose:2.9.8")  // v2.19.27：2.10.2 要 compileSdk 37 + AGP 9.1，**保持 2.9.8**
 
     // 官方同款连续曲率形状（Capsule/RoundedRectangle）已改为源码 vendor 到 com.kyant.shapes
     // （maven 坐标 io.github.kyant0:shapes:1.2.1 的 AAR 要求 compileSdk 37 + AGP 9.1，
@@ -113,8 +120,8 @@ dependencies {
     // v2.15.0：移除 work-runtime——每日提醒调度引擎换 AlarmManager 精确闹钟，
     // WorkManager OneTime 自续在 ROM 杀后台下蒸发（「打开 APP 才通知」根因），全仓已无 androidx.work 引用
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")  // v2.19.27：1.9.0 → 1.11.0（跳过 1.12.0-RC 预发布）
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")  // v2.19.27：1.10.2 → 1.11.0
     // v2.17.0：拍照搜题整体下线，随之移除的依赖包括 ML Kit 中文离线识别（bundled，约 18MB）、
     // 拍照 EXIF 摆正库、以及自建取景页用的 CameraX 四件套。
     // 至此应用回到「零联网 OCR / 零 native 代码 / 零相机依赖」的纯离线形态。

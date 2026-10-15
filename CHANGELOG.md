@@ -3,6 +3,40 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.27] - 2026-10-14
+
+### 星点密度减 30%
+
+不重新生成任何星点：把每个像素相对底色的"亮出量"整体压到 72%
+（`base + (img - base) * 0.72`），最暗的一批星点自然沉进黑底，视觉密度下降。
+
+### 依赖巡检
+
+**已升**：kotlinx-coroutines 1.10.2→1.11.0、kotlinx-serialization-json 1.9.0→1.11.0
+（跳过 1.12.0-RC）、core-ktx 1.17.0→1.18.0、lifecycle 2.9.4→2.10.0、
+activity-compose 1.12.4→1.13.0。room 2.8.5 / datastore 1.2.1 本已最新。
+
+**升不了**：core-ktx 1.19.1、lifecycle 2.11.0、navigation-compose 2.10.2 —
+三者均强制要求 **compileSdk 37 + AGP 9.1**，本项目是 36 + AGP 8.13.2。
+compose-bom（2025.06→2026.09，跨 15 个月）同样在这批里。
+
+**结论**：当前工具链已卡在平台窗口期。要吃到剩余全部新版，
+需要先升 AGP 8.13.2 → 9.1 + compileSdk 36 → 37，那是一次独立的工程改造，
+不适合混在日常版本里做。
+
+### 液态玻璃（kyant backdrop）：查过，无需更新
+
+上游 2.0.1 与内联版的 `lens()` 签名完全一致（含 `depthEffect`/`chromaticAberration`）；
+内联版**额外多两层防御**（不支持的形状跳过、AGSL 编译失败降级），
+换官方 AAR 反而丢保护。`shapes` 1.2.1 本就是最新。
+
+### 沙箱构建环境修复（影响以后所有依赖升级）
+
+Gradle 的 Java 证书链与出网代理对不上（`PKIX path building failed`），
+而 curl 能通 —— 于是以前拉不到任何新依赖，**依赖升级完全无法本地验证**，只能靠 CI 试错。
+把沙箱网关 CA 导入独立 truststore 后本地可正常解析依赖。
+用法写在 `gradle.properties` 注释里（仅沙箱需要，CI 与开发机不需要）。
+
 ## [2.19.26] - 2026-10-14
 
 ### 墨色主按钮改用星空纹理底（用户提供的星空图，原样使用）
