@@ -45,6 +45,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.compositionLocalOf
+import com.drone.quiz.ui.glass.accentTexture
+import com.drone.quiz.ui.glass.rememberAccentTexture
 
 /**
  * 分段选择器：槽内滑动的墨色胶囊。
@@ -75,7 +77,9 @@ fun SegmentedRow(
                 .offset(x = pillX + 3.dp, y = 3.dp)
                 .size(width = segWidth - 6.dp, height = 34.dp)
                 .clip(RoundedCornerShape(50))
-                .background(ui.ink)
+                // v2.19.28：滑动指示块（实心强调底）走纹理
+                .accentTexture(rememberAccentTexture())
+                .background(Color.Transparent)
         )
         Row(Modifier.height(40.dp)) {
             options.forEachIndexed { i, label ->

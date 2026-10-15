@@ -812,3 +812,36 @@ if "surfaceColor == ui.ink" not in _gk:
 if _gk.count("drawStarfieldCropped(") < 4:
     print("[FAIL] 星空底纹须在三个渲染分支都绘制（亚克力 / 材质 / 真折射），"
           "漏一个会出现模式间不一致"); fail = True
+
+
+# 7.y) 强调底纹理覆盖范围（v2.19.28）
+#      用户反馈：黑色按钮之外的黑色大面积元素（分段控件滑块、筛选 chip、开关轨道）
+#      也要同样的纹理；深色模式下强调底是浅色，于是又备了一张浅色水磨石。
+#      现在统一走 `ui.ink` 判据 + `rememberAccentTexture()`（按主题自动选深/浅那张），
+#      下列五类组件必须都接上，漏一处就会出现视觉语言不一致。
+_tex_dark = _repo_root + "/app/src/main/res/drawable-nodpi/btn_starfield.jpg"
+_tex_light = _repo_root + "/app/src/main/res/drawable-nodpi/btn_paper.jpg"
+import os as _os2
+for _p, _n in [(_tex_dark, "星空（浅色主题强调底）"), (_tex_light, "水磨石（深色主题强调底）")]:
+    if not _os2.path.exists(_p):
+        print(f"[FAIL] 强调底纹理缺失：{_n}")
+        fail = True
+_st = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/SurfaceTexture.kt")
+if "if (ui.isDark) R.drawable.btn_paper else R.drawable.btn_starfield" not in _st:
+    print("[FAIL] 强调底纹理须按主题选择：深色 → btn_paper（浅）�� 浅色 → btn_starfield（深）")
+    fail = True
+if "max(size.width / bmpW, size.height / bmpH)" not in _st:
+    print("[FAIL] 强调底纹理必须等比裁切（Cover + 居中），不得横向拉伸")
+    fail = True
+# 五类组件：谁漏了就报谁的
+for _f, _tok, _who in [
+    ("ui/glass/GlassKit.kt", "drawAccentTexture(accentTex)", "GlassButton 主按钮"),
+    ("ui/glass/GlassKit.kt", "drawAccentTexture(accentTex, alpha = t)", "GlassToggle 开关轨道"),
+    ("screens/common/Common.kt", "accentTexture(rememberAccentTexture())", "SegmentedRow 滑动指示块"),
+    ("screens/PracticeConfig.kt", "Modifier.accentTexture(accentTex)", "ConfigChip 选中态"),
+    ("screens/WrongBookScreen.kt", "Modifier.accentTexture(accentTex)", "FilterChip 选中态"),
+]:
+    _src = load(_repo_root + "/app/src/main/java/com/drone/quiz/" + _f)
+    if _tok not in _src:
+        print(f"[FAIL] {_who} 未接入强调底纹理（{_f}）")
+        fail = True

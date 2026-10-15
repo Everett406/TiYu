@@ -79,6 +79,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
+import com.drone.quiz.ui.glass.accentTexture
+import com.drone.quiz.ui.glass.rememberAccentTexture
 
 @Composable
 fun WrongBookScreen(
@@ -272,6 +275,8 @@ fun WrongBookScreen(
 @Composable
 private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
     val ui = LocalUi.current
+    // v2.19.28：选中态（实心强调底）走纹理，深色模式自动换浅色那张
+    val accentTex = rememberAccentTexture()
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by androidx.compose.animation.core.animateFloatAsState(
@@ -282,12 +287,13 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
         label = "chipScale"
     )
     val bg by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) ui.ink else ui.ink.copy(alpha = 0.06f),
+        // v2.19.28：选中态走纹理，未选中仍是半透明色（背景色动画保留）
+        targetValue = if (selected) Color.Transparent else ui.ink.copy(alpha = 0.06f),
         animationSpec = androidx.compose.animation.core.spring(stiffness = 550f),
         label = "chipBg"
     )
     val borderC by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) ui.ink else ui.ink.copy(alpha = 0.12f),
+        targetValue = if (selected) ui.ink.copy(alpha = 0.55f) else ui.ink.copy(alpha = 0.12f),
         animationSpec = androidx.compose.animation.core.spring(stiffness = 550f),
         label = "chipBorder"
     )
@@ -300,6 +306,7 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
         Modifier
             .clip(RoundedCornerShape(50))
             .scale(scale)
+            .then(if (selected) Modifier.accentTexture(accentTex) else Modifier)
             .background(bg)
             .border(1.dp, borderC, RoundedCornerShape(50))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)

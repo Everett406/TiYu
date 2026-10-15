@@ -3,6 +3,36 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.28] - 2026-10-14
+
+### 强调底纹理铺开：五类实心强调底统一，深浅主题自动切换
+
+用户指出黑色大面积不止按钮——分段控件滑块、筛选 chip、开关轨道也该有。
+本轮把纹理抽成统一设施 `ui/glass/SurfaceTexture.kt`，覆盖五类：
+
+| 组件 | 位置 |
+|---|---|
+| `GlassButton` 主按钮 | ui/glass/GlassKit.kt |
+| `GlassToggle` 开关轨道（开启时） | ui/glass/GlassKit.kt |
+| `SegmentedRow` 滑动指示块 | screens/common/Common.kt |
+| `ConfigChip` 选中态 | screens/PracticeConfig.kt |
+| `FilterChip` 选中态 | screens/WrongBookScreen.kt |
+
+**深浅两套纹理按主题自动切换**：判据统一为 `ui.ink`——强调底在任何主题下都是它
+（浅色模式是墨黑、深色模式是浅米色），所以一行判据同时管住两种主题，
+不必在每个调用点写 `if (ui.isDark)`：
+
+- 浅色模式 → `btn_starfield.jpg`（星空，用户提供）
+- 深色模式 → `btn_paper.jpg`（水磨石，用户提供）
+
+**开关纹理渐显**：`GlassToggle` 按拖动进度 `t` 淡入纹理（`drawAccentTexture(alpha = t)`），
+拖滑块时纹理跟手渐显，与原先颜色插值手感一致，不是啪一下跳出来。
+
+**筛选 chip 描边调淡**：选中态描边由纯 `ui.ink` 改为 55% 透明度，压在纹理上不再发硬。
+
+static_check 新增 7.y 段：两张纹理文件必须在、深浅选择表达式须在、
+必须等比裁切、五类组件逐一检查（漏谁报谁）。
+
 ## [2.19.27] - 2026-10-14
 
 ### 星点密度减 30%

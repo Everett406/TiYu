@@ -59,6 +59,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.Color
+import com.drone.quiz.ui.glass.accentTexture
+import com.drone.quiz.ui.glass.rememberAccentTexture
 
 /**
  * 刷题配置入口页（刷题 Tab 首页）。
@@ -365,13 +368,16 @@ private fun OverviewCell(label: String, value: String, modifier: Modifier = Modi
 @Composable
 private fun ConfigChip(text: String, selected: Boolean, onClick: () -> Unit) {
     val ui = LocalUi.current
+    // v2.19.28：选中态（实心强调底）走纹理，深色模式自动换浅色那张
+    val accentTex = rememberAccentTexture()
     Box(
         Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (selected) ui.ink else ui.ink.copy(alpha = 0.06f))
+            .then(if (selected) Modifier.accentTexture(accentTex) else Modifier)
+            .background(if (selected) Color.Transparent else ui.ink.copy(alpha = 0.06f))
             .border(
                 1.dp,
-                if (selected) ui.ink else ui.ink.copy(alpha = 0.12f),
+                if (selected) ui.ink.copy(alpha = 0.55f) else ui.ink.copy(alpha = 0.12f),
                 RoundedCornerShape(50)
             )
             .clickable(interactionSource = null, indication = null, onClick = onClick)
