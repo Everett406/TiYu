@@ -1,0 +1,9 @@
+{
+  "version": "2.19.43",
+  "tag": "v2.19.43",
+  "apk": "TiYu-2.19.43.apk",
+  "stableApk": "TiYu-latest.apk",
+  "sizeMB": 36,
+  "minSdk": 31,
+  "publishedAt": "2026-10-16T09:00:00Z"
+}

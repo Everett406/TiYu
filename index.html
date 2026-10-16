@@ -3,184 +3,715 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>题屿 TiYu — 无人机装调离线刷题</title>
-<meta name="description" content="题屿 TiYu：把无人机装调题库装进手机的离线刷题 App。支持刷题、模考、错题本、打卡热力图，五种题型，题库可自行导入。">
-<meta property="og:title" content="题屿 TiYu — 无人机装调离线刷题">
-<meta property="og:description" content="离线刷题 / 全真模考 / 错题本强化 / 打卡热力图。题库可自行导入。">
+<title>题屿 TiYu — 无人机装调员离线刷题 App</title>
+<meta name="description" content="题屿 TiYu：800 道含解析的无人机装调题库，五种题型，模考自动判分，错题强化。全部离线运行，无广告、无内购、无账号。">
+<meta name="theme-color" content="#F6F1E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171412" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
+<meta property="og:title" content="题屿 TiYu — 无人机装调员离线刷题 App">
+<meta property="og:description" content="800 道含解析的正式题库，五种题型，全真模考自动判分。全部离线，无广告无内购。">
+<meta property="og:image" content="img/og.jpg">
+<meta property="og:url" content="https://everett406.github.io/TiYu/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="favicon.svg">
 <style>
+/* ═══════════════════════════════════════════════════════════
+   题屿 TiYu · 产品页
+   配色直接取自 App 主题（ui/theme/Theme.kt），与 App 同一套色
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  --bg:#F6F1E9; --bgTop:#FAF6EF; --bgBot:#EFE8DB;
+  --ink:#1B1811; --onInk:#F8F4EC;
+  --text:#26211A; --sub:#8D8474; --line:#E4DCCD;
+  --accent:#E07830; --correct:#3E9B4F; --wrong:#D64545;
+  --card:rgba(255,255,255,.66); --cardB:rgba(255,255,255,.9);
+  /* 水墨远山：取自 App 内置壁纸 */
+  --mt1:#E6EAD9; --mt2:#D5DFBA; --mt3:#C5CFAC; --mt4:#AFBD95;
+  --shadow:0 1px 2px rgba(27,24,17,.04),0 8px 24px -12px rgba(27,24,17,.14);
+  --shadowLg:0 2px 4px rgba(27,24,17,.05),0 24px 56px -24px rgba(27,24,17,.28);
+  --nav-h:60px;
+}
+@media (prefers-color-scheme:dark){
   :root{
-    --bg:#F6F1E9; --bg2:#EFE8DB;
-    --ink:#1B1811; --onInk:#F8F4EC;
-    --text:#26211A; --sub:#8D8474; --line:#E4DCCD;
-    --accent:#E07830; --correct:#3E9B4F;
-    --card:rgba(255,255,255,.62); --cardB:rgba(255,255,255,.9);
+    --bg:#171412; --bgTop:#1C1815; --bgBot:#141110;
+    --ink:#F2EBDD; --onInk:#1B1811;
+    --text:#EFE9DC; --sub:#9A907F; --line:#332D25;
+    --accent:#E8934A; --correct:#5DB56B; --wrong:#E06666;
+    --card:rgba(255,255,255,.045); --cardB:rgba(255,255,255,.08);
+    --mt1:#20261D; --mt2:#232C21; --mt3:#283224; --mt4:#2E392A;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.5);
+    --shadowLg:0 2px 4px rgba(0,0,0,.35),0 24px 56px -24px rgba(0,0,0,.7);
   }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --bg:#14120F; --bg2:#1C1915;
-      --ink:#F2EBDD; --onInk:#1B1811;
-      --text:#EDE6DA; --sub:#9A9083; --line:#332D26;
-      --card:rgba(255,255,255,.05); --cardB:rgba(255,255,255,.08);
-    }
-  }
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{
-    margin:0; background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-    line-height:1.75; -webkit-font-smoothing:antialiased;
-  }
-  .wrap{max-width:880px;margin:0 auto;padding:0 22px}
-  .hero{padding:72px 0 40px}
-  h1{font-size:clamp(30px,6vw,46px);margin:0 0 6px;letter-spacing:-.02em}
-  .tag{color:var(--sub);font-size:clamp(14px,2.4vw,17px);margin:0 0 28px}
-  .lede{font-size:16px;max-width:640px;margin:0 0 30px}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-  .btn{
-    display:inline-flex;align-items:center;gap:8px;
-    padding:14px 26px;border-radius:999px;background:var(--ink);color:var(--onInk);
-    text-decoration:none;font-weight:700;font-size:16px;border:none;cursor:pointer;
-    transition:transform .12s ease, opacity .12s ease;
-  }
-  .btn:hover{transform:translateY(-1px);opacity:.92}
-  .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:600}
-  .meta{color:var(--sub);font-size:13px;margin-top:16px}
-  section{padding:44px 0;border-top:1px solid var(--line)}
-  h2{font-size:21px;margin:0 0 6px}
-  h2 + .sub{color:var(--sub);font-size:14px;margin:0 0 22px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:12px}
-  .card{
-    background:var(--card);border:1px solid var(--line);border-radius:18px;
-    padding:18px 20px;backdrop-filter:blur(8px);
-  }
-  .card h3{margin:0 0 4px;font-size:15px}
-  .card p{margin:0;color:var(--sub);font-size:13.5px;line-height:1.7}
-  ul.clean{margin:0;padding-left:0;list-style:none}
-  ul.clean li{
-    padding:13px 0;border-bottom:1px dashed var(--line);
-    display:flex;gap:14px;align-items:flex-start;
-  }
-  ul.clean li:last-child{border-bottom:none}
-  .q{font-weight:600;flex:0 0 auto;min-width:0}
-  .a{color:var(--sub);font-size:14px;flex:1}
-  .note{
-    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
-    border-radius:14px;padding:16px 20px;color:var(--sub);font-size:14px;
-  }
-  .note b{color:var(--text)}
-  footer{padding:40px 0 60px;color:var(--sub);font-size:13px;border-top:1px solid var(--line)}
-  footer a{color:var(--sub)}
-  code{background:var(--cardB);padding:2px 6px;border-radius:6px;font-size:13px;
-       font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .pill{display:inline-block;background:var(--cardB);border:1px solid var(--line);
-        border-radius:999px;padding:3px 11px;font-size:12px;color:var(--sub);margin:0 6px 6px 0}
-  @media (max-width:520px){ .hero{padding:48px 0 30px} section{padding:34px 0} }
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  line-height:1.75;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+/* 纸纹 + 顶部暖光 */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:linear-gradient(180deg,var(--bgTop) 0%,var(--bg) 42%,var(--bgBot) 100%);
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:radial-gradient(rgba(27,24,17,.045) 1px,transparent 1px);
+  background-size:3px 3px;
+}
+@media (prefers-color-scheme:dark){body::after{opacity:.28;background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1px)}}
+img{max-width:100%;height:auto;display:block}
+a{color:inherit}
+
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+.narrow{max-width:760px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+
+/* ── 顶部导航 ── */
+.nav{
+  position:sticky;top:0;z-index:60;height:var(--nav-h);
+  display:flex;align-items:center;gap:20px;
+  background:color-mix(in srgb,var(--bg) 78%,transparent);
+  backdrop-filter:saturate(1.5) blur(16px);-webkit-backdrop-filter:saturate(1.5) blur(16px);
+  border-bottom:1px solid transparent;transition:border-color .25s,background .25s;
+}
+.nav.stuck{border-bottom-color:var(--line);background:color-mix(in srgb,var(--bg) 90%,transparent)}
+.nav .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.01em;text-decoration:none}
+.nav .mark{
+  width:30px;height:30px;border-radius:9px;background:var(--ink);color:var(--onInk);
+  display:grid;place-items:center;font-size:16px;font-weight:800;flex:0 0 auto;
+}
+.nav .links{display:flex;gap:22px;margin-left:auto;font-size:14.5px;color:var(--sub)}
+.nav .links a{text-decoration:none;transition:color .18s}
+.nav .links a:hover{color:var(--text)}
+@media (max-width:860px){.nav .links{display:none}}
+
+/* ── 按钮 ── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:13px 26px;border-radius:999px;background:var(--ink);color:var(--onInk);
+  text-decoration:none;font-weight:700;font-size:15.5px;border:1px solid transparent;cursor:pointer;
+  white-space:nowrap;transition:transform .14s ease,opacity .14s ease,box-shadow .14s ease;
+}
+.btn:hover{transform:translateY(-2px);opacity:.93;box-shadow:var(--shadow)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:var(--cardB);color:var(--text);border-color:var(--line);font-weight:600}
+.btn.sm{padding:9px 18px;font-size:14px}
+.btn svg{flex:0 0 auto}
+
+/* ── Hero ── */
+.hero{position:relative;padding:56px 0 0}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center}
+@media (max-width:980px){.hero-grid{grid-template-columns:1fr;gap:40px}}
+
+.badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--cardB);border:1px solid var(--line);border-radius:999px;
+  padding:6px 15px 6px 12px;font-size:12.5px;color:var(--sub);margin-bottom:22px;
+}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:var(--correct);flex:0 0 auto;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--correct) 18%,transparent)}
+h1{
+  font-size:clamp(38px,7.2vw,62px);line-height:1.08;margin:0 0 14px;
+  letter-spacing:-.03em;font-weight:800;
+}
+h1 .thin{display:block;font-weight:500;color:var(--sub);font-size:.42em;letter-spacing:-.01em;margin-top:14px}
+.lede{font-size:clamp(15.5px,2.2vw,17.5px);color:var(--text);opacity:.86;max-width:34em;margin:0 0 14px}
+.lede b{font-weight:700}
+.cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:28px 0 0}
+.meta{color:var(--sub);font-size:13px;margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.meta .sep{opacity:.4}
+
+/* ── 手机模型 ── */
+.phones{position:relative;display:flex;justify-content:center;align-items:flex-end;gap:14px;padding:8px 0 0}
+.phones::before{
+  content:"";position:absolute;left:50%;top:6%;width:120%;aspect-ratio:1;
+  transform:translateX(-50%);
+  background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 13%,transparent),transparent 72%);
+  pointer-events:none;
+}
+.phone{
+  position:relative;flex:0 0 auto;width:190px;
+  border-radius:34px;padding:7px;
+  background:linear-gradient(158deg,#35302A 0%,#1A1713 52%,#100E0C 100%);
+  box-shadow:var(--shadowLg),0 0 0 1px rgba(255,255,255,.10) inset;
+  animation:bob 7s ease-in-out infinite;
+}
+.phone img{width:100%;height:auto;border-radius:27px;background:#F6F1E9}
+.phone.p1{transform:rotate(-6.5deg) translateY(22px);z-index:1;animation-delay:-1.1s}
+.phone.p2{width:206px;transform:translateY(-14px);z-index:3;animation-delay:0s}
+.phone.p3{transform:rotate(6.5deg) translateY(22px);z-index:2;animation-delay:-2.3s}
+@keyframes bob{0%,100%{margin-bottom:0}50%{margin-bottom:-13px}}
+@media (max-width:640px){
+  .phone{width:150px;border-radius:28px;padding:6px}
+  .phone img{border-radius:22px}
+  .phone.p2{width:163px}
+  .phone.p1{transform:rotate(-7deg) translateY(16px)}
+  .phone.p3{transform:rotate(7deg) translateY(16px)}
+  .phones{gap:9px}
+}
+
+/* ── 统计条 ── */
+.stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:20px;overflow:hidden;
+  margin:56px 0 0;
+}
+.stat{background:var(--bg);padding:26px 18px;text-align:center}
+.stat .n{font-size:clamp(26px,4.6vw,34px);font-weight:800;letter-spacing:-.02em;line-height:1.15}
+.stat .n em{font-style:normal;font-size:.5em;font-weight:600;color:var(--sub);margin-left:2px}
+.stat .l{color:var(--sub);font-size:13px;margin-top:4px}
+@media (max-width:640px){.stats{grid-template-columns:repeat(2,1fr);margin-top:38px}}
+
+/* ── 区块 ── */
+section{padding:76px 0;border-top:1px solid var(--line);margin-top:76px;position:relative}
+section.tight{padding-top:56px}
+.eyebrow{
+  color:var(--accent);font-size:12.5px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;margin:0 0 12px;
+}
+h2{font-size:clamp(26px,4.6vw,36px);line-height:1.22;margin:0 0 12px;letter-spacing:-.025em;font-weight:800}
+.sub{color:var(--sub);font-size:15.5px;margin:0 0 44px;max-width:40em}
+h3{font-size:17px;margin:0 0 5px;font-weight:700;letter-spacing:-.01em}
+.lead{color:var(--sub);font-size:14.5px;margin:0}
+
+/* ── 截图故事：左右交替 ── */
+.story{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.story+.story{margin-top:76px}
+.story.flip .shot{order:-1}
+@media (max-width:900px){
+  .story{grid-template-columns:1fr;gap:28px}
+  .story.flip .shot{order:0}
+  .story+.story{margin-top:56px}
+}
+.story .body h3{font-size:clamp(21px,3.4vw,27px);margin-bottom:12px;letter-spacing:-.02em}
+.story .body p{color:var(--sub);margin:0 0 14px;font-size:15px;max-width:30em}
+.story .body ul{margin:18px 0 0;padding:0;list-style:none}
+.story .body li{
+  display:flex;gap:11px;align-items:flex-start;padding:9px 0;
+  border-top:1px solid var(--line);font-size:14.5px;color:var(--text);
+}
+.story .body li:last-child{border-bottom:1px solid var(--line)}
+.story .body li i{
+  flex:0 0 auto;width:17px;height:17px;margin-top:4px;border-radius:50%;
+  background:color-mix(in srgb,var(--correct) 16%,transparent);
+  display:grid;place-items:center;font-style:normal;font-size:10px;color:var(--correct);font-weight:700;
+}
+.shot{position:relative;display:flex;justify-content:center}
+.shot .frame{
+  width:min(258px,72%);border-radius:38px;padding:8px;
+  background:linear-gradient(158deg,#35302A 0%,#1A1713 52%,#100E0C 100%);
+  box-shadow:var(--shadowLg),0 0 0 1px rgba(255,255,255,.10) inset;
+}
+.shot .frame img{border-radius:33px;width:100%;height:auto}
+.shot .glow{
+  position:absolute;inset:auto -12% -6% -12%;height:46%;z-index:-1;
+  background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 14%,transparent),transparent 74%);
+}
+
+/* ── 功能网格 ── */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:22px 22px 24px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--accent) 34%,var(--line));box-shadow:var(--shadow)}
+.card .ic{
+  width:34px;height:34px;border-radius:10px;margin-bottom:13px;
+  background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);
+  display:grid;place-items:center;
+}
+.card p{color:var(--sub);font-size:14px;margin:0;line-height:1.72}
+
+/* ── 隐私 / 信任 ── */
+.trust{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:20px;
+  background:var(--card);border:1px solid var(--line);border-radius:24px;padding:34px 30px;
+}
+.trust .t{text-align:center}
+.trust .t .n{font-size:30px;font-weight:800;letter-spacing:-.02em;color:var(--correct);line-height:1.2}
+.trust .t .l{color:var(--sub);font-size:13.5px;margin-top:5px}
+
+/* ── 表格 ── */
+.tbl{width:100%;border-collapse:collapse;font-size:14.5px;margin:0 0 26px}
+.tbl th,.tbl td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-weight:600;color:var(--sub);font-size:13px;letter-spacing:.03em;width:34%}
+.tbl tr:last-child td{border-bottom:none}
+@media (max-width:560px){
+  .tbl th{width:auto;display:block;border-bottom:none;padding-bottom:2px}
+  .tbl td{display:block;padding-top:0;border-bottom:1px solid var(--line)}
+}
+
+/* ── 步骤 ── */
+.steps{counter-reset:s;display:grid;gap:2px;background:var(--line);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.steps .st{background:var(--bg);padding:22px 24px;display:flex;gap:16px;align-items:flex-start}
+.steps .st::before{
+  counter-increment:s;content:counter(s);
+  flex:0 0 auto;width:26px;height:26px;border-radius:50%;
+  background:var(--ink);color:var(--onInk);display:grid;place-items:center;
+  font-size:13px;font-weight:700;margin-top:2px;
+}
+.steps .st b{display:block;font-size:15px;margin-bottom:2px}
+.steps .st span{color:var(--sub);font-size:14px}
+code{
+  background:var(--cardB);padding:2px 7px;border-radius:7px;font-size:13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  border:1px solid var(--line);
+}
+pre{
+  background:var(--cardB);border:1px solid var(--line);border-radius:14px;
+  padding:16px 18px;overflow-x:auto;font-size:13px;line-height:1.7;margin:0 0 18px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+pre code{background:none;border:none;padding:0;font-size:inherit}
+
+/* ── FAQ ── */
+.faq details{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;
+  margin-bottom:10px;overflow:hidden;transition:border-color .18s;
+}
+.faq details[open]{border-color:color-mix(in srgb,var(--accent) 34%,var(--line))}
+.faq summary{
+  cursor:pointer;padding:17px 52px 17px 22px;font-weight:600;font-size:15.5px;
+  list-style:none;position:relative;
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{
+  content:"";position:absolute;right:22px;top:50%;width:9px;height:9px;
+  border-right:1.8px solid var(--sub);border-bottom:1.8px solid var(--sub);
+  transform:translateY(-70%) rotate(45deg);transition:transform .22s ease;
+}
+.faq details[open] summary::after{transform:translateY(-30%) rotate(-135deg)}
+.faq .ans{padding:0 22px 19px;color:var(--sub);font-size:14.5px;margin:0}
+
+/* ── 法务声明 ── */
+.note{
+  background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:16px;padding:22px 26px;color:var(--sub);font-size:14.5px;
+}
+.note b{color:var(--text)}
+.note p{margin:0 0 12px}
+.note p:last-child{margin:0}
+
+/* ── 底部 CTA ── */
+.final{text-align:center;padding:88px 0}
+.final h2{max-width:16em;margin-left:auto;margin-right:auto}
+.final .cta{justify-content:center;margin-top:30px}
+
+footer{padding:40px 0 68px;color:var(--sub);font-size:13.5px;border-top:1px solid var(--line);position:relative;z-index:1}
+footer .cols{display:flex;gap:40px;flex-wrap:wrap;justify-content:space-between;margin-bottom:26px}
+footer .cols a{color:var(--sub);text-decoration:none;margin-right:18px;transition:color .18s}
+footer .cols a:hover{color:var(--text)}
+footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px;font-weight:600}
+@media (max-width:640px){footer .cols{gap:26px}}
+
+/* ── 水墨远山 ── */
+.mtn{position:absolute;left:0;right:0;bottom:0;width:100%;height:auto;z-index:0;pointer-events:none;opacity:.9}
+
+/* ── 入场动画 ── */
+.rv{opacity:0;transform:translateY(18px);transition:opacity .62s cubic-bezier(.22,.61,.36,1),transform .62s cubic-bezier(.22,.61,.36,1)}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.rv{opacity:1;transform:none}}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header class="hero">
-    <h1>题屿 TiYu</h1>
-    <p class="tag">无人机装调 · 离线刷题 / 全真模考 / 错题本</p>
-    <p class="lede">
-      把厚厚的一摞题库装进手机，随时随地做几道。核心功能<strong>全部离线</strong>，
-      不收集任何数据；唯一联网行为是你手动点「检查更新」。
-    </p>
-    <div class="row">
-      <!-- 固定名资产，releases/latest/download 永远指向最新正式版 -->
-      <a class="btn" id="dl" href="#">下载 APK</a>
-      <a class="btn ghost" href="https://github.com/Everett406/TiYu/releases">全部版本</a>
+<!-- ═══ 导航 ═══ -->
+<nav class="nav" id="nav">
+  <div class="wrap" style="display:flex;align-items:center;gap:20px;width:100%">
+    <a class="brand" href="#top"><span class="mark">题</span><span>题屿 TiYu</span></a>
+    <div class="links">
+      <a href="#screens">界面</a>
+      <a href="#features">功能</a>
+      <a href="#privacy">隐私</a>
+      <a href="#install">安装</a>
+      <a href="#faq">常见问题</a>
     </div>
-    <p class="meta" id="meta">正在读取最新版本…</p>
-  </header>
+    <a class="btn sm" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk" style="margin-left:auto">
+      下载 APK
+    </a>
+  </div>
+</nav>
 
-  <section>
-    <h2>能做什么</h2>
-    <p class="sub">不是花哨功能，是把「刷题」这件事做完整。</p>
-    <div class="grid">
-      <div class="card"><h3>五种题型</h3><p>单选、多选、判断、填空、简答。答案与解析都在题库里，不必翻纸质书。</p></div>
-      <div class="card"><h3>全真模考</h3><p>倒计时自动交卷、可开即时判定、可优先抽没做过的题、错题优先、单选多选还能打乱选项。</p></div>
-      <div class="card"><h3>错题本</h3><p>答错自动收录，连续答对若干次自动「毕业」移出，也可以手动全量重练。</p></div>
-      <div class="card"><h3>打卡与热力图</h3><p>每日目标、学习热力图、连续打卡、护眼提醒与每日提醒。</p></div>
-      <div class="card"><h3>桌面小组件</h3><p>桌面直接看今日进度、快捷进入错题本与快速模考，不用先打开 App。</p></div>
-      <div class="card"><h3>题库可导入</h3><p>自己的题库能导进来：纯文字导 CSV，带图打包 ZIP。支持图片题。</p></div>
+<!-- ═══ Hero ═══ -->
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="badge"><span class="dot"></span>全程离线 · 无广告 · 无内购 · 无账号</span>
+      <h1>题屿 TiYu<span class="thin">无人机装调员备考</span></h1>
+      <p class="lede">
+        内置 <b>800 道含解析的正式题库</b>，五种题型，全真模考自动判分，错题自动收录强化。
+        刷题、模考、统计全部离线运行，<b>学到哪存在你自己手机里</b>。
+      </p>
+      <p class="lede" style="color:var(--sub);font-size:15px">
+        没有广告、没有内购、没有账号、不收集任何数据。唯一联网行为是你手动点「检查更新」。
+      </p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          下载 APK
+        </a>
+        <a class="btn ghost" href="#screens">先看看界面</a>
+      </div>
+      <p class="meta" id="meta">
+        <span id="ver">读取版本中…</span><span class="sep">·</span><span>Android 12+</span>
+        <span class="sep">·</span><span>约 36 MB</span><span class="sep">·</span><span>覆盖安装不丢数据</span>
+      </p>
     </div>
-  </section>
 
-  <section>
-    <h2>常见问题</h2>
-    <p class="sub">Q&amp;A</p>
-    <ul class="clean">
-      <li><span class="q">安装会被拦吗？</span><span class="a">会。GitHub 上的 APK 不是应用商店来源，手机会提示「未知来源」。按系统引导允许一次即可。</span></li>
-      <li><span class="q">更新怎么弄？</span><span class="a">设置 → 关于题屿 → 检查更新。有新版会提示，下载安装覆盖即可，学习数据自动迁移，不用卸载。</span></li>
-      <li><span class="q">要联网吗？</span><span class="a">不需要。刷题、模考、错题本、统计全部离线运行，也没有广告、没有内购、没有账号。</span></li>
-      <li><span class="q">会收集数据吗？</span><span class="a">不会。所有学习记录只存在你手机本地，不上传、不同步。</span></li>
-      <li><span class="q">支持哪些机型？</span><span class="a">Android 12 及以上（API 31+）。</span></li>
-      <li><span class="q">怎么换成自己的题库？</span><span class="a">设置 → 题库管理 → 导入题库。列头需含「题干」「答案」，可含「题型/选项A…/解析/图片」。带图题把 CSV 和图片文件夹一起打包成 ZIP。</span></li>
-      <li><span class="q">换手机怎么迁移？</span><span class="a">暂不支持跨设备同步（没有服务器，也没有账号）。当前题库导入功能可以把你自己的题带过去。</span></li>
-      <li><span class="q">题目有错怎么办？</span><span class="a">欢迎反馈——站内没有任何联系方式，见仓库 Issues。</span></li>
-    </ul>
-  </section>
+    <div class="phones">
+      <div class="phone p1"><img src="img/home.jpg" alt="题屿首页：学习进度环、连续打卡与学习热力图" width="760" height="1656" fetchpriority="high"></div>
+      <div class="phone p2"><img src="img/practice.jpg" alt="题屿刷题页：题型筛选、顺序随机模式与进度接续" width="760" height="1656" fetchpriority="high"></div>
+      <div class="phone p3"><img src="img/exam.jpg" alt="题屿模考页：题数、时长、判断题占比与及格分设置" width="760" height="1656" fetchpriority="high"></div>
+    </div>
+  </div>
 
-  <section>
-    <h2>关于这个项目</h2>
-    <p class="sub">
-      <span class="pill">Android 原生</span>
-      <span class="pill">Jetpack Compose</span>
-      <span class="pill">Room</span>
-      <span class="pill">零广告</span>
-      <span class="pill">零内购</span>
-      <span class="pill">零收集</span>
+  <div class="wrap">
+    <div class="stats rv">
+      <div class="stat"><div class="n">800<em>题</em></div><div class="l">内置题库，含解析</div></div>
+      <div class="stat"><div class="n">5<em>种</em></div><div class="l">单选 / 多选 / 判断 / 填空 / 简答</div></div>
+      <div class="stat"><div class="n">0<em>条</em></div><div class="l">广告、内购与账号</div></div>
+      <div class="stat"><div class="n">100<em>%</em></div><div class="l">核心功能离线运行</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ 界面 ═══ -->
+<section id="screens" class="tight">
+  <div class="wrap">
+    <p class="eyebrow rv">界面</p>
+    <h2 class="rv">三个页面，撑起每天的练习</h2>
+    <p class="sub rv">奶油纸感底、墨黑主操作、橙色点缀，底栏是真折射玻璃。截图全部为应用真实运行画面。</p>
+
+    <div class="story">
+      <div class="body rv">
+        <h3>每天练了什么，一眼看到</h3>
+        <p>首页不是装饰。进度环、预估通过率、连续打卡、学习热力图、近七日题量与正确率曲线，全部由本地答题记录实时聚合出来。</p>
+        <ul>
+          <li><i>✓</i><span><b>学习热力图</b>按月铺开，颜色深浅代表当天练习量，一眼看出断没断过</span></li>
+          <li><i>✓</i><span><b>预估通过率</b>结合正确率与题量估算，让你知道离及格还有多远</span></li>
+          <li><i>✓</i><span><b>连续打卡</b>与「再练 N 天达成 M 天」目标推送，断了也能接回来</span></li>
+        </ul>
+      </div>
+      <div class="shot rv">
+        <div class="glow"></div>
+        <div class="frame"><img src="img/home.jpg" alt="首页：进度环、连击卡片与学习热力图" width="760" height="1656" loading="lazy"></div>
+      </div>
+    </div>
+
+    <div class="story flip">
+      <div class="body rv">
+        <h3>打开就接着上次做</h3>
+        <p>不用每次重新挑一遍。按题型筛选、顺序或随机两套进度各自独立记忆并按题库隔离，切回任一模式都停在原处。</p>
+        <ul>
+          <li><i>✓</i><span><b>接续提示</b>实时显示「将接续上次进度 · 第 N / M 题」，不丢位置</span></li>
+          <li><i>✓</i><span><b>选项打乱</b>：模考中单选、多选的选项顺序可以随机，防止背答案</span></li>
+          <li><i>✓</i><span><b>全库搜索</b>题干、选项、解析全文检索，命中结果逐条浮现</span></li>
+        </ul>
+      </div>
+      <div class="shot rv">
+        <div class="glow"></div>
+        <div class="frame"><img src="img/practice.jpg" alt="刷题页：题型筛选与顺序/随机模式" width="760" height="1656" loading="lazy"></div>
+      </div>
+    </div>
+
+    <div class="story">
+      <div class="body rv">
+        <h3>像真考试一样练一遍</h3>
+        <p>题数、时长、判断题占比、及格分全部可拖滑杆配置。到点自动交卷，按正确率算分，不倒扣分。</p>
+        <ul>
+          <li><i>✓</i><span><b>高级选项</b>可手动分配各题型比例，或按题库占比自动配比</span></li>
+          <li><i>✓</i><span><b>抽题策略</b>：可优先未做过的题，也可让错题优先，弱项反复见</span></li>
+          <li><i>✓</i><span><b>即时判定</b>开关：作答当场出对错，或等整卷交完再判</span></li>
+        </ul>
+      </div>
+      <div class="shot rv">
+        <div class="glow"></div>
+        <div class="frame"><img src="img/exam.jpg" alt="模考页：题数、时长、题型占比与及格分" width="760" height="1656" loading="lazy"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 功能 ═══ -->
+<section id="features">
+  <div class="wrap">
+    <p class="eyebrow rv">功能</p>
+    <h2 class="rv">把「刷题」这件事做完整</h2>
+    <p class="sub rv">不堆花哨功能。下面每一条都是为了让错题真的被消灭。</p>
+    <div class="grid rv">
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <h3>错题自动强化</h3>
+        <p>答错自动收录；连续答对若干次自动「毕业」移出，阈值可调。另有错题特训入口，不占用刷题进度槽。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+        <h3>全库搜索</h3>
+        <p>题干、选项、解析全文检索，命中答案折叠成单字母一行，解析随卡片展开逐字浮现。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 12.5 12 17l9-4.5"/><path d="M3 17 12 21.5 21 17"/></svg></div>
+        <h3>题库可导入</h3>
+        <p>自己的题库能导进来：纯文字导 CSV，带图打包 ZIP（题目 CSV + images）。多题库可随时切换。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg></div>
+        <h3>桌面小组件</h3>
+        <p>桌面直接看今日进度，快捷进入错题本与快速模考，不用先打开 App 再点两下。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></div>
+        <h3>主题与排版</h3>
+        <p>三档主题、四档字号、四款阅读字体（自带黑体 / 思源宋体 / 霞鹜文楷），四种内置壁纸或自定义图片。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+        <h3>每日提醒</h3>
+        <p>定时提醒刷题，当天已经练过就不打扰。精确闹钟调度，进程被杀也准时送达。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></div>
+        <h3>护眼与防沉迷</h3>
+        <p>暖色护眼模式；连续刷题 20 分钟提醒看远处（考试期间绝不打扰）；低配设备可一键关闭玻璃特效。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h11l-1.5 3L17 9H6"/><path d="M6 13h8l-1 3 3 3H6"/></svg></div>
+        <h3>解析逐字对焦</h3>
+        <p>解析展开时按 20 字/秒逐字浮现，每个字从「透明 + 模糊」淡入并逐渐清晰，读起来是打字机而非闪烁。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 隐私 ═══ -->
+<section id="privacy">
+  <div class="wrap">
+    <p class="eyebrow rv">隐私</p>
+    <h2 class="rv">你的学习记录，只在你手机里</h2>
+    <p class="sub rv">没有服务器，所以也就没有「上传」这一说。以下都是应用申请权限的实际用途。</p>
+    <div class="trust rv">
+      <div class="t"><div class="n">0</div><div class="l">个网络请求用于答题与统计</div></div>
+      <div class="t"><div class="n">0</div><div class="l">项数据上传与同步</div></div>
+      <div class="t"><div class="n">0</div><div class="l">个第三方统计 / 广告 SDK</div></div>
+      <div class="t"><div class="n">1</div><div class="l">个联网权限：仅手动检查更新</div></div>
+    </div>
+    <table class="tbl rv" style="margin-top:26px">
+      <tr><th>权限</th><td><code>INTERNET</code>　仅用于你手动点「检查更新」时访问 GitHub Releases，以及点开下载链接时探测发布页是否可达。</td></tr>
+      <tr><th>通知</th><td><code>POST_NOTIFICATIONS</code>　每日学习提醒；刷过当天不会打扰。</td></tr>
+      <tr><th>存储</th><td><b>无需任何存储权限</b>。导入题库走系统文件选择器，保存图片走 MediaStore，均不申请读写整个存储。</td></tr>
+      <tr><th>相机</th><td><b>不申请</b>。应用未声明 CAMERA 权限，也不含拍照识别等需要相机的功能。</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ═══ 安装 ═══ -->
+<section id="install">
+  <div class="wrap">
+    <p class="eyebrow rv">安装</p>
+    <h2 class="rv">三步装上</h2>
+    <p class="sub rv">不是应用商店渠道，APK 直接从 GitHub Releases 下载，签名固定、覆盖安装不丢数据。</p>
+    <div class="steps rv" style="max-width:720px">
+      <div class="st"><div><b>下载 APK</b><span>点下面的按钮，拿到 <code id="apkname">TiYu-latest.apk</code>（约 36 MB）。</span></div></div>
+      <div class="st"><div><b>允许一次「未知来源」</b><span>GitHub 不是应用商店，手机会提示未知来源，按系统引导允许这个来源即可，只需设置一次。</span></div></div>
+      <div class="st"><div><b>安装并打开</b><span>Android 12 及以上可直接安装。以后有新版，在「设置 → 关于题屿 → 检查更新」里提示，下载覆盖即可，学习数据自动迁移。</span></div></div>
+    </div>
+
+    <div class="cta rv" style="margin-top:30px">
+      <a class="btn" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+        下载 APK
+      </a>
+      <a class="btn ghost" href="https://github.com/Everett406/TiYu/releases">全部版本与更新日志</a>
+    </div>
+
+    <h3 class="rv" style="margin:52px 0 16px">自己构建</h3>
+    <pre class="rv"><code>git clone https://github.com/Everett406/TiYu.git
+cd TiYu
+./gradlew :app:assembleRelease</code></pre>
+    <p class="lead rv">
+      需要 JDK 21 与 Android SDK（compileSdk 36）。无 Android Studio 也能构建；
+      正式签名走环境变量 <code>DQ_KS_PATH</code> / <code>DQ_KS_STORE_PASS</code>。
+      详见 <a href="https://github.com/Everett406/TiYu#构建指南" style="color:var(--accent)">README 构建指南</a>。
     </p>
-    <div class="note">
-      <p style="margin:0 0 10px">
-        <b>关于题库数据。</b>内置题库的<b>版权归原始题库编制方所有</b>，
-        随本应用分发使用；仓库中的 <code>LICENSE</code>（Apache-2.0）
-        只覆盖<b>应用代码</b>，不覆盖题库内容。
+  </div>
+</section>
+
+<!-- ═══ FAQ ═══ -->
+<section id="faq">
+  <div class="wrap">
+    <p class="eyebrow rv">常见问题</p>
+    <h2 class="rv">你大概想问的</h2>
+    <p class="sub rv">没在这里找到答案，去仓库提 Issue，那里有人（就是我）会看。</p>
+    <div class="faq rv">
+      <details open>
+        <summary>安装会被手机拦吗？</summary>
+        <p class="ans">会提示，但可以装。GitHub 上的 APK 不是应用商店来源，系统会提示「未知来源」。按引导允许一次即可，之后不再提示。</p>
+      </details>
+      <details>
+        <summary>更新会不会丢学习记录？</summary>
+        <p class="ans">不会。所有版本使用同一固定签名，直接覆盖安装，学习记录、错题本、模考成绩全部保留，不用卸载。只有当内置题库版本升级（题目 ID 变化）时应用才会重置学习数据，属预期行为。</p>
+      </details>
+      <details>
+        <summary>必须联网才能用吗？</summary>
+        <p class="ans">不需要。刷题、模考、错题本、统计、搜索全部离线运行。没有广告、没有内购、没有账号、没有推送。</p>
+      </details>
+      <details>
+        <summary>支持哪些机型？</summary>
+        <p class="ans">Android 12（API 31）及以上，ARM 架构（arm64-v8a / armeabi-v7a）。平板可运行，但界面按竖屏手机设计。</p>
+      </details>
+      <details>
+        <summary>怎么换成自己的题库？</summary>
+        <p class="ans">设置 → 题库管理 → 导入题库。列头需含「题干」「答案」，可含「题型 / 选项A… / 选项D / 解析 / 图片」。纯文字导 CSV；带图题把 CSV 与图片文件夹一起打包成 ZIP。多题库可随时切换，进度按库隔离。</p>
+      </details>
+      <details>
+        <summary>换手机怎么迁移学习记录？</summary>
+        <p class="ans">暂不支持跨设备同步——因为没有服务器也没有账号，这正是它零收集的代价。目前能带走的只有你自己导入的题库。如果以后要做同步，会做成明文导出的本地备份文件，而不是上传。</p>
+      </details>
+      <details>
+        <summary>模考分数怎么算？</summary>
+        <p class="ans">纯正确率，不倒扣分。答对题数 ÷ 总题数 × 100，取整数。比如 50 题答对 40 题就是 80 分。判断题占比与及格分在开考前可调。</p>
+      </details>
+      <details>
+        <summary>题目有错怎么办？</summary>
+        <p class="ans">去仓库提 Issue 说明题目 ID，我会在下个版本修掉。如果你自己导入的题库有错，直接改 CSV 再导一次即可。</p>
+      </details>
+      <details>
+        <summary>这是收费软件吗？</summary>
+        <p class="ans">不收费，没有内购，也没有付费墙。唯一的「打扰」是累计刷满 2 小时后可能弹一次打赏窗口，点「以后别提醒我」就永久消失。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 版权 ═══ -->
+<section id="license">
+  <div class="wrap">
+    <p class="eyebrow rv">版权</p>
+    <h2 class="rv">代码与题库是两回事</h2>
+    <p class="sub rv">这一条必须说清楚，不能因为仓库是公开的就想当然。</p>
+    <div class="note rv">
+      <p>
+        <b>应用代码</b>以 <a href="https://github.com/Everett406/TiYu/blob/main/LICENSE" style="color:var(--accent)">Apache-2.0</a> 授权开源，可自由使用、修改、分发。
+      </p>
+      <p>
+        <b>内置题库</b>（《无人机装调题库（含解析）》800 题）的<b>版权归原始题库编制方所有</b>，
+        仅随本应用分发使用，<b>不在上述开源授权范围内</b>。仓库中的 <code>LICENSE</code> 与
+        <code>NOTICE</code> 都对此作了明确声明。
       </p>
       <p style="margin:0">
-        想要自己的题库，用设置里的导入功能即可——这是这个 App 为数不多但我一直在做的事。
+        所以：拿这个 App 的代码去改，没问题；把内置题库扒出来另作他用，不合适。
+        你有自己的题库，用设置里的导入功能即可——这才是这个功能存在的意义。
       </p>
     </div>
-  </section>
+  </div>
+</section>
 
-  <footer>
-    <p style="margin:0 0 8px">
-      题屿 TiYu · <span id="fver">—</span> ·
-      <a href="https://github.com/Everett406/TiYu">源码</a> ·
-      <a href="https://github.com/Everett406/TiYu/releases">历史版本</a>
-    </p>
-    <p style="margin:0">纯自用项目，没有公司、没有融资、没有客服。</p>
-  </footer>
-</div>
+<!-- ═══ 最终 CTA ═══ -->
+<section class="final" style="border-top:none;margin-top:0">
+  <div class="narrow">
+    <h2 class="rv">今天先做二十道</h2>
+    <p class="sub rv" style="margin-left:auto;margin-right:auto">下载只要 36 MB，装完就能开始刷，不用注册、不用联网、不用等。</p>
+    <div class="cta rv">
+      <a class="btn" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+        下载 APK
+      </a>
+      <a class="btn ghost" href="https://github.com/Everett406/TiYu">查看源码</a>
+    </div>
+  </div>
+  <svg class="mtn" viewBox="0 0 1440 420" preserveAspectRatio="none" aria-hidden="true">
+    <path fill="var(--mt1)" d="M0 268c150-52 262-96 392-118s246-42 366-18 268 82 402 106 280 14 280 14v168H0z"/>
+    <path fill="var(--mt2)" d="M0 312c168-46 292-80 424-96s254-28 372 6 254 74 386 92 258 8 258 8v98H0z"/>
+    <path fill="var(--mt3)" d="M0 356c180-38 318-62 452-72s248-16 360 12 240 62 366 76 262 6 262 6v42H0z"/>
+    <path fill="var(--mt4)" d="M0 392c196-28 344-44 486-50s244-6 352 14 226 44 344 54 258 4 258 4v6H0z"/>
+  </svg>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div class="col">
+        <b>题屿 TiYu</b>
+        <div style="max-width:30em;margin-top:6px">无人机装调员备考用的离线刷题 App。纯自用项目，没有公司、没有融资、没有客服。</div>
+      </div>
+      <div class="col">
+        <b>下载</b>
+        <a href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">最新 APK</a>
+        <a href="https://github.com/Everett406/TiYu/releases">历史版本</a>
+        <a href="https://github.com/Everett406/TiYu/blob/main/CHANGELOG.md">更新日志</a>
+      </div>
+      <div class="col">
+        <b>项目</b>
+        <a href="https://github.com/Everett406/TiYu">源码仓库</a>
+        <a href="https://github.com/Everett406/TiYu/issues">问题反馈</a>
+        <a href="https://github.com/Everett406/TiYu/blob/main/LICENSE">开源许可</a>
+      </div>
+      <div class="col">
+        <b>当前版本</b>
+        <div id="fver" style="margin-top:6px">—</div>
+      </div>
+    </div>
+    <div style="opacity:.75">
+      内置题库版权归原始编制方所有，随应用分发使用；开源许可仅覆盖应用代码。
+    </div>
+  </div>
+</footer>
 
 <script>
-/*
- * 版本与下载直链
- *
- * 用 releases/latest 的 302 拿 tag（不消耗 API 配额），再拼出固定名资产的
- * 直链 releases/latest/download/TiYu-latest.apk —— 那个名字不带版本号，
- * 所以永远指向最新正式版，页面不用跟着版本更新。
- */
+/* ═══ 版本与下载直链 ═══
+   固定名资产 TiYu-latest.apk 不带版本号，releases/latest/download 永远指向最新正式版，
+   页面本身不需要跟着版本更新。 */
 const REPO = 'Everett406/TiYu';
 const DL   = `https://github.com/${REPO}/releases/latest/download/TiYu-latest.apk`;
-const meta = document.getElementById('meta');
+const ver  = document.getElementById('ver');
 const fver = document.getElementById('fver');
-document.getElementById('dl').href = DL;
 
-fetch(`https://github.com/${REPO}/releases/latest`)
-  .then(r => r.url)                       // 跟随重定向，末段就是 tag
-  .then(u => {
-    const tag = decodeURIComponent(u.split('/').pop());
-    meta.textContent = `最新版 ${tag} · Android 12+ · 约 36 MB · 覆盖安装不丢数据`;
-    fver.textContent = tag;
+/*
+ * 版本号从**同源** site/version.json 读取，由 release workflow 每次发版写入。
+ *
+ * 为什么不用 fetch('https://github.com/.../releases/latest') 再读 r.url：
+ * 那是跨域请求 GitHub 的 HTML 页面，GitHub 不返回 Access-Control-Allow-Origin，
+ * 浏览器会直接按 CORS 拦掉——本站在浏览器里永远读不到版本号。
+ * 走 GitHub API 可以绕过，但有每 IP 每小时 60 次的配额；同源 JSON 无此问题。
+ */
+fetch('version.json', { cache: 'no-cache' })
+  .then(r => r.ok ? r.json() : Promise.reject(0))
+  .then(v => {
+    ver.textContent  = `最新版 v${v.version}`;
+    fver.textContent = `v${v.version} · Android 12+`;
+    document.title   = `题屿 TiYu v${v.version} — 无人机装调员离线刷题 App`;
   })
-  .catch(() => {
-    meta.textContent = 'Android 12+ · 约 36 MB · 覆盖安装不丢数据';
-  });
+  .catch(() => { /* 静态兜底文案已在 HTML 里，不覆盖 */ });
+
+/* ═══ 导航吸顶描边 ═══ */
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('stuck', window.scrollY > 8);
+onScroll();
+addEventListener('scroll', onScroll, { passive: true });
+
+/* ═══ 滚动入场 ═══ */
+const items = document.querySelectorAll('.rv');
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver((es) => {
+    es.forEach((e, i) => {
+      if (e.isIntersecting) {
+        setTimeout(() => e.target.classList.add('in'), Math.min(i * 55, 330));
+        io.unobserve(e.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+  items.forEach(el => io.observe(el));
+} else {
+  items.forEach(el => el.classList.add('in'));
+}
 </script>
 </body>
 </html>
