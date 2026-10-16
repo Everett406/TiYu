@@ -1,5 +1,10 @@
 package com.drone.quiz.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,8 +55,9 @@ import androidx.compose.ui.text.font.FontFamily
  * 所以这里不写任何"文案"——看到的就是真做过的。
  *
  * 视觉沿用现有的：玻璃卡 + 楷体（与关于页同源）+ 虚线分隔（参考用户旧刷题本排版）。
- * 时间轴的竖线 + 节点用 ui.accent 描边，与题卡里的"正确答案"绿同源，
- * 但这里只描边不填充——它是个导航结构，不是答案语义。
+ * 时间轴的竖线 + 节点用 textSub 低透明度（v2.19.36 用户反馈：橙色节点太跳，
+ * 整屏点状物压过了内容本身）。它是个导航结构，不该抢标题的视觉重量。
+ * 回滚版本仍标红——那是有语义的信息，不是装饰。
  */
 /** 文楷：与关于页同源，历程页的标题也走文档风 */
 private val HistoryKai = FontFamily(
@@ -146,7 +152,7 @@ private fun HistoryRow(
                     .size(9.dp)
                     .clip(CircleShape)
                     .background(
-                        if (e.reverted) ui.wrong else ui.accent
+                        if (e.reverted) ui.wrong else ui.textSub.copy(alpha = 0.55f)
                     )
             )
             // 竖线只在条目下方延伸一小段：靠卡片间距自然连成轴线，
@@ -205,20 +211,28 @@ private fun HistoryRow(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                if (expanded && e.points.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    e.points.forEach { p ->
-                        Row(Modifier.padding(top = 4.dp)) {
-                            Text(
-                                "·",
-                                color = ui.accent, fontSize = 12.sp,
-                                modifier = Modifier.width(12.dp)
-                            )
-                            Text(
-                                p,
-                                color = ui.textSub, fontSize = 12.sp,
-                                lineHeight = 18.sp
-                            )
+                // v2.19.36：展开加动画。此前是硬 if(expanded)，内容瞬间出现/消失，
+                // 与错题本（WrongBookScreen 同款 expandVertically + fadeIn）手感不一致，
+                // 同一屏里两套展开动效很扎眼。
+                AnimatedVisibility(
+                    visible = expanded && e.points.isNotEmpty(),
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(Modifier.padding(top = 8.dp)) {
+                        e.points.forEach { p ->
+                            Row(Modifier.padding(top = 4.dp)) {
+                                Text(
+                                    "·",
+                                    color = ui.textSub, fontSize = 12.sp,
+                                    modifier = Modifier.width(12.dp)
+                                )
+                                Text(
+                                    p,
+                                    color = ui.textSub, fontSize = 12.sp,
+                                    lineHeight = 18.sp
+                                )
+                            }
                         }
                     }
                 }

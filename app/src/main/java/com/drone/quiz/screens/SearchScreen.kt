@@ -41,7 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import com.drone.quiz.screens.common.JudgeBadgeGlyph
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -294,10 +297,16 @@ private fun SearchResultItem(
                 TagChip(displayCategory(q.category, rememberBankName(q.bankId)))
                 Spacer(Modifier.width(6.dp))
                 TagChip(com.drone.quiz.data.repo.QuestionTypes.label(q.type))
-                Spacer(Modifier.weight(1f))
+                // v2.19.36：折叠态只给字母。原样带全文有两个问题：
+                //   ① 与展开后的选项列表重复抄了一遍；
+                //   ② 选项文字长时不换行，把整张卡片横向撑高、行高暴涨。
+                // 折叠态只显示题干、选项要点开才看得到——所以这里留字母做"这条是答案"的
+                // 提示是必要的（否则用户搜出来看不出哪题对），但全文交给展开区去显示。
                 Text(
-                    "正确答案：${q.correctAnswerText()}",
-                    color = ui.correct, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                    "正确答案：${q.correctAnswerText(brief = true)}",
+                    color = ui.correct, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).padding(start = 8.dp)
                 )
             }
             Text(
@@ -347,13 +356,29 @@ private fun SearchResultItem(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
+                                // 判断题与刷题页同样用自绘 √/×：系统字符 √ 是根号、字重随字体变，
+                                // 视觉重量对不上（v2.19.16 的结论，此处一并对齐）
+                                if (q.isJudge) {
+                                    JudgeBadgeGlyph(
+                                        isCheck = (i == 0) == isAnswer,
+                                        color = if (isAnswer) Color.White else ui.textSub
+                                    )
+                                    return@Box
+                                }
                                 // v2.7.2 修复：正确项绿底上字母原先是绿色（同色隐形），
                                 // 用户反馈"绿色选项里 ABC 不显示"——改白字
                                 Text(
                                     optionLabel(i, q.isJudge),
                                     color = if (isAnswer) Color.White else ui.textSub,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
+                                    // 行盒收到与字号相同 + 关掉系统字体的额外行距——
+                                    // 否则字形在圆圈里偏下（v2.19.16 在 QuestionBody 修过一次，
+                                    // 搜索页这处是同一段代码的另一份拷贝，当时漏了）
+                                    lineHeight = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    style = TextStyle(
+                                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                                    )
                                 )
                             }
                             Text(

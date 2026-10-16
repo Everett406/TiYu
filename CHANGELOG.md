@@ -3,6 +3,52 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.36] - 2026-10-16
+
+### 搜索页
+
+**① 折叠态答案不再重复抄选项**（用户反馈：页面高度不断增加）。原先
+`correctAnswerText()` 单选返回 `"A·飞行与导航信息、数据链路状态信息…"`，而展开后
+选项列表就在下面，等于抄两遍；且长选项文字不换行，把整张卡片横向撑高。
+现改 `brief = true` 只给字母，并 `maxLines = 1` + `Ellipsis`。
+
+折叠态只显示题干、选项要点开才看得到，所以**保留字母提示本身是必要的**
+（否则搜出来看不出哪题是答案）——去掉的只是重复的全文。
+
+**② 选项圆标字母居中**（用户反馈：此前修过同类问题）。
+根因是 Android 的 `PlatformTextStyle.includeFontPadding` 默认给 Text 补上下行距，
+行盒比字号高，`contentAlignment = Center` 按行盒居中 → 字形视觉偏下。
+v2.19.16 在 `QuestionBody` 修过（`lineHeight` 收到同字号 + 关 fontPadding），
+搜索页那段是同一份代码的另一份拷贝，当时漏了。static_check 现在同时检查两处。
+
+**③ 判断题圆标改用自绘字形**。`JudgeGlyph` 从 `QuestionBody` 私有实现提到
+`common/JudgeGlyph.kt` 共用——搜索页此前只补了字母的居中，判断题仍走系统字符
+`√`/`×`（前者是根号不是对勾，字重随字体变）。static_check 相应改为在两个文件里合起来找。
+
+### 历程页
+
+**① 节点去橙**：`ui.accent`（#E07830 橙）→ `ui.textSub.copy(alpha = 0.55f)`。
+整屏点状物的视觉重量压过了版本标题本身。含回滚的版本仍标红——那是有语义的信息，
+不是装饰。
+
+**② 展开加动画**：`expandVertically() + fadeIn()` / `shrinkVertically() + fadeOut()`，
+与错题本同款。此前是硬 `if (expanded)`，内容秒现秒没。
+
+**③ 数据自动生成**：发版 workflow 增加 `python3 scripts/gen_history.py` 步骤，
+checkout 改为 `fetch-depth: 0`（默认浅克隆只有一个提交，历程会只剩一条）。
+脚本幂等，历史没变时不产生 diff。CI 跑完若文件确实变了，`--stat` 会打出来便于核对。
+
+### static_check 新增 7.z4 段
+
+锁死：两处选项圆标都要关 `includeFontPadding`、自绘字形只能有 JudgeBadgeGlyph 一份、
+搜索页答案必须 brief + 限一行、历程页不得再用 `ui.accent`、历程页展开必须有动画、
+workflow 必须挂生成脚本且 checkout 必须 `fetch-depth: 0`。
+
+（顺带修了 7.z 段一处连带故障：字形移出 `QuestionBody` 后，老检查只在该文件里找
+`drawPath`/`JUDGE_CHECK`，导致每次都 FAIL。已改为在两个文件里合起来找。）
+
+测试 24 个，全过。
+
 ## [2.19.35] - 2026-10-16
 
 ### 模考「错题优先」（高级选项，默认关闭）

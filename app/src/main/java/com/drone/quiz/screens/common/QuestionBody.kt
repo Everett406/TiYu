@@ -255,8 +255,8 @@ private fun OptionBadge(label: String, state: Int) {
         contentAlignment = Alignment.Center
     ) {
         when (label) {
-            JUDGE_CHECK -> JudgeGlyph(isCheck = true, color = fg)
-            JUDGE_CROSS -> JudgeGlyph(isCheck = false, color = fg)
+            JUDGE_CHECK -> JudgeBadgeGlyph(isCheck = true, color = fg)
+            JUDGE_CROSS -> JudgeBadgeGlyph(isCheck = false, color = fg)
             else -> Text(
                 label,
                 color = fg,
@@ -282,38 +282,6 @@ private fun OptionBadge(label: String, state: Int) {
  * 勾的墨迹在 x∈[3.4,21]、y∈[5.6,19]，叉在 x,y∈[5,19]，两者都以视口中心对称，
  * 缩放后自然落在圆心，且笔画粗实、不受系统字重影响。
  */
-@Composable
-private fun JudgeGlyph(isCheck: Boolean, color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(13.dp)) {
-        val k = size.minDimension / 24f
-        val path = Path()
-        if (isCheck) {
-            path.moveTo(9f * k, 16.2f * k)
-            path.lineTo(4.8f * k, 12f * k)
-            path.lineTo(3.4f * k, 13.4f * k)
-            path.lineTo(9f * k, 19f * k)
-            path.lineTo(21f * k, 7f * k)
-            path.lineTo(19.6f * k, 5.6f * k)
-            path.close()
-        } else {
-            path.moveTo(19f * k, 6.4f * k)
-            path.lineTo(17.6f * k, 5f * k)
-            path.lineTo(12f * k, 10.6f * k)
-            path.lineTo(6.4f * k, 5f * k)
-            path.lineTo(5f * k, 6.4f * k)
-            path.lineTo(10.6f * k, 12f * k)
-            path.lineTo(5f * k, 17.6f * k)
-            path.lineTo(6.4f * k, 19f * k)
-            path.lineTo(12f * k, 13.4f * k)
-            path.lineTo(17.6f * k, 19f * k)
-            path.lineTo(19f * k, 17.6f * k)
-            path.lineTo(13.4f * k, 12f * k)
-            path.close()
-        }
-        drawPath(path, color)
-    }
-}
-
 @Composable
 private fun ResultTag(state: Int?) {
     val ui = LocalUi.current

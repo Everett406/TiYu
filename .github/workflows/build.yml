@@ -16,8 +16,8 @@ env:
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
   IS_PREVIEW: 'false'
-  APP_VERSION_NAME: 2.19.35
-  APP_VERSION_TAG: v2.19.35
+  APP_VERSION_NAME: 2.19.36
+  APP_VERSION_TAG: v2.19.36
 
 jobs:
   build:
@@ -25,6 +25,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # v2.19.36：生成历程数据需要完整历史（默认 fetch-depth:1 只有最后一个提交，
+          # 会让 AppHistory 只剩当前版本一条）。已足够浅，又不拖慢构建。
+          fetch-depth: 0
+
+      - name: Regenerate app history
+        # v2.19.36：历程表改为每次发版自动重生成，不再靠人记得手跑脚本。
+        # 脚本幂等——git 历史没变时输出与仓库内文件一致，重生成不会产生噪声 diff。
+        # 真正被更新的 AppHistory.kt 会随 tag 提交记录在案。
+        run: python3 scripts/gen_history.py && git --no-pager diff --stat -- app/src/main/java/com/drone/quiz/data/AppHistory.kt || true
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -69,27 +79,29 @@ jobs:
           prerelease: ${{ env.IS_PREVIEW == 'true' }}
           files: dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
           body: |
-            ## 题屿 TiYu v2.19.35
+            ## 题屿 TiYu v2.19.36
 
-            ### 模考可以「错题优先」了
+            ### 搜索页瘦身
 
-            位于 模考 → 高级选项 → 错题优先，默认关闭。
+            · 折叠态的绿色答案**只给字母**了，不再把选项文字抄一遍——
+              卡片高度不再被长选项撑起来
+            · **选项 A/B/C 不再偏下**：Android 默认的字体留白会把字形压到圆心下方。
+              这个问题 v2.19.16 修过一次（刷题页），搜索页那段是同一份代码的另一份拷贝，
+              当时漏了，这次一并修
+            · 判断题圆标改用**自绘**的 √/×，和刷题页同一套（系统字符 √ 是根号、字重还会飘）
 
-            打开后：先抽错题本里的题，抽够了再往下退。
+            ### 历程页三处
 
-            **和「优先未答」的关系**：两个都开时**错题压过未答**。
-            一道没做过的题不可能在错题本里（答错过才进），两个池天然不重叠；
-            先复习错题比先见新题更贴近模考的补救意图。
+            · **节点不再是橙色**了，改成低饱和的灰点——整屏点状物压过了内容本身。
+              含回滚的版本仍标红，那是有意义的信息
+            · **展开有动画了**，和错题本同款（此前是硬切换，秒现秒没）
+            · **数据改成发版自动生成**：CI 里跑 `gen_history.py`，
+              以后不用再记得手动维护这张表
 
-            退的顺序是：错题本 → 没做过的 → 其余已答的。
-            任何一层抽不满都自动往下退，所以**题库刷完照样组得出卷**。
+            ### 错题优先
 
-            错题本里连续答够次数「毕业」被移出的题，不算优先对象。
-
-            ### 历程页已收录这一版
-
-            76 个版本、123 次提交。
+            上一版的「错题优先」也在。
 
             ---
 
-            **安装**：下载下方 `TiYu-2.19.35.apk` **覆盖安装**即可，学习数据自动迁移。
+            **安装**：下载下方 `TiYu-2.19.36.apk` **覆盖安装**即可，学习数据自动迁移。

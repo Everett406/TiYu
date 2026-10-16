@@ -560,9 +560,13 @@ _qb = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/Questi
 if "includeFontPadding = false" not in _qb:
     print("[FAIL] 选项圆标的字母须设 includeFontPadding=false —— Android 默认的 CJK "
           "字形留白会把字压在圆心下方（用户反馈『字母偏下』）"); fail = True
-# 判断题 √/× 自绘；系统字符太细不好看
-for _needle in ("JudgeGlyph", "drawPath(path, color)", "JUDGE_CHECK", "JUDGE_CROSS"):
-    if _needle not in _qb:
+# 判断题 √/× 自绘；系统字符太细不好看。
+# v2.19.36 起自绘字形提到 JudgeGlyph.kt 共用（搜索页也要同一套），
+# 所以这里在 QuestionBody + JudgeGlyph.kt 两处合起来找。
+_jg2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/JudgeGlyph.kt")
+_qb2 = _qb + _jg2
+for _needle in ("JudgeBadgeGlyph", "drawPath(path, color)", "JUDGE_CHECK", "JUDGE_CROSS"):
+    if _needle not in _qb2:
         print(f"[FAIL] 判断题圆标须自绘且用**填充多边形**（缺 {_needle}）——"
               "描边折线在真机上『极丑而且不居中』：包围盒居中≠视觉重心居中"); fail = True
 _fmt = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
@@ -958,4 +962,51 @@ else:
 _e3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
 if "preferWrong ->" not in _e3:
     print("[FAIL] 模考配置页：错题优先开启时，「优先未答」的说明文案未切换为补位提示（用户会以为两个都抢第一）")
+    fail = True
+
+# 7.z4) 选项圆标居中 + 搜索页答案精简（v2.19.36）
+#      字母在圆圈里偏下的根因：Android 的 PlatformTextStyle.includeFontPadding
+#      默认给 Text 补上下行距，行盒比字号高，圆圈按行盒居中 → 字形视觉偏下。
+#      v2.19.16 在 QuestionBody 修过一次（lineHeight 收到同字号 + 关 fontPadding），
+#      搜索页那段是同一份代码的另一份拷贝，当时漏了——本次一并修并抽成共享字形。
+_ccc = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
+_sc = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SearchScreen.kt")
+_jg = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/JudgeGlyph.kt")
+_hs = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen.kt")
+
+for _f, _src, _who in [("QuestionBody.kt", _ccc, "刷题"), ("SearchScreen.kt", _sc, "搜索页")]:
+    if "includeFontPadding = false" not in _src:
+        print(f"[FAIL] {_who}选项圆标的字母未关 includeFontPadding——字形在圆圈里会偏下（v2.19.16 修过一次，勿回退）")
+        fail = True
+if not _jg or "fun JudgeBadgeGlyph" not in _jg:
+    print("[FAIL] JudgeBadgeGlyph.kt 缺失——判断题圆标自绘字形的共用实现")
+    fail = True
+else:
+    for _f, _src, _who in [("QuestionBody.kt", _ccc, "刷题页"), ("SearchScreen.kt", _sc, "搜索页")]:
+        if "JudgeGlyph(" in _src.replace("JudgeBadgeGlyph(", ""):
+            print(f"[FAIL] {_who}仍在引用旧的私有 JudgeGlyph（应统一用 JudgeBadgeGlyph）")
+            fail = True
+
+# 搜索页折叠态：答案只给字母 + 限一行。原样带全文会重复抄选项并把卡片撑高。
+if "correctAnswerText(brief = true)" not in _sc:
+    print("[FAIL] 搜索页折叠态的答案须用 brief=true（用户反馈：重复抄选项导致页面高度不断增加）")
+    fail = True
+if "maxLines = 1, overflow = TextOverflow.Ellipsis,\n                    modifier = Modifier.weight(1f, fill = false)" not in _sc:
+    print("[FAIL] 搜索页折叠态答案须限一行（长选项文字会横向撑高卡片）")
+    fail = True
+
+# 历程页：节点去橙 + 展开动画 + 自动生成
+if _hs:
+    if "ui.accent" in _hs:
+        print("[FAIL] 历程页时间轴节点不要用 ui.accent 橙（用户反馈太跳，压过内容）")
+        fail = True
+    if "enter = expandVertically() + fadeIn()" not in _hs:
+        print("[FAIL] 历程页展开须有动画（须与错题本同款 expandVertically + fadeIn）")
+        fail = True
+_wf = load(_repo_root + "/.github/workflows/build.yml")
+if "python3 scripts/gen_history.py" not in _wf:
+    print("[FAIL] 发版 workflow 须自动重跑 gen_history.py（用户反馈：不要写死、要自动拉）")
+    fail = True
+elif "fetch-depth: 0" not in _wf:
+    print("[FAIL] 发版 workflow 的 checkout 须 fetch-depth: 0——默认浅克隆只有最后一个提交，历程会只剩一条")
     fail = True
