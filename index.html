@@ -821,12 +821,12 @@ addEventListener('scroll', onScroll, { passive: true });
    （对应 App v2.19.33 的「打乱选项」，判断题不打乱）。
 
    逐字浮现的参数与 App 内 ParseBlock 完全一致：
-     36 字/秒 · 单字入场 260ms · 起始模糊 3px
+     56 字/秒 · 单字入场 230ms · 起始模糊 3px
      透明度线性，模糊走 easeOut 提前收干净
      —— 若模糊与透明度同步结束，最后一点模糊会落在已满不透明度的字上，
         读起来是脏点而不是「对焦」。
    ═══════════════════════════════════════════════════════════ */
-const CPS = 36, ENTRY = 260, BLUR = 3;
+const CPS = 56, ENTRY = 230, BLUR = 3;
 const BANK = [
   // 原题原解析，取自 assets/questions.json。挑「短而贴题」的三道：
   // 解析长度决定逐字浮现的总时长（字数 × 50ms + 290ms），太长网页上要干等。
