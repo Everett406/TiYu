@@ -103,6 +103,9 @@ data class AppSettings(
     // 与 examInstantJudge 完全解耦——两者可同时开：判定照常给对错与正确答案，
     // 只是解析文字里的「选C」会跟乱序后的选项对不上，故此开关开着时隐藏解析。
     val examShuffleOptions: Boolean = false,
+    // v2.19.35 错题优先：先抽错题本（removed=0）里的题。
+    // 与 examPreferUnseen 同开时错题优先——答错过的比没做过的更该先复习。
+    val examPreferWrong: Boolean = false,
     val eyeCareReminder: Boolean = false, // v2.8.6 护眼提醒：连续刷题 20 分钟弹窗提醒休息（考试不受影响）
     val onboardingDone: Boolean = false, // v2.9.0 首启功能引导已完成/已跳过（跳过即不再自动弹）
     // v2.10.0 桌面小组件 / 成绩分享卡
@@ -159,6 +162,7 @@ class SettingsStore(private val context: Context) {
         val examInstantJudge = booleanPreferencesKey("exam_instant_judge")
         val examPreferUnseen = booleanPreferencesKey("exam_prefer_unseen")
         val examShuffleOptions = booleanPreferencesKey("exam_shuffle_options")
+        val examPreferWrong = booleanPreferencesKey("exam_prefer_wrong")
         // v2.8.6 护眼提醒
         val eyeCareReminder = booleanPreferencesKey("eye_care_reminder")
         // v2.9.0 首启功能引导
@@ -211,6 +215,7 @@ class SettingsStore(private val context: Context) {
             examInstantJudge = p[K.examInstantJudge] ?: false,
             examPreferUnseen = p[K.examPreferUnseen] ?: true,
             examShuffleOptions = p[K.examShuffleOptions] ?: false,
+            examPreferWrong = p[K.examPreferWrong] ?: false,
             eyeCareReminder = p[K.eyeCareReminder] ?: false,
             onboardingDone = p[K.onboardingDone] ?: false,
             dailyGoal = p[K.dailyGoal] ?: 30,
@@ -414,6 +419,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setExamPreferUnseen(v: Boolean) = context.dataStore.edit { it[K.examPreferUnseen] = v }
 
     suspend fun setExamShuffleOptions(v: Boolean) = context.dataStore.edit { it[K.examShuffleOptions] = v }
+
+    suspend fun setExamPreferWrong(v: Boolean) = context.dataStore.edit { it[K.examPreferWrong] = v }
 
 
     suspend fun setExamTypeOrder(list: List<String>) {

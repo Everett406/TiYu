@@ -164,8 +164,12 @@ fun ExamConfigScreen(
     // v2.19.33 选项打乱（仅模考）。与 instantJudge 完全解耦：
     // 开打乱时判定照常给对错与正确答案，只是不显示解析文字（解析里写死了「选C」）。
     var shuffleOptions by remember { mutableStateOf(settings.examShuffleOptions) }
+    // v2.19.35 错题优先：先抽错题本里的题。与 preferUnseen 同开时错题压过未答。
+    var preferWrong by remember { mutableStateOf(settings.examPreferWrong) }
     // 说明文案用的「未答 N 题」——开了开关却看不到效果依据，用户会以为没生效
     var unseenCount by remember { mutableIntStateOf(0) }
+    // v2.19.35：本库在错题本里的题量（开关说明文案用）
+    var activeWrongCount by remember { mutableIntStateOf(0) }
     var typeOrder by remember { mutableStateOf<List<String>>(emptyList()) }
     // v2.8.3 题型构成：自动按库内占比 / 手动拖比例滑杆（百分比，联动让出份额）
     var autoMix by remember { mutableStateOf(true) }
@@ -181,6 +185,12 @@ fun ExamConfigScreen(
     }.collectAsState(initial = 0)
     LaunchedEffect(unseenFlow) { unseenCount = unseenFlow }
 
+    // 错题数同样实时刷新（交卷判错进错题本、连续答对毕业移出后都会变）
+    val wrongFlow by remember(settings.currentBank) {
+        ServiceLocator.repo.activeWrongCount(settings.currentBank)
+    }.collectAsState(initial = 0)
+    LaunchedEffect(wrongFlow) { activeWrongCount = wrongFlow }
+
     LaunchedEffect(settings.currentBank) {
         runCatching {
             // 关键：挂起读 DataStore 真值——collectAsState 首帧是 AppSettings() 默认值（drone），
@@ -195,6 +205,7 @@ fun ExamConfigScreen(
             instantJudge = st.examInstantJudge
             preferUnseen = st.examPreferUnseen
             shuffleOptions = st.examShuffleOptions
+            preferWrong = st.examPreferWrong
             autoMix = st.examAutoMix
             ratios = autoRatios(types, bankTypeCounts)
         }
@@ -617,6 +628,36 @@ fun ExamConfigScreen(
                                         )
                                     }
                                 }
+                                // v2.19.35 错题优先：排在「优先未答」前面——
+                                // 两个同开时错题压过未答，UI 顺序也跟着这个优先级走。
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("错题优先", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            when {
+                                                activeWrongCount == 0 -> "错题本是空的，本卷等同不开启"
+                                                preferUnseen -> "先抽错题的 $activeWrongCount 题，再补没做过的"
+                                                else -> "先抽错题本里的 $activeWrongCount 题"
+                                            },
+                                            color = ui.textSub, fontSize = 11.sp,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                    GlassToggle(
+                                        checked = { preferWrong },
+                                        onCheckedChange = { v ->
+                                            preferWrong = v
+                                            scope.launch { ServiceLocator.settings.setExamPreferWrong(v) }
+                                        },
+                                        backdrop = backdrop
+                                    )
+                                }
                                 // v2.19.32 优先未答：与「含简答题」同级的独立开关。
                                 // 放在「长按拖动调整先后」之前，那行字只服务于题型顺序列表。
                                 Row(
@@ -628,8 +669,11 @@ fun ExamConfigScreen(
                                     Column(Modifier.weight(1f)) {
                                         Text("优先未答", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                         Text(
-                                            if (unseenCount > 0) "先抽没做过的 $unseenCount 题，不够再回填"
-                                            else "题库已刷完，本卷全部来自已做过的题",
+                                            when {
+                                                preferWrong -> "错题取完后，从这里补 $unseenCount 题"
+                                                unseenCount > 0 -> "先抽没做过的 $unseenCount 题，不够再回填"
+                                                else -> "题库已刷完，本卷全部来自已做过的题"
+                                            },
                                             color = ui.textSub, fontSize = 11.sp,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.padding(top = 2.dp)
@@ -710,7 +754,8 @@ fun ExamConfigScreen(
                                 typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder },
                                 passLine = st.passScore, // v2.8.6：开考时定格合格线，成绩单回显
                                 preferUnseen = preferUnseen, // v2.19.32：优先未作答过的题
-                                shuffleOptions = shuffleOptions // v2.19.33：单选/多选打乱选项
+                                shuffleOptions = shuffleOptions, // v2.19.33：单选/多选打乱选项
+                                preferWrong = preferWrong // v2.19.35：先抽错题本里的题
                             )
                             // v2.10.0：落盘本次组卷配置（快捷方式/小组件「快速模考」直落复用）
                             runCatching {

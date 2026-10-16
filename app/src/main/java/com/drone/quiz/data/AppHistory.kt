@@ -20,6 +20,8 @@ object AppHistory {
     /** 从新到旧排列（时间轴由近及远看） */
     val ALL: List<Entry> = listOf(
 
+        Entry("2.19.34", "2026-10-16", "2026-10-16", "发展历程页 + 单选正确答案不再重复选项全文",
+            listOf(), 1, false),
         Entry("2.19.33", "2026-10-16", "2026-10-16", "模考选项打乱 + 解析隐藏（与即时判定解耦）+ 关于页文案重写",
             listOf("perm[显示位] = 原始下标（双射），UI 只见 display 题", "uaToOriginal 是数据出视图层的唯一出口", "judgeAnswer / submitExam / WrongBook / QuestionStats 零改动", "判断题（正确/错误位置语义固定）与简答不参与；salt=0 天然不打乱"), 1, false),
         Entry("2.19.32", "2026-10-16", "2026-10-16", "模考「优先未答」——先抽没做过的题，不够再回填",

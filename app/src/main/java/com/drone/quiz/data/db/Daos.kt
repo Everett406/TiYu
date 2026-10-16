@@ -275,6 +275,13 @@ interface WrongDao {
     @Query("SELECT COUNT(*) FROM wrongbook WHERE removed = 0")
     fun wrongCountFlow(): Flow<Int>
 
+    /** 按题库隔离的错题数（v2.19.35：错题优先开关的说明文案用） */
+    @Query(
+        "SELECT COUNT(*) FROM wrongbook w JOIN questions q ON w.qid = q.id " +
+            "WHERE w.removed = 0 AND q.bankId = :bankId"
+    )
+    fun activeWrongCountByBankFlow(bankId: String): Flow<Int>
+
     @Query("UPDATE wrongbook SET removed = 1 WHERE qid = :qid")
     suspend fun markRemoved(qid: Long)
 

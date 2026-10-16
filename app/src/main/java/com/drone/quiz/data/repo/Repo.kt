@@ -128,6 +128,13 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
     fun unseenCount(bankId: String) = qDao.unseenCountByBankFlow(bankId)
 
     /**
+     * 题库内「在错题本里（未被移除）」的题量（v2.19.35：错题优先开关的说明文案用）。
+     * removed=1 的不算——那是连续答够次数「毕业」了的。
+     */
+    fun activeWrongCount(bankId: String): Flow<Int> =
+        wDao.activeWrongCountByBankFlow(bankId)
+
+    /**
      * 重命名题库（v2.8.7，用户反馈"导入的题库没办法重命名"）。
      * 仅改显示名：trim + 限长 16 + 空名拒绝（保持原名静默返回，UI 侧已先行守卫）。
      * 内置/导入题库均可改——name 只是 banks 表的展示字段，与播种版本/墓碑机制无关。
@@ -480,7 +487,8 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         typeOrder: List<String>,
         passLine: Int = 60, // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
         preferUnseen: Boolean = true, // v2.19.32 默认开：题库 800 题、模考每次 50，重复率天然很高
-        shuffleOptions: Boolean = false // v2.19.33 选项打乱：非 0 时落库 optSalt，视图层乱序、数据层恒原序
+        shuffleOptions: Boolean = false, // v2.19.33 选项打乱：非 0 时落库 optSalt，视图层乱序、数据层恒原序
+        preferWrong: Boolean = false // v2.19.35 错题优先：先抽错题本（removed=0）里的题，不够再退到优先未答/全随机
     ): Pair<Long, List<Question>> = withContext(Dispatchers.IO) {
         // v2.17.0 关键修复：order 是「排序提示」，不是遍历白名单。
         // 病灶（与 v2.8.4 在 ExamScreens 修的是同一类，但只修了配置页那一半）：
@@ -502,16 +510,32 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
             if (want > 0) {
                 val ids = qDao.idsByFilter(bankId, null, type)
                 if (ids.isNotEmpty()) {
-                    // v2.19.32 优先未答：先从 attempts=0 的题里抽，不够再从已答的补。
-                    // 不做「只抽未答」——题库刷完后会组不出卷（v2.17.0 那类空白页死局）。
+                    // 抽题优先级（从高到低，逐级回填，任何一级都不会导致组不出卷）：
+                    //   错题本（removed=0，v2.19.35）→ 未答（attempts=0，v2.19.32）→ 其余已答
+                    //
+                    // 为什么错题压过未答：一道从未答过的题不可能在错题本里（答错过才进），
+                    // 两个池天然不重叠；「先复习错题」比「先见新题」更贴近模考的补救意图，
+                    // 所以错题取满 want 之后才轮到未答。
+                    //
+                    // 为什么逐级回填而不是各取一半：任一层取满即可，抽不满再往下退。
+                    // 严格保证「题库刷完照样能组出卷」——否则重演 v2.17.0 的空白页死局。
+                    //
                     // 放弃的考卷不写 question_stats（只有 submitExam 写），所以放弃过的那份
-                    // 下次仍算未答、仍会被抽到，符合直觉。
-                    val chosen = if (preferUnseen) {
-                        val unseen = qDao.unseenIdsByType(bankId, type).shuffled()
-                        val seen = (ids - unseen.toSet()).shuffled()
-                        unseen.take(want) + seen.take((want - minOf(want, unseen.size)).coerceAtLeast(0))
-                    } else {
-                        ids.shuffled().take(want)
+                    // 下次仍算未答、仍会被抽到；错题本则要交卷判错才进。
+                    val wrong = if (preferWrong) {
+                        // 注意是 wDao 不是 qDao——错题本查询挂在 WrongDao 上
+                        wDao.activeWrongIds(bankId, type, null).toSet()
+                    } else emptySet()
+                    val unseen = if (preferUnseen) {
+                        qDao.unseenIdsByType(bankId, type).toSet()
+                    } else emptySet()
+                    val rest = ids.filter { it !in wrong && it !in unseen }
+
+                    val chosen = ArrayList<Long>(want)
+                    for (pool in listOf(wrong, unseen, rest.toSet())) {
+                        if (chosen.size >= want) break
+                        pool.filter { it !in chosen }.shuffled()
+                            .forEach { if (chosen.size < want) chosen += it }
                     }
                     pickedIds += chosen
                 }

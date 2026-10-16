@@ -931,3 +931,31 @@ else:
     if "correctAnswerText(brief = true)" in _ss:
         print("[FAIL] 搜索页折叠态不给选项，只写字母用户无从对照，须保留全文（brief 不要传 true）")
         fail = True
+
+# 7.z3) 模考抽题优先级（v2.19.35 错题优先）
+#      抽题在 startExam 里内联（要拿 DAO），单测复刻了同一套逻辑；
+#      两边若不一致，单测就锁不住真实行为——所以核对优先级顺序的关键标记。
+_r3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+if not _r3:
+    print("[FAIL] Repo.kt 读不到")
+    fail = True
+else:
+    # 优先级必须严格是 错题 → 未答 → 其余；顺序反了就是行为回退
+    _i_wrong = _r3.find("for (pool in listOf(wrong, unseen, rest.toSet()))")
+    if _i_wrong < 0:
+        print("[FAIL] startExam 的逐级回填循环缺失或结构已变（期望 listOf(wrong, unseen, rest.toSet())）")
+        fail = True
+    # 错题本查询必须走 wDao（错题相关 DAO 挂在 WrongDao 上，用 qDao 编译不过，
+    # 但改成别的名字仍会静默拿到空集 —— 这条防的是后者）
+    if "wDao.activeWrongIds(bankId, type, null)" not in _r3:
+        print("[FAIL] 错题优先必须用 wDao.activeWrongIds 取题（错题查询在 WrongDao 上）")
+        fail = True
+    # removed=1 的不算错题（连续答够次数已毕业）
+    if "preferWrong: Boolean = false" not in _r3:
+        print("[FAIL] startExam 缺 preferWrong 参数（错题优先开关）")
+        fail = True
+# 两个优先级开关的说明文案须互不矛盾：错题开启时未答开关要说明自己在"补位"
+_e3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+if "preferWrong ->" not in _e3:
+    print("[FAIL] 模考配置页：错题优先开启时，「优先未答」的说明文案未切换为补位提示（用户会以为两个都抢第一）")
+    fail = True
