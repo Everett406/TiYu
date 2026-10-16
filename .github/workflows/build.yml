@@ -16,8 +16,8 @@ env:
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
   IS_PREVIEW: 'false'
-  APP_VERSION_NAME: 2.19.41
-  APP_VERSION_TAG: v2.19.41
+  APP_VERSION_NAME: 2.19.42
+  APP_VERSION_TAG: v2.19.42
 
 jobs:
   build:
@@ -88,7 +88,7 @@ jobs:
             dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
             dist/TiYu-latest.apk
           body: |
-            ## 题屿 TiYu v2.19.41
+            ## 题屿 TiYu v2.19.42
 
             ### 模考设置记住了
 
@@ -118,9 +118,9 @@ jobs:
 
             ---
 
-            **安装**：下载下方 `TiYu-2.19.41.apk` **覆盖安装**即可，学习数据自动迁移。
+            **安装**：下载下方 `TiYu-2.19.42.apk` **覆盖安装**即可，学习数据自动迁移。
 
-  # 产品发布页（v2.19.41）：静态站，GitHub Pages 托管，零成本零服务器。
+  # 产品发布页（v2.19.42）：静态站，GitHub Pages 托管，零成本零服务器。
   #
   # 部署方式必须与仓库 Pages 设置一致：已开通为 **legacy + gh-pages 分支**
   # （build_type=legacy），故推分支而非 upload-pages-artifact 那套 Actions
