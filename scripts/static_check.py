@@ -1175,6 +1175,66 @@ for _f, _min in [
         print("[FAIL] %s 仍有直接渲染解析正文的写法，应改走 ParseBlock" % _f)
         fail = True
 
+# 7.z8) 模考设置记忆 + 产品发布页（v2.19.41）
+#      用户反馈两件事：
+#      ① 模考设置「每一次都要自己手动再设置一遍」。病灶不是没存——开考时一直
+#      有 setExamQuickConfig（快捷方式「快速模考」就靠它），而是**配置页从不读它**：
+#      count/durationMin/judgeRatio/ratios 四个 state 是硬编码初值，开关却走
+#      st.* 有持久化，于是表现为「开关记住了、滑杆没记住」。
+#      ② 产品发布页。零成本方案 = GitHub Pages 托管 site/ 下的静态页，
+#      下载用**不带版本号的固定名资产** releases/latest/download/TiYu-latest.apk
+#      —— 那个 URL 永远指向最新正式版，页面不必跟着版本号改。
+_es = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+for _tok, _why in [
+    ("ServiceLocator.settings.examQuickConfig()", "配置页须读回已存配置（否则「每次重设」）"),
+    ("restoredFrom", "须有「已沿用上次设置」的明示，否则用户以为还是默认值又调一遍"),
+    ("恢复默认", "须提供「恢复默认」出口，否则记忆后想改回去只能清数据"),
+    ("fixRatiosRoundOff", "counts 反推比例会掉零头，须归一化回 100"),
+]:
+    if _tok not in _es:
+        print("[FAIL] 模考设置记忆：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+_site = load(_repo_root + "/site/index.html")
+if not _site:
+    print("[FAIL] site/index.html 缺失——产品发布页没了")
+    fail = True
+else:
+    for _tok, _why in [
+        ("TiYu-latest.apk", "下载须用固定名资产的直链（带版本号的 URL 每次发版都要改）"),
+        ("releases/latest", "须读取最新版本号并显示在页面上"),
+        ("常见问题", "用户明确要求有 Q&A"),
+    ]:
+        if _tok not in _site:
+            print("[FAIL] 产品发布页：%s（缺 %r）" % (_why, _tok))
+            fail = True
+    if "<script src=" in _site:
+        print("[FAIL] 产品发布页不应有外部脚本依赖——静态页要能离线/受限网络打开")
+        fail = True
+
+_wf3 = load(_repo_root + "/.github/workflows/build.yml")
+if "TiYu-latest.apk" not in _wf3:
+    print("[FAIL] 发版须额外产出固定名资产 TiYu-latest.apk（否则页面直链 404）")
+    fail = True
+if "git subtree split --prefix=site" not in _wf3:
+    print("[FAIL] 发版须把 site/ 推到 gh-pages（仓库 Pages 已开通为 legacy+分支模式）")
+    fail = True
+if "actions/upload-pages-artifact" in _wf3:
+    print("[FAIL] Pages 部署须用 gh-pages 分支方式——仓库已开通 legacy 模式，"
+          "混用 Actions 环境会互相打架")
+    fail = True
+
+_au = load(_repo_root + "/app/src/main/java/com/drone/quiz/util/AppUpdater.kt")
+if "SITE_URL" not in _au:
+    print("[FAIL] App 内「GitHub 发布页」须改指产品页（用户口径）")
+    fail = True
+if "everett406.github.io" not in _au:
+    print("[FAIL] SITE_URL 须指向 GitHub Pages 地址")
+    fail = True
+if "RELEASES_URL" not in _au:
+    print("[FAIL] 须保留 RELEASES_URL 作为 Pages 不可用时的兜底")
+    fail = True
+
 # ============================================================
 # 收尾（**唯一**出口）
 #

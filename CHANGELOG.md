@@ -3,6 +3,59 @@
 本文件记录题屿（TiYu）每个版本的变更明细。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本（MAJOR.MINOR.PATCH）。
 
 ## [Unreleased]
+## [2.19.41] - 2026-10-16
+
+### 模考设置记忆
+
+用户反馈「每一次都要自己手动再设置一遍再考试，很麻烦」。
+
+**根因不是没存**——开考时一直有 `setExamQuickConfig`（桌面小组件「快速模考」
+就靠它组卷），而是**配置页打开时从不去读**：
+
+- `count` / `durationMin` / `judgeRatio` / `ratios` 四个 state 是**硬编码初值**
+  （50 / 60 / 0.3 / 空），`remember { mutableStateOf(...) }` 里写死；
+- 而 `includeShort` / `instantJudge` / `preferUnseen` / `preferWrong` /
+  `shuffleOptions` 都走 `st.*`，是有持久化的。
+
+于是表现为「**开关记住了、滑杆没记住**」——一半能用一半不能，最容易让人以为
+是玄学。现统一：进页面时读回 `examQuickConfig()` 并回填。
+
+回填的一个坑：`counts` 存的是「题型 → 题数」，UI 要的是「总题数 + 手动比例」，
+需要反算——总题数 = `counts` 之和；手动比例由 counts 折算后按题库实际题量归一化。
+折算会掉零头（三个题型各 33% 只剩 99%），故加 `fixRatiosRoundOff()` 把余量
+补给**当前库内题量最多**的题型——补给最富余的那个，肉眼看不出偏差。
+
+另外：
+- 顶部明示「已沿用上次的设置」——不说的话，用户会以为这还是默认值、又手动调一遍，
+  那就白记忆了；
+- 右侧给「恢复默认」，并清掉存档，避免想改回去只能清数据。
+
+### 产品发布页（GitHub Pages）
+
+新增 `site/index.html`：介绍、功能、Q&A、下载入口、题库版权说明。
+纯静态、零依赖（含一段内联 JS 读最新版号），**GitHub Pages 免费托管**，
+不需要服务器、不花钱。
+
+**下载直链的解法**：原来只能给 `releases/download/v2.19.41/TiYu-2.19.41.apk`
+这种带版本号的 URL——每发一版所有外部链接都得跟着改。故发版时额外产出一份
+**不带版本号**的固定名资产 `TiYu-latest.apk`，页面里写
+`releases/latest/download/TiYu-latest.apk`，这个 URL 永远指向最新正式版。
+（preview/draft 不更新它，免得抢「最新」的位置。）
+
+**部署方式**：仓库 Pages 已开通为 **legacy + gh-pages 分支**（`build_type=legacy`），
+故 workflow 用 `git subtree split --prefix=site` 推分支，而不是
+`upload-pages-artifact` 那套 Actions 环境——两者混用会互相打架
+（一个报 "Pages is already enabled"，另一个推完不生效）。
+
+**App 内跳转**：设置 → 关于 → 「GitHub 发布页」改指产品页。原先指向 Releases
+列表页，那是一屏版本号和大段更新日志，是给开发者看的，不是给使用者看的。
+跳转前用 HEAD 探测 Pages 是否活着，打不开则自动退回 Releases 列表页，
+不让用户卡在空白页。
+
+static_check 新增 7.z8 锁死以上各项。
+
+测试 24 个全过。
+
 ## [2.19.40] - 2026-10-16
 
 ### 解析：全 app 收敛为唯一组件 + 默认折叠 + 逐字对焦

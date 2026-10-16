@@ -16,8 +16,8 @@ env:
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
   IS_PREVIEW: 'false'
-  APP_VERSION_NAME: 2.19.40
-  APP_VERSION_TAG: v2.19.40
+  APP_VERSION_NAME: 2.19.41
+  APP_VERSION_TAG: v2.19.41
 
 jobs:
   build:
@@ -88,53 +88,63 @@ jobs:
             dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
             dist/TiYu-latest.apk
           body: |
-            ## 题屿 TiYu v2.19.40
+            ## 题屿 TiYu v2.19.41
 
-            ### 解析终于折叠了（刷题 + 考试都有）
+            ### 模考设置记住了
 
-            上一版我只改了搜索页，刷题和考试的解析压根没动——这次全改了。
+            以前每次进来都要重调一遍——现在**沿用上次的设置**，
+            顶部会有提示，右边有「恢复默认」。
 
-            **六个地方统一走同一个解析组件**：刷题的单选/多选/填空/简答、
-            模考、错题本、搜索页。以后想改解析长什么样，只改一处。
+            顺带说一句根因：设置其实**一直有在存**（桌面小组件那个「快速模考」
+            就靠它），但模考配置页打开时从来不去读——滑杆用的是写死的初始值，
+            而开关是能记住的。所以是「开关记住了、滑杆没记住」。
 
-            · 默认折叠，点「点击展开解析」才出
-            · 展开时**逐字对焦浮现**：每个字从全透明 + 模糊开始，
-              一边变清晰一边淡入，**20 字/秒**
-            · 模糊收得比透明度快（这是关键，见下）
+            ### 有产品发布页了
 
-            ### 搜索页
+            **everett406.github.io/TiYu**
 
-            按你说的改回去了：解析跟着卡片一起展开，不要独立开关，
-            容器样式保持原样。跟其他地方统一，以后好管理。
+            介绍、能干什么、常见问题、下载入口、题库版权说明，都在上面。
 
-            ### 为什么模糊要先收干净
+            App 里点「GitHub 发布页」现在直接进这个页面。
+            （页面打不开会自动退回原来的版本列表，不会把你卡在空白。）
 
-            如果模糊和透明度同时收完，动画末尾残留的那一点模糊
-            会落在已经满不透明度的字上，看着像**脏点**而不是"对焦"。
-            所以模糊走缓出（收得快）、透明度走线性，两者不是一条曲线。
+            下载按钮用的是**固定链接**，永远指向最新正式版——
+            以后发版，链接不用改。
+
+            ### 其余一切照旧
+
+            解析折叠 + 逐字对焦、时间轴连线、顶栏按钮齐平、选项打乱、
+            错题优先、优先未答，全都在。
 
             ---
 
-            **安装**：下载下方 `TiYu-2.19.40.apk` **覆盖安装**即可，学习数据自动迁移。
+            **安装**：下载下方 `TiYu-2.19.41.apk` **覆盖安装**即可，学习数据自动迁移。
 
   # 产品发布页（v2.19.41）：静态站，GitHub Pages 托管，零成本零服务器。
-  # 与 Release job 并行，两者互不依赖——APK 发版成功与页面部署成功是两件事。
+  #
+  # 部署方式必须与仓库 Pages 设置一致：已开通为 **legacy + gh-pages 分支**
+  # （build_type=legacy），故推分支而非 upload-pages-artifact 那套 Actions
+  # 环境——两者混用会互相打架（一个报 "Pages is already enabled"，
+  # 另一个推完不生效）。
+  #
+  # 为什么还要 CI 推一遍、而不是只靠本地 subtree：页面里的下载直链与 App 版本
+  # 相关，发版时一起更新才不会页面与 APK 对不上。
   pages:
     name: Deploy product site
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          # subtree split 需要完整历史
+          fetch-depth: 0
+
+      - name: Publish site to gh-pages
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git subtree split --prefix=site -b _site
+          git push --force origin _site:gh-pages
+          git branch -D _site
