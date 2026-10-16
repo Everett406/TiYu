@@ -115,6 +115,12 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
     }
 
     /**
+     * 题库内「从未作答过」的题量（v2.19.32：模考优先未答开关的说明文案用）。
+     * 与 startExam 里 unseenIdsByType 同一口径。
+     */
+    fun unseenCount(bankId: String) = qDao.unseenCountByBankFlow(bankId)
+
+    /**
      * 重命名题库（v2.8.7，用户反馈"导入的题库没办法重命名"）。
      * 仅改显示名：trim + 限长 16 + 空名拒绝（保持原名静默返回，UI 侧已先行守卫）。
      * 内置/导入题库均可改——name 只是 banks 表的展示字段，与播种版本/墓碑机制无关。
@@ -458,13 +464,15 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
      * 组卷（v2.8.0）：按题型分别抽题、按题型顺序拼卷（修复选择/判断混排）。
      * @param counts 题型→题数（UI 依据题库实际拥有的题型自适应生成）
      * @param typeOrder 题型顺序；空 = 默认 单选→多选→填空→判断→简答
+     * @param preferUnseen v2.19.32：优先从未作答过的题里抽；该题型未答题不够时才回填已答题
      */
     suspend fun startExam(
         bankId: String,
         counts: Map<String, Int>,
         durationSec: Int,
         typeOrder: List<String>,
-        passLine: Int = 60 // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
+        passLine: Int = 60, // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
+        preferUnseen: Boolean = true // v2.19.32 默认开：题库 800 题、模考每次 50，重复率天然很高
     ): Pair<Long, List<Question>> = withContext(Dispatchers.IO) {
         // v2.17.0 关键修复：order 是「排序提示」，不是遍历白名单。
         // 病灶（与 v2.8.4 在 ExamScreens 修的是同一类，但只修了配置页那一半）：
@@ -485,7 +493,20 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
             val want = counts[type] ?: 0
             if (want > 0) {
                 val ids = qDao.idsByFilter(bankId, null, type)
-                if (ids.isNotEmpty()) pickedIds += ids.shuffled().take(want)
+                if (ids.isNotEmpty()) {
+                    // v2.19.32 优先未答：先从 attempts=0 的题里抽，不够再从已答的补。
+                    // 不做「只抽未答」——题库刷完后会组不出卷（v2.17.0 那类空白页死局）。
+                    // 放弃的考卷不写 question_stats（只有 submitExam 写），所以放弃过的那份
+                    // 下次仍算未答、仍会被抽到，符合直觉。
+                    val chosen = if (preferUnseen) {
+                        val unseen = qDao.unseenIdsByType(bankId, type).shuffled()
+                        val seen = (ids - unseen.toSet()).shuffled()
+                        unseen.take(want) + seen.take((want - minOf(want, unseen.size)).coerceAtLeast(0))
+                    } else {
+                        ids.shuffled().take(want)
+                    }
+                    pickedIds += chosen
+                }
             }
         }
         // 题库为空时防御性短路：不建卷、不写 exam_records，返回空列表由 UI 提示

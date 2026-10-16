@@ -96,6 +96,9 @@ data class AppSettings(
     // v2.18.0 模考即时判定：关 = 全卷交后统核正误（传统模考口径，默认）；
     // 开 = 逐题作答、当场验得失。仅改显示时机，判分与成绩单口径完全不变。
     val examInstantJudge: Boolean = false,
+    // v2.19.32 模考优先未答：先抽 attempts=0 的题，该题型不够时回填已答题。
+    // 默认开——题库 800 题、模考一次 50，纯随机会反复抽到已做过的。
+    val examPreferUnseen: Boolean = true,
     val eyeCareReminder: Boolean = false, // v2.8.6 护眼提醒：连续刷题 20 分钟弹窗提醒休息（考试不受影响）
     val onboardingDone: Boolean = false, // v2.9.0 首启功能引导已完成/已跳过（跳过即不再自动弹）
     // v2.10.0 桌面小组件 / 成绩分享卡
@@ -150,6 +153,7 @@ class SettingsStore(private val context: Context) {
         val examTypeOrder = stringPreferencesKey("exam_type_order")
         val examAutoMix = booleanPreferencesKey("exam_auto_mix")
         val examInstantJudge = booleanPreferencesKey("exam_instant_judge")
+        val examPreferUnseen = booleanPreferencesKey("exam_prefer_unseen")
         // v2.8.6 护眼提醒
         val eyeCareReminder = booleanPreferencesKey("eye_care_reminder")
         // v2.9.0 首启功能引导
@@ -200,6 +204,7 @@ class SettingsStore(private val context: Context) {
             } ?: emptyList(),
             examAutoMix = p[K.examAutoMix] ?: true,
             examInstantJudge = p[K.examInstantJudge] ?: false,
+            examPreferUnseen = p[K.examPreferUnseen] ?: true,
             eyeCareReminder = p[K.eyeCareReminder] ?: false,
             onboardingDone = p[K.onboardingDone] ?: false,
             dailyGoal = p[K.dailyGoal] ?: 30,
@@ -399,6 +404,8 @@ class SettingsStore(private val context: Context) {
 
     /** v2.18.0：模考即时判定开关（关=全卷交后统核，开=逐题当场验得失）。 */
     suspend fun setExamInstantJudge(v: Boolean) = context.dataStore.edit { it[K.examInstantJudge] = v }
+
+    suspend fun setExamPreferUnseen(v: Boolean) = context.dataStore.edit { it[K.examPreferUnseen] = v }
 
 
     suspend fun setExamTypeOrder(list: List<String>) {

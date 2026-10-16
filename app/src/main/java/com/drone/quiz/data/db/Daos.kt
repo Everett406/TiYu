@@ -77,6 +77,26 @@ interface QuestionDao {
     @Query("SELECT DISTINCT category FROM questions WHERE bankId = :bankId ORDER BY category")
     suspend fun categories(bankId: String): List<String>
 
+    // v2.19.32 模考「优先未答」：LEFT JOIN question_stats，取 attempts=0 的题。
+    // 「未答过」的口径 = question_stats 里没有记录，或记录了但 attempts 仍为 0
+    // （后者是历史脏数据的可能形态，宁可算作未答，也不要漏掉本可抽的新题）。
+    // COALESCE(attempts,0)=0 而不是 IS NULL：见上方注释。
+    @Query(
+        "SELECT q.id FROM questions q " +
+            "LEFT JOIN question_stats s ON s.qid = q.id " +
+            "WHERE q.bankId = :bankId AND q.type = :type " +
+            "AND COALESCE(s.attempts, 0) = 0"
+    )
+    suspend fun unseenIdsByType(bankId: String, type: String): List<Long>
+
+    /** 同一口径的题量统计（模考配置页展示「未答 N 题」，避免用户开了开关却看不到效果依据） */
+    @Query(
+        "SELECT COUNT(*) FROM questions q " +
+            "LEFT JOIN question_stats s ON s.qid = q.id " +
+            "WHERE q.bankId = :bankId AND COALESCE(s.attempts, 0) = 0"
+    )
+    fun unseenCountByBankFlow(bankId: String): Flow<Int>
+
     @Query(
         "SELECT * FROM questions WHERE bankId = :bankId " +
             "AND (question LIKE '%' || :q || '%' OR options LIKE '%' || :q || '%' " +

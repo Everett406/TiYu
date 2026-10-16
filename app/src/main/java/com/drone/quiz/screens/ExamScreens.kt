@@ -151,6 +151,10 @@ fun ExamConfigScreen(
     // v2.18.0 模考即时判定（可选制）：默认关闭 = 全卷交后统核正误；
     // 开启 = 逐题作答当场验得失。仅改显示时机，判分与成绩单口径不变。
     var instantJudge by remember { mutableStateOf(settings.examInstantJudge) }
+    // v2.19.32 模考优先未答：默认开。未答题抽完才回填已答题，题库刷完也不组不出卷。
+    var preferUnseen by remember { mutableStateOf(settings.examPreferUnseen) }
+    // 说明文案用的「未答 N 题」——开了开关却看不到效果依据，用户会以为没生效
+    var unseenCount by remember { mutableIntStateOf(0) }
     var typeOrder by remember { mutableStateOf<List<String>>(emptyList()) }
     // v2.8.3 题型构成：自动按库内占比 / 手动拖比例滑杆（百分比，联动让出份额）
     var autoMix by remember { mutableStateOf(true) }
@@ -159,6 +163,12 @@ fun ExamConfigScreen(
     val recentExams by remember(settings.currentBank) {
         ServiceLocator.repo.recentExams(settings.currentBank)
     }.collectAsState(initial = emptyList())
+
+    // 未答题数随 stats 变化实时刷新（交卷/刷题写入 question_stats 后自动重算）
+    val unseenFlow by remember(settings.currentBank) {
+        ServiceLocator.repo.unseenCount(settings.currentBank)
+    }.collectAsState(initial = 0)
+    LaunchedEffect(unseenFlow) { unseenCount = unseenFlow }
 
     LaunchedEffect(settings.currentBank) {
         runCatching {
@@ -172,6 +182,7 @@ fun ExamConfigScreen(
             typeOrder = st.examTypeOrder.ifEmpty { QuestionTypes.canonicalOrder }
             includeShort = st.examIncludeShort
             instantJudge = st.examInstantJudge
+            preferUnseen = st.examPreferUnseen
             autoMix = st.examAutoMix
             ratios = autoRatios(types, bankTypeCounts)
         }
@@ -594,6 +605,33 @@ fun ExamConfigScreen(
                                         )
                                     }
                                 }
+                                // v2.19.32 优先未答：与「含简答题」同级的独立开关。
+                                // 放在「长按拖动调整先后」之前，那行字只服务于题型顺序列表。
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("优先未答", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            if (unseenCount > 0) "先抽没做过的 $unseenCount 题，不够再回填"
+                                            else "题库已刷完，本卷全部来自已做过的题",
+                                            color = ui.textSub, fontSize = 11.sp,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                    GlassToggle(
+                                        checked = { preferUnseen },
+                                        onCheckedChange = { v ->
+                                            preferUnseen = v
+                                            scope.launch { ServiceLocator.settings.setExamPreferUnseen(v) }
+                                        },
+                                        backdrop = backdrop
+                                    )
+                                }
                                 Text(
                                     "长按拖动调整先后",
                                     color = ui.textSub, fontSize = 11.sp,
@@ -630,7 +668,8 @@ fun ExamConfigScreen(
                                 counts = plannedCounts,
                                 durationSec = durationMin * 60,
                                 typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder },
-                                passLine = st.passScore // v2.8.6：开考时定格合格线，成绩单回显
+                                passLine = st.passScore, // v2.8.6：开考时定格合格线，成绩单回显
+                                preferUnseen = preferUnseen // v2.19.32：优先未作答过的题
                             )
                             // v2.10.0：落盘本次组卷配置（快捷方式/小组件「快速模考」直落复用）
                             runCatching {
