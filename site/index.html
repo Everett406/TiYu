@@ -340,7 +340,9 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
   transition:transform .14s ease,border-color .18s,background .18s;
   -webkit-tap-highlight-color:transparent;min-height:52px;
 }
-.qopt:hover:not(:disabled){transform:translateX(3px);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+/* hover 只做色彩与描边变化，**不位移**：
+   位移会让指针下的元素持续移动，点击判定为「不稳定」，真人也可能点偏。 */
+.qopt:hover:not(:disabled){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--cardB))}
 .qopt:disabled{cursor:default}
 .qopt .k{
   flex:0 0 auto;width:26px;height:26px;border-radius:50%;
