@@ -45,7 +45,7 @@
   }
 }
 *,*::before,*::after{box-sizing:border-box}
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:clip}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -88,7 +88,7 @@ a{color:inherit}
   display:grid;place-items:center;font-size:16px;font-weight:800;flex:0 0 auto;
 }
 .nav .links{display:flex;gap:22px;margin-left:auto;font-size:14.5px;color:var(--sub)}
-.nav .links a{text-decoration:none;transition:color .18s}
+.nav .links a{text-decoration:none;transition:color .18s;padding:10px 0;display:inline-block;line-height:20px}
 .nav .links a:hover{color:var(--text)}
 @media (max-width:860px){.nav .links{display:none}}
 
@@ -107,8 +107,9 @@ a{color:inherit}
 
 /* ── Hero ── */
 .hero{position:relative;padding:56px 0 0}
-.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center}
-@media (max-width:980px){.hero-grid{grid-template-columns:1fr;gap:40px}}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:52px;align-items:center}
+.hero-grid>*{min-width:0}
+@media (max-width:980px){.hero-grid{grid-template-columns:minmax(0,1fr);gap:40px}}
 
 .badge{
   display:inline-flex;align-items:center;gap:8px;
@@ -149,12 +150,10 @@ h1 .thin{display:block;font-weight:500;color:var(--sub);font-size:.42em;letter-s
 .phone.p3{transform:rotate(6.5deg) translateY(22px);z-index:2;animation-delay:-2.3s}
 @keyframes bob{0%,100%{margin-bottom:0}50%{margin-bottom:-13px}}
 @media (max-width:640px){
-  .phone{width:150px;border-radius:28px;padding:6px}
-  .phone img{border-radius:22px}
-  .phone.p2{width:163px}
-  .phone.p1{transform:rotate(-7deg) translateY(16px)}
-  .phone.p3{transform:rotate(7deg) translateY(16px)}
-  .phones{gap:9px}
+  /* 320px 视口里三台并排只剩每台 80px——索性收成一台，信息交给下方「界面」区 */
+  .phone.p1,.phone.p3{display:none}
+  .phones::before{width:160%}
+  .phone.p2{width:min(214px,58vw);transform:none}
 }
 
 /* ── 统计条 ── */
@@ -180,6 +179,9 @@ h2{font-size:clamp(26px,4.6vw,36px);line-height:1.22;margin:0 0 12px;letter-spac
 .sub{color:var(--sub);font-size:15.5px;margin:0 0 44px;max-width:40em}
 h3{font-size:17px;margin:0 0 5px;font-weight:700;letter-spacing:-.01em}
 .lead{color:var(--sub);font-size:14.5px;margin:0}
+/* 行内链接点击区：横向链接在手机上很难点，撑到 40px 高 */
+.lead a,.note a{padding:10px 0;display:inline-block}
+.nav .brand{padding:7px 0}
 
 /* ── 截图故事：左右交替 ── */
 .story{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
@@ -283,6 +285,7 @@ pre code{background:none;border:none;padding:0;font-size:inherit}
   list-style:none;position:relative;
 }
 .faq summary::-webkit-details-marker{display:none}
+.faq summary{min-height:44px;display:flex;align-items:center}
 .faq summary::after{
   content:"";position:absolute;right:22px;top:50%;width:9px;height:9px;
   border-right:1.8px solid var(--sub);border-bottom:1.8px solid var(--sub);
@@ -307,13 +310,81 @@ pre code{background:none;border:none;padding:0;font-size:inherit}
 
 footer{padding:40px 0 68px;color:var(--sub);font-size:13.5px;border-top:1px solid var(--line);position:relative;z-index:1}
 footer .cols{display:flex;gap:40px;flex-wrap:wrap;justify-content:space-between;margin-bottom:26px}
-footer .cols a{color:var(--sub);text-decoration:none;margin-right:18px;transition:color .18s}
+footer .cols a{color:var(--sub);text-decoration:none;margin-right:10px;transition:color .18s;
+  display:inline-block;padding:11px 0;line-height:22px}
 footer .cols a:hover{color:var(--text)}
 footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px;font-weight:600}
 @media (max-width:640px){footer .cols{gap:26px}}
 
+
+/* ═══ 可玩的答题 demo ═══
+   产品页与文档页的分水岭：能不能让人「体验」而不只是「阅读」。
+   这里搬的是 App 的真实交互——点选即判 + 解析逐字浮现（含 App 内同一套
+   参数：20 字/秒、单字 290ms、起始模糊 3px、blur 走 easeOut 提前收干净）。*/
+.quiz{
+  background:var(--card);border:1px solid var(--line);border-radius:24px;
+  padding:26px 26px 24px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  box-shadow:var(--shadow);
+}
+.quiz-hd{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.qtag{font-size:12px;color:var(--sub);background:var(--cardB);border:1px solid var(--line);
+  padding:4px 11px;border-radius:999px}
+.qidx{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums}
+.qstem{font-size:17px;font-weight:700;line-height:1.6;margin:0 0 18px;letter-spacing:-.01em}
+.qopts{display:flex;flex-direction:column;gap:9px}
+.qopt{
+  display:flex;align-items:center;gap:12px;text-align:left;width:100%;
+  padding:14px 16px;border-radius:14px;cursor:pointer;
+  background:var(--cardB);border:1px solid var(--line);color:var(--text);
+  font-size:15px;font-family:inherit;line-height:1.5;
+  transition:transform .14s ease,border-color .18s,background .18s;
+  -webkit-tap-highlight-color:transparent;min-height:52px;
+}
+.qopt:hover:not(:disabled){transform:translateX(3px);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.qopt:disabled{cursor:default}
+.qopt .k{
+  flex:0 0 auto;width:26px;height:26px;border-radius:50%;
+  background:var(--bg);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:12.5px;font-weight:700;
+}
+.qopt.ok{border-color:var(--correct);background:color-mix(in srgb,var(--correct) 10%,transparent)}
+.qopt.ok .k{background:var(--correct);border-color:var(--correct);color:#fff}
+.qopt.no{border-color:var(--wrong);background:color-mix(in srgb,var(--wrong) 10%,transparent)}
+.qopt.no .k{background:var(--wrong);border-color:var(--wrong);color:#fff}
+.qopt.dim{opacity:.5}
+.qres{margin-top:20px;padding-top:18px;border-top:1px solid var(--line);
+  animation:fadeUp .3s cubic-bezier(.22,.61,.36,1) both}
+.qres-hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:14px}
+.qres-hd b{font-size:15px}
+.qres.ok b{color:var(--correct)}
+.qres.no b{color:var(--wrong)}
+.qans{color:var(--sub)}
+.qexp{font-size:14.5px;line-height:1.85;color:var(--text);overflow-wrap:anywhere}
+.qexp span{display:inline-block;opacity:0;will-change:opacity,filter}
+.qnext{
+  margin-top:18px;padding:11px 22px;border-radius:999px;cursor:pointer;
+  background:transparent;border:1px solid var(--line);color:var(--text);
+  font-size:14px;font-family:inherit;font-weight:600;min-height:44px;
+  transition:border-color .18s,background .18s;
+}
+.qnext:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (max-width:560px){
+  .quiz{padding:20px 18px}
+  .qstem{font-size:16px}
+  .qopt{padding:13px 14px;font-size:14.5px}
+}
+
 /* ── 水墨远山 ── */
 .mtn{position:absolute;left:0;right:0;bottom:0;width:100%;height:auto;z-index:0;pointer-events:none;opacity:.9}
+
+/* ── 滚动连续动效（一镜到底的轻量版）──
+   不是每段各自淡入，而是一个镜头：hero 的手机随滚动连续漂移、缩远、
+   淡出，把视线交给下一段；底部水墨山做反向视差。全部用 transform，
+   不触发重排。*/
+.phones{will-change:transform,opacity}
+.mtn{will-change:transform}
+.stat .n{font-variant-numeric:tabular-nums}
 
 /* ── 入场动画 ── */
 .rv{opacity:0;transform:translateY(18px);transition:opacity .62s cubic-bezier(.22,.61,.36,1),transform .62s cubic-bezier(.22,.61,.36,1)}
@@ -344,14 +415,11 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div>
-      <span class="badge"><span class="dot"></span>全程离线 · 无广告 · 无内购 · 无账号</span>
+      <span class="badge"><span class="dot"></span>全程离线 · 零广告 · 零内购 · 零账号</span>
       <h1>题屿 TiYu<span class="thin">无人机装调员备考</span></h1>
       <p class="lede">
-        内置 <b>800 道含解析的正式题库</b>，五种题型，全真模考自动判分，错题自动收录强化。
-        刷题、模考、统计全部离线运行，<b>学到哪存在你自己手机里</b>。
-      </p>
-      <p class="lede" style="color:var(--sub);font-size:15px">
-        没有广告、没有内购、没有账号、不收集任何数据。唯一联网行为是你手动点「检查更新」。
+        <b>800 道含解析的正式题库</b>，五种题型，全真模考自动判分，错题自动收录强化。
+        刷题、模考、统计<b>全部离线</b>，学到哪存在你自己手机里。
       </p>
       <div class="cta">
         <a class="btn" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">
@@ -388,12 +456,12 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
   <div class="wrap">
     <p class="eyebrow rv">界面</p>
     <h2 class="rv">三个页面，撑起每天的练习</h2>
-    <p class="sub rv">奶油纸感底、墨黑主操作、橙色点缀，底栏是真折射玻璃。截图全部为应用真实运行画面。</p>
+    <p class="sub rv">全部为应用真实运行画面，未经修饰。</p>
 
     <div class="story">
       <div class="body rv">
         <h3>每天练了什么，一眼看到</h3>
-        <p>首页不是装饰。进度环、预估通过率、连续打卡、学习热力图、近七日题量与正确率曲线，全部由本地答题记录实时聚合出来。</p>
+        <p>进度环、预估通过率、连续打卡、学习热力图、近七日题量与正确率曲线，全部由本地答题记录实时聚合。</p>
         <ul>
           <li><i>✓</i><span><b>学习热力图</b>按月铺开，颜色深浅代表当天练习量，一眼看出断没断过</span></li>
           <li><i>✓</i><span><b>预估通过率</b>结合正确率与题量估算，让你知道离及格还有多远</span></li>
@@ -409,7 +477,7 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
     <div class="story flip">
       <div class="body rv">
         <h3>打开就接着上次做</h3>
-        <p>不用每次重新挑一遍。按题型筛选、顺序或随机两套进度各自独立记忆并按题库隔离，切回任一模式都停在原处。</p>
+        <p>按题型筛选；顺序与随机两套进度各自独立记忆、并按题库隔离，切回任一模式都停在原处。</p>
         <ul>
           <li><i>✓</i><span><b>接续提示</b>实时显示「将接续上次进度 · 第 N / M 题」，不丢位置</span></li>
           <li><i>✓</i><span><b>选项打乱</b>：模考中单选、多选的选项顺序可以随机，防止背答案</span></li>
@@ -440,12 +508,38 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
   </div>
 </section>
 
+
+<!-- ═══ 可玩 demo ═══ -->
+<section id="try">
+  <div class="narrow">
+    <p class="eyebrow rv">试一下</p>
+    <h2 class="rv">不用下载，先做一道</h2>
+    <p class="sub rv">这就是 App 里逐字浮现的解析。题目取自内置题库，<b>选项顺序已打乱</b>——模考里也能开这个开关。</p>
+    <div class="quiz rv" id="quiz">
+      <div class="quiz-hd">
+        <span class="qtag" id="qtag">无人机装调</span>
+        <span class="qidx" id="qidx"></span>
+      </div>
+      <p class="qstem" id="qstem"></p>
+      <div class="qopts" id="qopts"></div>
+      <div class="qres" id="qres" hidden>
+        <div class="qres-hd">
+          <b id="qresTxt"></b>
+          <span class="qans" id="qans"></span>
+        </div>
+        <div class="qexp" id="qexp"></div>
+        <button class="qnext" id="qnext">换一题</button>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══ 功能 ═══ -->
 <section id="features">
   <div class="wrap">
     <p class="eyebrow rv">功能</p>
     <h2 class="rv">把「刷题」这件事做完整</h2>
-    <p class="sub rv">不堆花哨功能。下面每一条都是为了让错题真的被消灭。</p>
+    <p class="sub rv">不堆花哨功能。下面每一条，都是为了让错题真的被消灭。</p>
     <div class="grid rv">
       <div class="card">
         <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
@@ -496,7 +590,7 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
   <div class="wrap">
     <p class="eyebrow rv">隐私</p>
     <h2 class="rv">你的学习记录，只在你手机里</h2>
-    <p class="sub rv">没有服务器，所以也就没有「上传」这一说。以下都是应用申请权限的实际用途。</p>
+    <p class="sub rv">没有服务器，就没有「上传」这一说。以下是每个权限的实际用途。</p>
     <div class="trust rv">
       <div class="t"><div class="n">0</div><div class="l">个网络请求用于答题与统计</div></div>
       <div class="t"><div class="n">0</div><div class="l">项数据上传与同步</div></div>
@@ -517,7 +611,7 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
   <div class="wrap">
     <p class="eyebrow rv">安装</p>
     <h2 class="rv">三步装上</h2>
-    <p class="sub rv">不是应用商店渠道，APK 直接从 GitHub Releases 下载，签名固定、覆盖安装不丢数据。</p>
+    <p class="sub rv">APK 直接从 GitHub Releases 下载，签名固定，覆盖安装不丢数据。</p>
     <div class="steps rv" style="max-width:720px">
       <div class="st"><div><b>下载 APK</b><span>点下面的按钮，拿到 <code id="apkname">TiYu-latest.apk</code>（约 36 MB）。</span></div></div>
       <div class="st"><div><b>允许一次「未知来源」</b><span>GitHub 不是应用商店，手机会提示未知来源，按系统引导允许这个来源即可，只需设置一次。</span></div></div>
@@ -618,7 +712,7 @@ cd TiYu
 <section class="final" style="border-top:none;margin-top:0">
   <div class="narrow">
     <h2 class="rv">今天先做二十道</h2>
-    <p class="sub rv" style="margin-left:auto;margin-right:auto">下载只要 36 MB，装完就能开始刷，不用注册、不用联网、不用等。</p>
+    <p class="sub rv" style="margin-left:auto;margin-right:auto">36 MB，装完就能刷。不用注册，不用联网，不用等。</p>
     <div class="cta rv">
       <a class="btn" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -696,6 +790,156 @@ const nav = document.getElementById('nav');
 const onScroll = () => nav.classList.toggle('stuck', window.scrollY > 8);
 onScroll();
 addEventListener('scroll', onScroll, { passive: true });
+
+
+/* ═══════════════════════════════════════════════════════════
+   可玩答题 demo
+   题目取自 assets/questions.json 原题原解析，选项顺序打乱
+   （对应 App v2.19.33 的「打乱选项」，判断题不打乱）。
+
+   逐字浮现的参数与 App 内 ParseBlock 完全一致：
+     20 字/秒 · 单字入场 290ms · 起始模糊 3px
+     透明度线性，模糊走 easeOut 提前收干净
+     —— 若模糊与透明度同步结束，最后一点模糊会落在已满不透明度的字上，
+        读起来是脏点而不是「对焦」。
+   ═══════════════════════════════════════════════════════════ */
+const CPS = 20, ENTRY = 290, BLUR = 3;
+const BANK = [
+  // 原题原解析，取自 assets/questions.json。挑「短而贴题」的三道：
+  // 解析长度决定逐字浮现的总时长（字数 × 50ms + 290ms），太长网页上要干等。
+  { id:134, q:'对流层顶至 55km 以下为____。',
+    o:['平流层','中间层','热层'], a:0,
+    e:'选A。对流层顶至55km高度以下为平流层。平流层下界是对流层顶（约8～18公里随纬度变化），上界约55公里（平流层顶）。B项中间层位于55～85公里；C项热层在85公里以上，均为更高层的划分。' },
+  { id:123, q:'大气的组成是由____：',
+    o:['78%的氮气，21%的氧气以及1%的其它气体组成','75%的氮气，24%的氧气以及1%的其它气体组成','78%的氮气，20%的氧气以及2%的其它气体组成'], a:0,
+    e:'选A。大气的组成约为78%的氮气、21%的氧气以及1%的其它气体（氩、二氧化碳等），这是干洁空气的标准体积比。B项75%氮气、C项20%氧气的比例均与公认数值不符。氮氧占比78/21是大气科学的基础常量。' },
+  { id:54, q:'无人机飞行人员在执行飞行任务时，应当随身携带____。',
+    o:['飞行记录本','飞机适航证书','驾驶员执照或合格证'], a:2,
+    e:'选C。无人机飞行人员在执行飞行任务时，应当随身携带驾驶员执照或合格证，以备查验，证明其具备相应操控资质。A项飞行记录本、B项适航证书属于航空器随机文件，由运行单位保管，不是飞行人员随身携带的资质证明。' },
+];
+const qEl=document.getElementById('qstem'), oEl=document.getElementById('qopts'),
+      rEl=document.getElementById('qres'), tEl=document.getElementById('qresTxt'),
+      aEl=document.getElementById('qans'), eEl=document.getElementById('qexp'),
+      nEl=document.getElementById('qnext'), iEl=document.getElementById('qidx'),
+      gEl=document.getElementById('qtag');
+const LETTERS=['A','B','C','D'];
+let qi = Math.floor(Math.random()*BANK.length);   // 每次进页面换一道起始题
+let shuffle = [];
+
+function reveal(el, text){
+  el.textContent = '';
+  [...text].forEach((c,i)=>{
+    const sp=document.createElement('span');
+    sp.textContent = c;
+    sp.style.opacity = '0';
+    el.appendChild(sp);
+    const d = i * (1000/CPS);
+    // fill 必须是 'both' 不能是 'backwards'：
+    // backwards 只在 delay 期间给起始帧，动画一结束元素就回落到内联的
+    // opacity:0 —— 整段解析会「闪一下然后永远看不见」。both 才会保持末帧。
+    // 透明度：线性走到底
+    sp.animate([{opacity:0},{opacity:1}],
+      {duration:ENTRY, delay:d, easing:'linear', fill:'both'});
+    // 模糊：easeOut 提前收干净，比透明度更早到达 0
+    sp.animate([{filter:`blur(${BLUR}px)`},{filter:'blur(0px)'}],
+      {duration:ENTRY, delay:d, easing:'cubic-bezier(.1,.85,.25,1)', fill:'both'});
+  });
+}
+
+function load(){
+  const q = BANK[qi];
+  iEl.textContent = `第 ${qi+1} / ${BANK.length} 题`;
+  qEl.textContent = q.q;
+  rEl.hidden = true; eEl.textContent=''; oEl.innerHTML='';
+
+  // 打乱选项：正确答案跟着选项一起走（idx[pos] = 该位显示的原选项下标）
+  shuffle = q.o.map((_,i)=>i).sort(()=>Math.random()-0.5);
+  shuffle.forEach((oi,pos)=>{
+    const b=document.createElement('button');
+    b.className='qopt'; b.type='button';
+    b.innerHTML = `<span class="k">${LETTERS[pos]}</span><span>${q.o[oi]}</span>`;
+    b.onclick=()=>judge(oi, q);
+    oEl.appendChild(b);
+  });
+}
+
+function judge(picked, q){
+  [...oEl.children].forEach((b,pos)=>{
+    b.disabled = true;
+    const oi = shuffle[pos];
+    if(oi === q.a)       b.classList.add('ok');    // 正确项始终标绿
+    else if(oi === picked) b.classList.add('no');  // 选错的那项标红
+    else                  b.classList.add('dim');   // 其余淡出
+  });
+  const rightPos = shuffle.indexOf(q.a);
+  tEl.textContent = picked === q.a ? '✓ 回答正确' : '✕ 回答错误';
+  rEl.className = 'qres ' + (picked === q.a ? 'ok' : 'no');
+  aEl.textContent = `正确答案 ${LETTERS[rightPos]} · ${q.o[q.a]}`;
+  rEl.hidden = false;
+  reveal(eEl, q.e);
+}
+nEl.onclick=()=>{ qi=(qi+1)%BANK.length; load(); };
+load();
+
+
+/* ═══ 一镜到底：滚动驱动的连续镜头 ═══
+   hero 的三台手机随滚动连续「飞远」——位移、缩放、淡出在同一条进度上，
+   视线被顺势交给下一段，而不是一段一段地跳。底部水墨山反向视差。
+   只在相关区间内更新，且用 rAF 合帧，避免滚动卡顿。 */
+const phones = document.querySelector('.phones');
+const mtn    = document.querySelector('.mtn');
+let ticking = false;
+
+function frame(){
+  ticking = false;
+  const y   = window.scrollY;
+  const vh  = window.innerHeight;
+
+  if(phones){
+    // 飞远铺满**整整一屏**的滚动行程，而不是半屏就消失。
+    // opacity 只降到 0.3：镜头推远了，但画面里仍有这台机器——
+    // 「一镜到底」是接力，不是清场。
+    const t = Math.min(Math.max(y / (vh * 1.05), 0), 1);
+    const e = t * t * (3 - 2 * t);                 // smoothstep，起收都快
+    phones.style.transform = `translate3d(0, ${(e * 58).toFixed(1)}px, 0) scale(${(1 - e * 0.13).toFixed(4)})`;
+    phones.style.opacity   = (1 - e * 0.70).toFixed(3);
+  }
+  if(mtn){
+    const r = mtn.getBoundingClientRect();
+    if(r.top < vh + 200 && r.bottom > -200){
+      const p = Math.min(Math.max((vh - r.top) / (vh + r.height), 0), 1);
+      mtn.style.transform = `translate3d(0, ${((1 - p) * 46).toFixed(1)}px, 0)`;
+    }
+  }
+}
+addEventListener('scroll', ()=>{
+  if(!ticking){ ticking = true; requestAnimationFrame(frame); }
+}, {passive:true});
+addEventListener('resize', frame, {passive:true});
+frame();
+
+/* ═══ 统计数字滚动 ═══
+   数字从 0 滚到目标值。0 跳过（0→0 没有意义）。 */
+function countUp(el){
+  const raw = el.firstChild;                    // 数字文本节点
+  if(!raw) return;
+  const target = parseFloat(raw.textContent);
+  if(!isFinite(target) || target <= 0) return;   // 0 不滚
+  const t0 = performance.now(), dur = 900;
+  (function step(now){
+    const k = Math.min((now - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - k, 3);            // easeOutCubic
+    raw.textContent = String(Math.round(target * e));
+    if(k < 1) requestAnimationFrame(step);
+  })(t0);
+}
+const nums = [...document.querySelectorAll('.stat .n')];
+if('IntersectionObserver' in window){
+  const nio = new IntersectionObserver((es)=>{
+    es.forEach(e=>{ if(e.isIntersecting){ countUp(e.target); nio.unobserve(e.target); } });
+  },{threshold:0.5});
+  nums.forEach(n=>nio.observe(n));
+} else { nums.forEach(n=>n.textContent=n.textContent); }
 
 /* ═══ 滚动入场 ═══ */
 const items = document.querySelectorAll('.rv');
