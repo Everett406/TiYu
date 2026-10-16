@@ -1354,6 +1354,51 @@ for _gone, _why in [
         print("[FAIL] 模考设置记忆：不该再显示 %r（%s）" % (_gone, _why))
         fail = True
 
+# ── 预估通过率（v2.19.48）────────────────────────────────────────
+# 旧算法只有一行：累计刷题正确率 ÷ 及格分，再和「刷题覆盖率」三七分。
+# 五个问题都在那一行里，其中两个直接违背用户口径：
+#   · **压根没引用模考成绩** —— 模考有倒计时、有完整流程，是最接近考试的信号
+#   · **「刷了多少题」占 30% 权重** —— 练得多不等于练得好
+#   · **每题一票** —— 考 10 道题和考 100 道题对数字影响一样大
+#   · **不分题型** —— 把判断题占比调高去刷分会跟着涨
+#   · **无时间衰减**
+_hz = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/PassEstimate.kt")
+for _tok, _why in [
+    ("const val PRIOR_STRENGTH", "必须有先验强度：样本少时向先验收缩，不给极端值"),
+    ("const val PRACTICE_WEIGHT", "刷题必须折权（无时间压力，证据力弱一档）"),
+    ("const val PRACTICE_CAP", "刷题证据必须封顶，否则会把模考信号淹没"),
+    ("const val HALF_LIFE_DAYS", "必须有时间衰减：半衰期前的模考权重减半"),
+    ("bankTypeMix", "必须按题型校正：按题库真实配比加权，而非按某次模考的配比"),
+    ("answered * w", "模考权重必须 ∝ 实际作答题数（题少的那场自然就轻）"),
+    ("正确率", "副标题须把估计依据讲给用户"),
+]:
+    if _tok not in _hz:
+        print("[FAIL] 预估通过率：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+_hz_code = re.sub(r"/\*.*?\*/", "", _hz, flags=re.S)
+_hz_code = re.sub(r"//[^\n]*", "", _hz_code)
+for _bad, _why in [
+    ("coverage * 0.3f", "不得再给「刷题覆盖率」加权：练得多不等于练得好"),
+]:
+    if _bad in _hz_code:
+        print("[FAIL] 预估通过率：%s（出现 %r）" % (_why, _bad))
+        fail = True
+
+# 首页必须接新算法，而不是那一行旧式
+_home = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+_home_code = re.sub(r"/\*.*?\*/", "", _home, flags=re.S)
+_home_code = re.sub(r"//[^\n]*", "", _home_code)
+if "PassEstimate.compute(" not in _home_code:
+    print("[FAIL] 首页：预估通过率必须走 PassEstimate.compute，不能用旧的一行式")
+    fail = True
+if "stats.accuracy / (settings.passScore" in _home_code:
+    print("[FAIL] 首页：旧的一行式（stats.accuracy / passScore）不得复活")
+    fail = True
+if "r.basis()" not in _home:
+    print("[FAIL] 首页：须展示估计依据（basis），别给一个凭空而来的百分数")
+    fail = True
+
 # ── 产品页 site/（v2.19.43）────────────────────────────────────
 # 站点返工过两次，都是「编译通过、静态检查通过、肉眼一眼假」的问题：
 #   ① <img> 的 HTML width/height 会映射成**表现层尺寸**；CSS 只写 width:100%

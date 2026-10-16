@@ -138,10 +138,35 @@ fun HomeScreen(
     }
 
     val coverage = if (stats.total > 0) stats.answeredDistinct.toFloat() / stats.total else 0f
-    // 预估通过率：参考设置中的及格线 —— 正确率相对及格分的达标程度为主，覆盖率加权
-    // （此前固定阈值不随及格分变化，用户改及格分后无反馈）
-    val passRatio = (stats.accuracy / (settings.passScore.coerceAtLeast(1) / 100f)).coerceIn(0f, 1f)
-    val estimate = (passRatio * 0.7f + coverage * 0.3f).coerceIn(0f, 1f)
+
+    // 预估通过率（v2.19.48 重写，见 data/PassEstimate.kt）。
+    //
+    // 旧式只有一行：累计刷题正确率 ÷ 及格分，再和「刷题覆盖率」三七分。
+    // 五个问题都在那里：压根没引用模考成绩、每题一票不分卷子大小、
+    // 不分题型（把判断题占比调高去刷分会跟着涨）、没有时间衰减，
+    // 以及「刷了多少题」占 30% 权重——练得多不等于练得好。
+    //
+    // 现在：模考为主（按题数累积 + 时间衰减）、题型按题库真实配比校正、
+    // 样本少时向先验收缩、刷题按**去重题数**折权作辅助。
+    val estBank = settings.currentBank
+    var passResult by remember(estBank, settings.passScore) {
+        mutableStateOf<com.drone.quiz.data.PassEstimate.Result?>(null)
+    }
+    LaunchedEffect(estBank, settings.passScore) {
+        passResult = runCatching {
+            val inp = ServiceLocator.repo.passInputs(estBank)
+            com.drone.quiz.data.PassEstimate.compute(
+                exams = inp.exams,
+                bankTypeMix = inp.bankTypeMix,
+                passLine = settings.passScore,
+                practiceAcc = inp.practiceAcc,
+                practiceN = inp.practiceDistinct,
+                coverage = inp.coverage,
+                now = System.currentTimeMillis()
+            )
+        }.getOrNull()
+    }
+    val estimate = (passResult?.estimate ?: 0f).coerceIn(0f, 1f)
 
     // 打卡里程碑：3/7/14/21/30/50/100 天逐级递进
     val milestone = listOf(3, 7, 14, 21, 30, 50, 100).firstOrNull { it > stats.streak } ?: (stats.streak + 10)
@@ -284,6 +309,21 @@ fun HomeScreen(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+                        // v2.19.48：把估计的**依据**摊开。
+                        // 一个凭空而来的百分数最容易被误解成「定论」，
+                        // 而题数少的时候它本来就只是参考——写清楚来源与
+                        // 样本量，用户才知道该信几分、什么时候会变。
+                        passResult?.let { r ->
+                            if (!r.coldStart) {
+                                Text(
+                                    r.basis(),
+                                    color = ui.textSub.copy(alpha = 0.85f),
+                                    fontSize = 10.5.sp,
+                                    lineHeight = 14.sp,
+                                    modifier = Modifier.padding(top = 5.dp)
+                                )
+                            }
                         }
                     }
                 }

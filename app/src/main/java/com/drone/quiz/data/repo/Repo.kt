@@ -839,6 +839,60 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         if (a == 0) 0f else c.toFloat() / a
     }
 
+    /**
+     * 预估通过率的输入采集（v2.19.48）。
+     *
+     * 一律按**题型**分别统计——因为预估针对的是"按题库真实配比考"的表现，
+     * 而模考/刷题时的题型构成是用户自己调的，不能直接拿来当权重。
+     */
+    data class PassInputs(
+        val exams: List<com.drone.quiz.data.PassEstimate.ExamSample>,
+        val bankTypeMix: Map<String, Float>,
+        val practiceAcc: Map<String, Float>,
+        val practiceDistinct: Int,
+        val coverage: Float
+    )
+
+    suspend fun passInputs(bankId: String, now: Long = System.currentTimeMillis()): PassInputs =
+        withContext(Dispatchers.IO) {
+            // 题库真实配比：某题型题数 / 全库题数
+            val totalN = qDao.countByBank(bankId).coerceAtLeast(1)
+            val perType = qDao.byIds(qDao.idsByFilter(bankId, null, null))
+                .groupingBy { it.type }.eachCount()
+            val mix = perType.mapValues { (_, n) -> n.toFloat() / totalN }
+
+            // 模考：按 (场次, 题型) 聚合成样本
+            val rows = eDao.typeBreakdown(bankId)
+            val byExam = rows.groupBy { it.examId }
+            val exams = byExam.entries
+                .sortedByDescending { e -> rows.first { it.examId == e.key }.startedAt }
+                .take(com.drone.quiz.data.PassEstimate.MAX_EXAMS)
+                .map { (examId, rs) ->
+                    com.drone.quiz.data.PassEstimate.ExamSample(
+                        startedAt = rs.first().startedAt,
+                        total = rs.sumOf { it.answered },
+                        byType = rs.associate { it.type to (it.correct to it.answered) }
+                    )
+                }
+
+            // 刷题：按题型，正确率 = 正确次数 / 作答次数
+            val pRows = rDao.practiceTypeBreakdown(bankId)
+            val pAcc = pRows.associate { r ->
+                r.type to (if (r.attempts > 0) r.correctSum.toFloat() / r.attempts else 0f)
+            }
+            val pDistinct = pRows.sumOf { it.distinctQuestions }
+
+            val answered = rDao.answeredDistinctByBank(bankId)
+
+            PassInputs(
+                exams = exams,
+                bankTypeMix = mix,
+                practiceAcc = pAcc,
+                practiceDistinct = pDistinct,
+                coverage = (answered.toFloat() / totalN).coerceIn(0f, 1f)
+            )
+        }
+
     data class DayStat(val label: String, val isToday: Boolean, val answered: Int, val correct: Int)
 
     /** 热力图上的一天：答题数用于分档着色，正确数用于长按详情浮窗 */

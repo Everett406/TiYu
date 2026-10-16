@@ -158,6 +158,13 @@ interface RecordDao {
     )
     fun answeredDistinctByBankFlow(bankId: String): Flow<Int>
 
+    /** 一次性取值版（v2.19.48 预估通过率用，避免为一屏数字开一条常驻 Flow） */
+    @Query(
+        "SELECT COUNT(DISTINCT s.qid) FROM question_stats s " +
+            "JOIN questions q ON s.qid = q.id WHERE q.bankId = :bankId AND s.attempts > 0"
+    )
+    suspend fun answeredDistinctByBank(bankId: String): Int
+
     @Query(
         "SELECT COALESCE(SUM(s.correct),0) FROM question_stats s " +
             "JOIN questions q ON s.qid = q.id WHERE q.bankId = :bankId AND s.attempts > 0"
@@ -169,6 +176,21 @@ interface RecordDao {
             "JOIN questions q ON s.qid = q.id WHERE q.bankId = :bankId AND s.attempts > 0"
     )
     suspend fun totalAttemptsByBank(bankId: String): Int
+
+    /**
+     * 按题型的刷题统计（v2.19.48 预估通过率）。
+     *
+     * 返回的 distinctQuestions 是**去重题数**——刷 200 次同一批 40 道题，
+     * 证据量应当只算 40，而不是 200。
+     */
+    @Query(
+        "SELECT q.type AS type, COUNT(DISTINCT s.qid) AS distinctQuestions, " +
+        "       COALESCE(SUM(s.correct),0) AS correctSum, " +
+        "       COALESCE(SUM(s.attempts),0) AS attempts " +
+        "FROM question_stats s JOIN questions q ON s.qid = q.id " +
+        "WHERE q.bankId = :bankId AND s.attempts > 0 GROUP BY q.type"
+    )
+    suspend fun practiceTypeBreakdown(bankId: String): List<PracticeTypeRow>
 
     /** 按题库过滤的作答记录行（v2.8.2：今日/近 7 天逐日聚合用；ts 有索引） */
     @Query(
@@ -203,8 +225,52 @@ interface RecordDao {
     suspend fun clearStreaks()
 }
 
+/** 模考中某题型（某一场内）的作答对错统计（v2.19.48 预估通过率用） */
+data class ExamTypeRow(
+    val examId: Long,
+    val startedAt: Long,
+    val type: String,
+    val answered: Int,
+    val correct: Int
+)
+
+/** 刷题中某题型的去重题数与正确率（v2.19.48） */
+data class PracticeTypeRow(
+    val type: String,
+    val distinctQuestions: Int,
+    val correctSum: Int,
+    val attempts: Int
+)
+
 @Dao
 interface ExamDao {
+
+    /**
+     * 按场次 + 题型汇总模考作答（v2.19.48）。
+     *
+     * 只取已交卷（score 非空）的记录。题型靠 join questions 拿到——
+     * exam_records 里的 singleCount/judgeCount/extraCounts 只在开考时写、
+     * 反映的是**计划**构成，这里要的是**实际作答**构成。
+     */
+    @Query(
+        "SELECT er.id AS examId, er.startedAt AS startedAt, q.type AS type, " +
+        "       COUNT(ea.id) AS answered, " +
+        "       SUM(CASE WHEN ea.isCorrect = 1 THEN 1 ELSE 0 END) AS correct " +
+        "FROM exam_records er " +
+        "JOIN exam_answers ea ON ea.examId = er.id " +
+        "JOIN questions q ON q.id = ea.qid " +
+        "WHERE er.bankId = :bankId AND er.score IS NOT NULL " +
+        "GROUP BY er.id, q.type"
+    )
+    suspend fun typeBreakdown(bankId: String): List<ExamTypeRow>
+
+    /** 最近的已交卷模考（v2.19.48 时间衰减用） */
+    @Query(
+        "SELECT * FROM exam_records WHERE bankId = :bankId AND score IS NOT NULL " +
+        "ORDER BY startedAt DESC LIMIT :n"
+    )
+    suspend fun recentScoredExams(bankId: String, n: Int): List<ExamRecordEntity>
+
     @Insert
     suspend fun insertExam(e: ExamRecordEntity): Long
 
