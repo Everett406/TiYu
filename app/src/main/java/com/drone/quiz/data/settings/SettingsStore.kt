@@ -56,9 +56,18 @@ data class SessionSlots(val entries: Map<String, PracticeSession> = emptyMap())
  */
 @Serializable
 data class ExamQuickConfig(
-    val counts: Map<String, Int> = emptyMap(), // 题型 → 题数
+    val counts: Map<String, Int> = emptyMap(), // 题型 → 题数（**开考时的派生态**，
+                                               //   供快捷方式/小组件「快速模考」直接复用）
     val durationMin: Int = 60,                 // 考试时长（分钟）
-    val typeOrder: List<String> = emptyList()  // 题型顺序（空 = 规范序）
+    val typeOrder: List<String> = emptyList(), // 题型顺序（空 = 规范序）
+    // ↓↓↓ v2.19.47：用户拖滑杆时的**原始意图**，不是派生的题数 ↓↓↓
+    // 之前只存 counts，导致「判断题占比 30%→20%」重启后又显示 30%：
+    // counts 是按占比算完、再被题库可用题量裁剪过的结果，从它反推占比必然失真
+    // （默认库 640 单选 + 160 判断，20% 落到 50 题上会被裁成同一个数）。
+    // 记忆设置必须记用户**想要**什么，不是**算出来**什么。
+    val judgeRatio: Float = 0.3f,              // 判断题占比（滑杆直读直写）
+    val manualRatios: Map<String, Int> = emptyMap(), // 手动模式下各题型百分比
+    val autoMix: Boolean = true                // 是否自动按题库占比配比
 )
 
 data class AppSettings(

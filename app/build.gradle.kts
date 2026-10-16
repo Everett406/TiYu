@@ -19,9 +19,9 @@ android {
         // 预览包（draft release）：`-PtiyuPreview=true` 切版本号，源码保持干净。
         // 预览包 versionCode 抬高，可覆盖安装线上正式版；versionName 带 preview 后缀，
         // 一眼能分清手上装的是哪一版。
-        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 87 else 104
+        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 88 else 105
         versionName = if (providers.gradleProperty("tiyuPreview").orNull == "true")
-            "2.19.46-preview" else "2.19.46"
+            "2.19.47-preview" else "2.19.47"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }

@@ -175,7 +175,6 @@ fun ExamConfigScreen(
     var autoMix by remember { mutableStateOf(true) }
     var ratios by remember { mutableStateOf<Map<String, Int>>(emptyMap()) } // 题型 → 0..100
     // v2.19.41：从已存配置回填过（用于「恢复上次设置」提示）
-    var restoredFrom by remember { mutableStateOf(false) }
 
     val recentExams by remember(settings.currentBank) {
         ServiceLocator.repo.recentExams(settings.currentBank)
@@ -209,18 +208,22 @@ fun ExamConfigScreen(
             shuffleOptions = st.examShuffleOptions
             preferWrong = st.examPreferWrong
 
-            // v2.19.41 模考设置记忆。
+            // v2.19.47 重写模考设置记忆。
             //
-            // 病灶：开考时其实**一直有**在存（setExamQuickConfig，快捷方式「快速
-            // 模考」就靠它），但配置页打开时从不去读——count/durationMin/
-            // judgeRatio/ratios 四个 state 全是硬编码初值（50 / 60 / 0.3 / 空）。
-            // 于是表现为「开关记住了、滑杆没记住」：开关走 st.* 有持久化，
-            // 滑杆走 remember 硬编码，每次进页面都回到默认。
+            // 三个叠加的 bug（用户实机：判断题占比 30%→20%，杀 App 重进仍是 30%）：
+            //  ① **存错了量**。存的是 counts（题型→题数），可用户拖的是 judgeRatio
+            //     （判断题占比）。counts 是「占比 × 总题数」算完之后、再被题库可用
+            //     题量裁剪过的**结果**；默认库 640 单选 + 160 判断，20% 落到 50 题
+            //     上和 30% 会被裁到同一个数，所以从 counts 反推占比必然失真。
+            //     → 现在直接存用户意图：judgeRatio / manualRatios / autoMix。
+            //  ② **judgeRatio 从来没被回填**。回填只处理了 count/duration/ratios，
+            //     judgeRatio 一直是 `remember { mutableStateOf(0.3f) }` 硬编码。
+            //  ③ **回填完立刻被冲掉**。下面 `autoMix = st.examAutoMix` 与
+            //     `ratios = autoRatios(...)` 写在 if 之外无条件执行，把刚恢复的值
+            //     又覆盖成默认值（v2.19.41 引入时留下的）。
             //
-            // 现在把已存配置回填进来。注意 counts 是"题型→题数"而非总题数，
-            // 要反推回 UI 的两个量（总题数 + 手动比例）：
-            //  · 总题数 = counts 之和
-            //  · 手动比例由 counts 折算，再按题库实际题量归一（题库变了比例才有意义）
+            // 旧数据（只有 counts、没有 judgeRatio 字段）仍按 counts 折算，保持兼容。
+            var restored = false
             runCatching {
                 ServiceLocator.settings.examQuickConfig()?.takeIf { it.counts.isNotEmpty() }
             }.getOrNull()?.let { qc ->
@@ -228,22 +231,30 @@ fun ExamConfigScreen(
                 if (sum > 0) {
                     count = sum
                     durationMin = qc.durationMin
-                    autoMix = st.examAutoMix
-                    if (!st.examAutoMix) {
-                        // 按各题型实际题量归一化，还原成 0..100 的比例
+                    autoMix = qc.autoMix
+                    if (qc.manualRatios.isNotEmpty()) {
+                        ratios = qc.manualRatios
+                    }
+                    // judgeRatio 直接取存的值；旧数据没有该字段才退回默认值
+                    judgeRatio = qc.judgeRatio.coerceIn(0f, 1f)
+                    if (qc.manualRatios.isEmpty()) {
+                        // ── 兼容老存档：按 counts 折算手动比例 ──
                         val avail = ServiceLocator.repo.bankTypeCounts(bank)
-                        val denom = qc.counts.values.sum().toFloat().coerceAtLeast(1f)
-                        ratios = qc.counts.entries.associate { (t, n) ->
+                        val denom = sum.toFloat().coerceAtLeast(1f)
+                        var r = qc.counts.entries.associate { (t, n) ->
                             t to (((n / denom) * 100f).roundToInt())
                         }
-                        // 归一化后可能有零头没分配完，补给份数最多的题型
-                        ratios = fixRatiosRoundOff(ratios, qc.counts.keys.toList(), avail)
+                        r = fixRatiosRoundOff(r, qc.counts.keys.toList(), avail)
+                        ratios = r
                     }
-                    restoredFrom = true
+                    restored = true
                 }
             }
-            autoMix = st.examAutoMix
-            ratios = autoRatios(types, bankTypeCounts)
+            // 只有「没有可恢复的配置」时才用题库自动配比，避免覆盖刚恢复的值
+            if (!restored) {
+                autoMix = st.examAutoMix
+                ratios = autoRatios(types, bankTypeCounts)
+            }
         }
     }
 
@@ -328,43 +339,9 @@ fun ExamConfigScreen(
 
             // v2.19.41：已按上次设置填好，明确告诉用户"这是上次的、不用重设"，
             // 否则用户会以为这还是默认值、又手动调一遍（那就白记忆了）。
-            if (restoredFrom) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "已沿用上次的设置",
-                        color = ui.accent, fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "恢复默认",
-                        color = ui.textSub, fontSize = 12.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(
-                                interactionSource = null,
-                                indication = null,
-                                onClick = {
-                                    count = 50
-                                    durationMin = 60
-                                    judgeRatio = 0.3f
-                                    autoMix = true
-                                    ratios = autoRatios(bankTypes, bankTypeCounts)
-                                    restoredFrom = false
-                                    scope.launch {
-                                        ServiceLocator.settings.setExamQuickConfig(null)
-                                    }
-                                }
-                            )
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-            }
+            // v2.19.47：不再显示「已沿用上次的设置 / 恢复默认」提示条。
+            // 设置记忆是默认行为，无需向用户播报——多此一举反而让人以为
+            // 「现在是默认值」而手动再调一遍。功能保留，只是安静地生效。
 
             if (classicMode) {
                 // ---- 考试设置：2×2 紧凑网格（单选+判断题库） ----
@@ -839,7 +816,12 @@ fun ExamConfigScreen(
                                     com.drone.quiz.data.settings.ExamQuickConfig(
                                         counts = plannedCounts,
                                         durationMin = durationMin,
-                                        typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder }
+                                        typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder },
+                                        // 用户拖滑杆时的原始意图，必须原样存下来：
+                                        // counts 是被题库裁剪过的结果，反推不出占比
+                                        judgeRatio = judgeRatio,
+                                        manualRatios = ratios,
+                                        autoMix = autoMix
                                     )
                                 )
                             }

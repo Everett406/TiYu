@@ -1155,9 +1155,16 @@ for _tok, _why in [
     # 旧实现把每个字做成独立 Text 节点竖排（每字一行 → 高度暴涨），
     # 且在组合期读 System.currentTimeMillis()（非状态驱动 → 抖动）。
     # 以下检查锚定的是**结构性不变量**，不是可被重命名骗过去的字符串。
-    ("REVEAL_CPS = 36f", "逐字揭示速度须为 36 字/秒（用户 v2.19.46 要求调快）"),
-    ("ENTRY_MS = 260f", "单字入场须为 260ms"),
+    ("REVEAL_CPS = 56f", "逐字揭示速度须为 56 字/秒（用户两次嫌慢，20→36→56）"),
+    ("ENTRY_MS = 230f", "单字入场须为 230ms"),
     ("BLUR_PX = 3f", "起始模糊半径须为 3px（参考实现口径）"),
+    # v2.19.47 纵向对齐：占位框必须与单字**自然盒子**重合。
+    # 用 lineHeight 撑高的占位框 + TextCenter 对齐，会让字整体下沉一个 descent
+    # （用户截图：动画中的字与前后静止字不在一条基线上）。
+    ("charStyle = remember(style) { style.copy(lineHeight = TextUnit.Unspecified) }",
+     "占位框须用不带 lineHeight 的 charStyle 测量，否则基线会整体下沉"),
+    ("placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter",
+     "占位框垂直对齐方式"),
     ("private fun easeOut", "blur 须用 easeOut 提前收干净，否则末尾残影落在满不透明度的字上"),
     ("BlurEffect(blur, blur, TileMode.Clamp)", "逐字模糊须用 BlurEffect"),
     ("arrivalOf", "须按逐字到达时刻推进，而非一次性全出"),
@@ -1239,7 +1246,9 @@ for _f, _min in [
 _es = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
 for _tok, _why in [
     ("ServiceLocator.settings.examQuickConfig()", "配置页须读回已存配置（否则「每次重设」）"),
-    ("restoredFrom", "须有「已沿用上次设置」的明示，否则用户以为还是默认值又调一遍"),
+    # v2.19.47：用户明确要求**去掉**这条提示——设置记忆是默认行为，
+    # 多此一举地播报反而让人以为「现在还是默认值」而手动再调一遍。
+    # 改为反向检查：出现 restoredFrom 即视为回归。
     ("恢复默认", "须提供「恢复默认」出口，否则记忆后想改回去只能清数据"),
     ("fixRatiosRoundOff", "counts 反推比例会掉零头，须归一化回 100"),
 ]:
@@ -1298,6 +1307,53 @@ if "RELEASES_URL" not in _au:
 # 只要有人在 sys.exit 之后再追加内容，哨兵就移到最末把那段包进来。
 # 新增检查段照旧追加到「本段之前」即可，不必再关心出口位置。
 #
+# ── 模考设置记忆（v2.19.47）─────────────────────────────────────
+# 用户实机：判断题占比 30%→20%，杀 App 重进又变 30%。三个叠加的 bug：
+#   ① 存的是 counts（被题库裁剪过的题数），不是用户意图 → 反推必然失真
+#   ② judgeRatio 从来没被回填，它一直是硬编码 0.3f
+#   ③ 回填完立刻被下面两行无条件覆盖（v2.19.41 引入时留下）
+_es = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+_sstore = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/settings/SettingsStore.kt")
+for _tok, _why in [
+    ("val judgeRatio: Float = 0.3f",
+     "ExamQuickConfig 必须存用户意图 judgeRatio，不能只存 counts"),
+    ("val manualRatios: Map<String, Int> = emptyMap()",
+     "须存手动模式下的各题型比例"),
+    ("val autoMix: Boolean = true",
+     "须存自动配比开关"),
+]:
+    if _tok not in _sstore:
+        print("[FAIL] 模考设置记忆：%s（SettingsStore 缺 %r）" % (_why, _tok))
+        fail = True
+
+_es_code = re.sub(r"/\*.*?\*/", "", _es, flags=re.S)
+_es_code = re.sub(r"//[^\n]*", "", _es_code)
+for _tok, _why in [
+    ("judgeRatio = qc.judgeRatio",
+     "回填时必须恢复 judgeRatio，否则滑杆永远停在硬编码默认值"),
+    ("if (!restored) {",
+     "自动配比只能在「没有可恢复配置」时兜底；无条件执行会把刚恢复的值冲掉"),
+    ("judgeRatio = judgeRatio,",
+     "保存时必须带上 judgeRatio"),
+    ("manualRatios = ratios,",
+     "保存时必须带上手动比例"),
+]:
+    if _tok not in _es_code:
+        print("[FAIL] 模考设置记忆：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+# 「已沿用上次的设置 / 恢复默认」提示已按用户要求移除。
+# 同样要剥离注释——上面那段说明性注释里就写着这两个词。
+_es_ui = re.sub(r"/\*.*?\*/", "", _es, flags=re.S)
+_es_ui = re.sub(r"//[^\n]*", "", _es_ui)
+for _gone, _why in [
+    ("已沿用上次的设置", "用户要求去掉这句提示：设置记忆是默认行为，不必播报"),
+    ("恢复默认", "用户要求去掉「恢复默认」入口"),
+]:
+    if _gone in _es_ui:
+        print("[FAIL] 模考设置记忆：不该再显示 %r（%s）" % (_gone, _why))
+        fail = True
+
 # ── 产品页 site/（v2.19.43）────────────────────────────────────
 # 站点返工过两次，都是「编译通过、静态检查通过、肉眼一眼假」的问题：
 #   ① <img> 的 HTML width/height 会映射成**表现层尺寸**；CSS 只写 width:100%
@@ -1389,14 +1445,49 @@ for _qid in _demo_ids:
             print("[FAIL] 产品页 demo：id=%s 的选项 %r 与题库不一致" % (_qid, _o))
             fail = True
 
-# demo 的揭示动画参数须与 App 内 ParseBlock 一致
-for _tok, _why in [
-    ("const CPS = 36", "逐字速度须为 36 字/秒，与 App 的 REVEAL_CPS 一致"),
-    ("ENTRY = 260", "单字入场须 260ms，与 App 的 ENTRY_MS 一致"),
-    ("BLUR = 3", "起始模糊须 3px，与 App 一致"),
-    ("fill:'both'", "WAAPI 必须 fill:'both'；'backwards' 会让动画结束后回落到 opacity:0，整段解析永远看不见"),
-    ("cubic-bezier(.1,.85,.25,1)", "模糊须用 easeOut 提前收干净，与 App 一致"),
+# demo 的揭示动画参数须与 App 内 ParseBlock **完全一致**。
+# 这里不再硬编码期望值，而是直接从 App 源码里把三个常量读出来再比对 ——
+# v2.19.47 之前是写死 "CPS = 36"，结果调速度时忘了同步检查，
+# 连续第三次出现「改了一处忘了另一处」。改成源头读取，两端再也分不开。
+_app_src = _qb3
+for _name, _pat, _unit, _why in [
+    ("CPS",    r"REVEAL_CPS\s*=\s*([\d.]+)f",  "f", "逐字速度"),
+    ("ENTRY",  r"ENTRY_MS\s*=\s*([\d.]+)f",    "f", "单字入场时长"),
+    ("BLUR",   r"BLUR_PX\s*=\s*([\d.]+)f",     "f", "起始模糊"),
 ]:
+    _m = re.search(_pat, _app_src)
+    if not _m:
+        print("[FAIL] 产品页 demo：无法从 App 源码读到 %s（%s）" % (_name, _why))
+        fail = True
+        continue
+    _v = _m.group(1)
+    if _name == "CPS":
+        _c = re.search(r"const CPS = ([\d.]+), ENTRY", _site)
+        if not _c or abs(float(_c.group(1)) - float(_v)) > 0.01:
+            print("[FAIL] 产品页 demo：CPS 与 App 的 REVEAL_CPS 不一致（App=%s Page=%s）"
+                  % (_v, _c.group(1) if _c else "缺失"))
+            fail = True
+    elif _name == "ENTRY":
+        _e = re.search(r"const CPS = [\d.]+, ENTRY = (\d+), BLUR = [\d]+;", _site)
+        if not _e or abs(float(_e.group(1)) - float(_v)) > 0.01:
+            print("[FAIL] 产品页 demo：ENTRY 与 App 的 ENTRY_MS 不一致（App=%s Page=%s）"
+                  % (_v, _e.group(1) if _e else "缺失"))
+            fail = True
+    else:
+        _b = re.search(r"const CPS = [\d.]+, ENTRY = \d+, BLUR = (\d+);", _site)
+        if not _b or abs(float(_b.group(1)) - float(_v)) > 0.01:
+            print("[FAIL] 产品页 demo：BLUR 与 App 的 BLUR_PX 不一致（App=%s Page=%s）"
+                  % (_v, _b.group(1) if _b else "缺失"))
+            fail = True
+
+# WAAPI 必须 fill:'both'
+if "fill:'both'" not in _site:
+    print("[FAIL] 产品页 demo：WAAPI 必须 fill:'both'；'backwards' 会让动画结束后回落到 "
+          "opacity:0，整段解析永远看不见")
+    fail = True
+if "cubic-bezier(.1,.85,.25,1)" not in _site:
+    print("[FAIL] 产品页 demo：模糊须用 easeOut 提前收干净，与 App 一致")
+    fail = True
     if _tok not in _site:
         print("[FAIL] 产品页 demo：%s（缺 %r）" % (_why, _tok))
         fail = True

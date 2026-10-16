@@ -109,6 +109,7 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.drawText
 
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 
 
 import androidx.compose.ui.text.buildAnnotatedString
@@ -528,10 +529,10 @@ fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
  * 换行、行高、字距、基线全部与其他文字同源，不可能对不齐。
  * 容器高度也由 Text 自然撑开——不需要再去推算「已经渲染到第几行」。
  */
-private const val REVEAL_CPS = 36f              // 字/秒（v2.19.46 由 20 调快到 36）
-private const val ENTRY_MS = 260f                // 单字入场时长
+private const val REVEAL_CPS = 56f              // 字/秒（20 → 36 → 56，用户两次嫌慢）
+private const val ENTRY_MS = 230f                // 单字入场时长
 private const val BLUR_PX = 3f                   // 起始模糊半径
-private const val TAIL_WINDOW = 10               // 同时可能在入场的字数上限
+private const val TAIL_WINDOW = 16               // 同时可能在入场的字数上限（230ms / 17.9ms ≈ 13，留 3 个余量）
 
 /** 第 i 个字的到达时刻（ms） */
 private fun arrivalOf(i: Int) = i * (1000f / REVEAL_CPS)
@@ -585,35 +586,49 @@ private fun RevealText(text: String, modifier: Modifier = Modifier) {
         }
     }
 
-    // Placeholder 的宽度决定该字在行内占多宽——**必须与该字真实宽度一致**，
-    // 否则相邻字会重叠或拉开缝隙（这正是 v2.19.42 字距忽宽忽窄的同源问题）。
-    // 这里用 TextMeasurer 实测该字在当前 TextStyle 下的宽度，再按 em 比例
-    // 换算成 sp（用 sp 而非 px，字号/系统字体缩放设置变化时才能跟着变）。
-    val fontPx = with(density) { style.fontSize.toPx() }
-    val widthCache = remember(text, style, fontPx) { HashMap<Char, Float>() }
-    val heightCache = remember(text, style, fontPx) { HashMap<Char, Float>() }
+    // ── 纵向对齐（v2.19.47 修）────────────────────────────────────────
+    // 用户截图：正在动画的字**整体偏下**，与前后静止的字不在一条基线上。
+    //
+    // 根因是占位框与字盒子的**高度不同、参考系也不同**：
+    //   · 占位框 height 给的是 style.lineHeight(21sp)，而占位框用
+    //     TextCenter 对齐到「行的文字区域中心」；
+    //   · 框里渲染的 Text 盒子高也是 21sp，但它的基线 = 盒顶 + (lineHeight -
+    //     (ascent+descent))/2 + ascent。
+    // 两个参考系一减，恰好差出一个 descent —— 字整体下沉。
+    //
+    // 修法：让占位框与单字的**自然盒子**（不含 lineHeight）完全重合。
+    // 这样 TextCenter 对齐后框正好盖住文字区域，框内 Text 的基线自然与
+    // 同行其余文字一致。lineHeight 只影响行间距，不影响字形基线，
+    // 去掉它不影响观感。
+    val charStyle = remember(style) { style.copy(lineHeight = TextUnit.Unspecified) }
+
+    // 宽度：实测该字宽度 / 字号，再折成 sp（用 sp 才能跟随字号与字体缩放设置）
+    val widthCache = remember(text, charStyle, density) { HashMap<Char, Float>() }
+    fun ratioOfW(c: Char): Float = widthCache.getOrPut(c) {
+        val fontPx = with(density) { charStyle.fontSize.toPx() }
+        if (fontPx <= 0f) 1f
+        else {
+            val w = measurer.measure(
+                text = AnnotatedString(c.toString()), style = charStyle, constraints = Constraints()
+            ).size.width.toFloat()
+            // 量化到千分位，避免浮点尾差造成占位宽度抖动
+            Math.round(w / fontPx * 1000f) / 1000f
+        }
+    }
+    // 高度：单字自然盒高（ascent+descent），使占位框与字盒子严格重合
+    val heightCache = remember(text, charStyle, density) { HashMap<Char, Float>() }
     fun ratioOfH(c: Char): Float = heightCache.getOrPut(c) {
+        val fontPx = with(density) { charStyle.fontSize.toPx() }
         if (fontPx <= 0f) 1f
         else {
             val h = measurer.measure(
-                text = AnnotatedString(c.toString()), style = style, constraints = Constraints()
+                text = AnnotatedString(c.toString()), style = charStyle, constraints = Constraints()
             ).size.height.toFloat()
             Math.round(h / fontPx * 1000f) / 1000f
         }
     }
 
-    fun ratioOf(c: Char): Float = widthCache.getOrPut(c) {
-        if (fontPx <= 0f) 1f
-        else {
-            val w = measurer.measure(
-                text = AnnotatedString(c.toString()), style = style, constraints = Constraints()
-            ).size.width.toFloat()
-            // 量化到千分位，避免浮点尾差导致占位宽度抖动
-            Math.round(w / fontPx * 1000f) / 1000f
-        }
-    }
-
-    val inlineContent: Map<String, InlineTextContent> = remember(text, style, tailStart, tailEnd, widthCache, heightCache) {
+    val inlineContent: Map<String, InlineTextContent> = remember(text, charStyle, tailStart, tailEnd, widthCache, heightCache) {
         (tailStart..tailEnd).associate { i ->
             val c = text[i]
             // graphicsLayer 的 block 只在图层更新时执行，读 state 不触发重组，
@@ -622,14 +637,14 @@ private fun RevealText(text: String, modifier: Modifier = Modifier) {
                 placeholder = Placeholder(
                     // height 取该字实测高度：占位过高会撑开行高，
                     // 让吐字过程中整段文字的纵向节奏跟着抖。
-                    width = (style.fontSize.value * ratioOf(c)).sp,
-                    height = (style.lineHeight.value * ratioOfH(c)).sp,
+                    width = (charStyle.fontSize.value * ratioOfW(c)).sp,
+                    height = (charStyle.fontSize.value * ratioOfH(c)).sp,
                     placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
                 )
             ) {
                 Text(
                     text = c.toString(),
-                    style = style,
+                    style = charStyle,
                     modifier = Modifier.graphicsLayer {
                         val p = ((frameMs - arrivalOf(i)) / ENTRY_MS).coerceIn(0f, 1f)
                         val blur = BLUR_PX * (1f - easeOut(p))
