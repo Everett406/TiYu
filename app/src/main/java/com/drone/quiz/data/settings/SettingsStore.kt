@@ -99,6 +99,10 @@ data class AppSettings(
     // v2.19.32 模考优先未答：先抽 attempts=0 的题，该题型不够时回填已答题。
     // 默认开——题库 800 题、模考一次 50，纯随机会反复抽到已做过的。
     val examPreferUnseen: Boolean = true,
+    // v2.19.33 模考选项打乱：仅模考生效，单选/多选打乱，判断题不打乱。
+    // 与 examInstantJudge 完全解耦——两者可同时开：判定照常给对错与正确答案，
+    // 只是解析文字里的「选C」会跟乱序后的选项对不上，故此开关开着时隐藏解析。
+    val examShuffleOptions: Boolean = false,
     val eyeCareReminder: Boolean = false, // v2.8.6 护眼提醒：连续刷题 20 分钟弹窗提醒休息（考试不受影响）
     val onboardingDone: Boolean = false, // v2.9.0 首启功能引导已完成/已跳过（跳过即不再自动弹）
     // v2.10.0 桌面小组件 / 成绩分享卡
@@ -154,6 +158,7 @@ class SettingsStore(private val context: Context) {
         val examAutoMix = booleanPreferencesKey("exam_auto_mix")
         val examInstantJudge = booleanPreferencesKey("exam_instant_judge")
         val examPreferUnseen = booleanPreferencesKey("exam_prefer_unseen")
+        val examShuffleOptions = booleanPreferencesKey("exam_shuffle_options")
         // v2.8.6 护眼提醒
         val eyeCareReminder = booleanPreferencesKey("eye_care_reminder")
         // v2.9.0 首启功能引导
@@ -205,6 +210,7 @@ class SettingsStore(private val context: Context) {
             examAutoMix = p[K.examAutoMix] ?: true,
             examInstantJudge = p[K.examInstantJudge] ?: false,
             examPreferUnseen = p[K.examPreferUnseen] ?: true,
+            examShuffleOptions = p[K.examShuffleOptions] ?: false,
             eyeCareReminder = p[K.eyeCareReminder] ?: false,
             onboardingDone = p[K.onboardingDone] ?: false,
             dailyGoal = p[K.dailyGoal] ?: 30,
@@ -406,6 +412,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setExamInstantJudge(v: Boolean) = context.dataStore.edit { it[K.examInstantJudge] = v }
 
     suspend fun setExamPreferUnseen(v: Boolean) = context.dataStore.edit { it[K.examPreferUnseen] = v }
+
+    suspend fun setExamShuffleOptions(v: Boolean) = context.dataStore.edit { it[K.examShuffleOptions] = v }
 
 
     suspend fun setExamTypeOrder(list: List<String>) {

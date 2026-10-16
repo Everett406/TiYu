@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.drone.quiz.ServiceLocator
+import com.drone.quiz.data.repo.OptionShuffle
 import com.drone.quiz.data.repo.Question
 import com.drone.quiz.data.repo.QuestionTypes
 import com.drone.quiz.data.repo.pickedAnswerText
@@ -122,6 +123,13 @@ object ExamSessionHolder {
     var questions: List<Question> = emptyList()
     var durationSec: Int = 0
     var outcome: Repo.ExamOutcome? = null
+
+    /**
+     * v2.19.33 本场选项乱序会话盐（0 = 不打乱）。
+     * 视图层按它算排列并渲染乱序题，落库前一律换算回原始下标——
+     * questions 里存的**始终是原始顺序**，这里只是渲染期的映射依据。
+     */
+    var optSalt: Long = 0
 }
 
 // ==================== 配置页 ====================
@@ -153,6 +161,9 @@ fun ExamConfigScreen(
     var instantJudge by remember { mutableStateOf(settings.examInstantJudge) }
     // v2.19.32 模考优先未答：默认开。未答题抽完才回填已答题，题库刷完也不组不出卷。
     var preferUnseen by remember { mutableStateOf(settings.examPreferUnseen) }
+    // v2.19.33 选项打乱（仅模考）。与 instantJudge 完全解耦：
+    // 开打乱时判定照常给对错与正确答案，只是不显示解析文字（解析里写死了「选C」）。
+    var shuffleOptions by remember { mutableStateOf(settings.examShuffleOptions) }
     // 说明文案用的「未答 N 题」——开了开关却看不到效果依据，用户会以为没生效
     var unseenCount by remember { mutableIntStateOf(0) }
     var typeOrder by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -183,6 +194,7 @@ fun ExamConfigScreen(
             includeShort = st.examIncludeShort
             instantJudge = st.examInstantJudge
             preferUnseen = st.examPreferUnseen
+            shuffleOptions = st.examShuffleOptions
             autoMix = st.examAutoMix
             ratios = autoRatios(types, bankTypeCounts)
         }
@@ -632,6 +644,34 @@ fun ExamConfigScreen(
                                         backdrop = backdrop
                                     )
                                 }
+                                // v2.19.33 选项打乱。与即时判定**完全解耦**：可以同开。
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("打乱选项", color = ui.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            if (shuffleOptions)
+                                                "单选/多选乱序 · 不显示解析 · 判断题不动"
+                                            else
+                                                "单选/多选每次开考重新打乱",
+                                            color = ui.textSub, fontSize = 11.sp,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                    GlassToggle(
+                                        checked = { shuffleOptions },
+                                        onCheckedChange = { v ->
+                                            shuffleOptions = v
+                                            scope.launch { ServiceLocator.settings.setExamShuffleOptions(v) }
+                                        },
+                                        backdrop = backdrop
+                                    )
+                                }
                                 Text(
                                     "长按拖动调整先后",
                                     color = ui.textSub, fontSize = 11.sp,
@@ -669,7 +709,8 @@ fun ExamConfigScreen(
                                 durationSec = durationMin * 60,
                                 typeOrder = typeOrder.ifEmpty { QuestionTypes.canonicalOrder },
                                 passLine = st.passScore, // v2.8.6：开考时定格合格线，成绩单回显
-                                preferUnseen = preferUnseen // v2.19.32：优先未作答过的题
+                                preferUnseen = preferUnseen, // v2.19.32：优先未作答过的题
+                                shuffleOptions = shuffleOptions // v2.19.33：单选/多选打乱选项
                             )
                             // v2.10.0：落盘本次组卷配置（快捷方式/小组件「快速模考」直落复用）
                             runCatching {
@@ -685,6 +726,11 @@ fun ExamConfigScreen(
                             ExamSessionHolder.questions = qs
                             ExamSessionHolder.durationSec = durationMin * 60
                             ExamSessionHolder.outcome = null
+                            // v2.19.33：回填本场盐（记录里落库的是同一个），
+                            // 否则本次会话渲染成原序、或与恢复后的顺序对不上
+                            ExamSessionHolder.optSalt =
+                                runCatching { ServiceLocator.repo.examRecord(id)?.optSalt ?: 0L }
+                                    .getOrDefault(0L)
                             onStart(id)
                         }
                     }
@@ -1019,6 +1065,7 @@ fun ExamScreen(
                 ExamSessionHolder.questions = qs
                 ExamSessionHolder.durationSec = exam.durationSec
                 ExamSessionHolder.outcome = null
+                ExamSessionHolder.optSalt = exam.optSalt // v2.19.33：恢复后沿用原盐，选项顺序不变
                 questions = qs
                 uas.forEach { (k, v) ->
                     details[k] = v
@@ -1131,24 +1178,35 @@ fun ExamScreen(
             verticalAlignment = Alignment.Top,
             key = { questions[it].id }
         ) { page ->
-            val q = questions[page]
+            val rawQ = questions[page]
+            // v2.19.33 选项打乱（仅模考）：
+            // perm 把「显示位」映到「原始下标」。UI 只见 display 题、用户在显示空间作答；
+            // onAnswer 里先用 uaToOriginal 换回原始空间再落库/判分。
+            // questions / details / answers 三张表始终存原始空间，判分、错题本、统计零改动。
+            val perm = OptionShuffle.permOf(rawQ, ExamSessionHolder.optSalt)
+            val q = if (perm != null) OptionShuffle.display(rawQ, perm) else rawQ
+            // 已作答状态回显：details 存的是原始下标，转到显示空间才能对上乱序后的高亮位置
+            val uaShown = OptionShuffle.uaToDisplay(details[rawQ.id], rawQ, perm)
             ExamQuestionCard(
                 q = q,
                 index = page + 1,
-                ua = details[q.id],
+                ua = uaShown,
+                hideExplanation = perm != null,
                 backdrop = backdrop,
                 // 仅在「已作答」且开了即时判定时才当场亮对错
                 // 多选需显式确认（点选是切换不是作答）；单选/判断点一下即答
                 reveal = instantJudge && isAnswered(q, details[q.id]) &&
                     (q.type != QuestionTypes.MULTI || details[q.id]?.confirmed == true),
-                onAnswer = { ua ->
-                    details[q.id] = ua
-                    answers[q.id] = ua.picked
+                onAnswer = { uaShownUp ->
+                    // 换回原始空间——这是数据出视图层的唯一出口
+                    val ua = OptionShuffle.uaToOriginal(uaShownUp, rawQ, perm) ?: uaShownUp
+                    details[rawQ.id] = ua
+                    answers[rawQ.id] = ua.picked
                         ?: if (ua.texts.isNotEmpty() || ua.text.isNotBlank()) 1 else 0
-                    val correct = judgeAnswer(q, ua) ?: false
+                    val correct = judgeAnswer(rawQ, ua) ?: false
                     scope.launch {
                         runCatching {
-                            ServiceLocator.repo.saveExamAnswer(examId, q.id, ua, correct)
+                            ServiceLocator.repo.saveExamAnswer(examId, rawQ.id, ua, correct)
                         }
                     }
                 }
@@ -1381,6 +1439,12 @@ private fun ExamQuestionCard(
     ua: UserAnswer?,
     backdrop: Backdrop,
     reveal: Boolean = false,
+    /**
+     * v2.19.33：选项被打乱时为 true，隐藏解析文字。
+     * 打乱后选项顺序已变，而解析里写死了「选C」这类原始字母，两者必然对不上，
+     * 所以只留「判定 + 正确答案」、撤掉解析——即时判定本身不受影响。
+     */
+    hideExplanation: Boolean = false,
     onAnswer: (UserAnswer) -> Unit
 ) {
     val ui = LocalUi.current
@@ -1506,7 +1570,8 @@ private fun ExamQuestionCard(
                         verdict,
                         " · 正确答案：${q.correctAnswerText()}"
                     )
-                    ParseBlock(q.explanation)
+                    // 打乱生效时不显示解析：解析文字绑定的是原始选项字母
+                    if (!hideExplanation) ParseBlock(q.explanation)
                 }
             }
         }

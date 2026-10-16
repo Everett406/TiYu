@@ -472,7 +472,8 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         durationSec: Int,
         typeOrder: List<String>,
         passLine: Int = 60, // v2.8.6：开考时设定的合格线，随记录存档供成绩单回显
-        preferUnseen: Boolean = true // v2.19.32 默认开：题库 800 题、模考每次 50，重复率天然很高
+        preferUnseen: Boolean = true, // v2.19.32 默认开：题库 800 题、模考每次 50，重复率天然很高
+        shuffleOptions: Boolean = false // v2.19.33 选项打乱：非 0 时落库 optSalt，视图层乱序、数据层恒原序
     ): Pair<Long, List<Question>> = withContext(Dispatchers.IO) {
         // v2.17.0 关键修复：order 是「排序提示」，不是遍历白名单。
         // 病灶（与 v2.8.4 在 ExamScreens 修的是同一类，但只修了配置页那一半）：
@@ -536,7 +537,10 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
                             QuestionTypes.BLANK to qs.count { it.type == QuestionTypes.BLANK },
                             QuestionTypes.SHORT to qs.count { it.type == QuestionTypes.SHORT }
                         ).filterValues { it > 0 }
-                    )
+                    ),
+                    // v2.19.33：会话盐。0 = 不打乱（哨兵值，不可与随机值冲突）。
+                    // 落库后进程被杀再恢复，resumeExam 依此还原与开考时相同的选项顺序。
+                    optSalt = if (shuffleOptions) OptionShuffle.newSalt() else 0L
                 )
             )
             eDao.insertAnswers(qs.map { ExamAnswerEntity(examId = id, qid = it.id) })

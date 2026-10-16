@@ -845,3 +845,57 @@ for _f, _tok, _who in [
     if _tok not in _src:
         print(f"[FAIL] {_who} 未接入强调底纹理（{_f}）")
         fail = True
+
+# 7.z) 模考选项打乱（v2.19.33）
+#      v2.11.0 做过一次、被整体 revert：当时「打乱」与「显示解析」共存，
+#      而解析文字里写死了「选C」这类原始选项字母，乱序后必然对不上。
+#      本版按用户新口径重做——**打乱即隐藏解析文字**，且与即时判定完全解耦
+#      （判定与正确答案照常给，只撤掉 ParseBlock）。
+#      结构性保证在于「视图层乱序、数据层恒原始空间」：
+#      判分/错题本/统计只见原始下标，靠的是 uaToOriginal 这个唯一出口。
+#      一旦有人改成直接拿显示空间的 ua 去落库或判分，整套答案就会错位——
+#      而这种错位编译期与运行期都不报错，只有用户对答案才发现。所以锁死。
+_osrc = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+_fsrc = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/OptionShuffle.kt")
+_rsrc = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+
+if not _fsrc:
+    print("[FAIL] OptionShuffle.kt 缺失——模考选项打乱依赖它（视图/原始空间双射换算）")
+    fail = True
+else:
+    for _tok, _why in [
+        ("fun permOf", "排列生成"),
+        ("fun display", "显示空间重排"),
+        ("fun uaToOriginal", "显示→原始换算（落库/判分的唯一出口）"),
+        ("fun uaToDisplay", "原始→显示（已答高亮回显）"),
+        ("fun newSalt", "会话盐"),
+    ]:
+        if _tok not in _fsrc:
+            print(f"[FAIL] OptionShuffle 缺 {_tok}（{_why}）")
+            fail = True
+    # 判断题不打乱：位置语义固定，全 app 约定 A=正确 B=错误
+    if "QuestionTypes.JUDGE" not in _fsrc:
+        print("[FAIL] OptionShuffle 必须显式排除判断题（正确/错误位置语义固定，打乱会破坏判分与错题本呈现）")
+        fail = True
+
+# 换算出口必须真的在作答回调里，且判分/落库用原始空间
+for _tok, _why in [
+    ("OptionShuffle.uaToOriginal(uaShownUp, rawQ, perm)", "作答回调必须先把显示空间换回原始空间"),
+    ("judgeAnswer(rawQ, ua)", "判分必须用原始题目 rawQ，不能用乱序后的显示题"),
+    ("saveExamAnswer(examId, rawQ.id, ua, correct)", "落库必须用原始题目 id"),
+    ("OptionShuffle.uaToDisplay(details[rawQ.id], rawQ, perm)", "已答高亮需把原始作答映射到显示位置"),
+    ("if (!hideExplanation) ParseBlock", "打乱生效时必须隐藏解析（否则解析里的原始字母与乱序选项对不上）"),
+]:
+    if _tok not in _osrc:
+        print(f"[FAIL] 模考选项打乱：{_why}（缺 {_tok}）")
+        fail = True
+
+# 即时判定与打乱必须解耦：不得出现「开打乱就强制关即时判定」的联动
+if "setExamInstantJudge(false)" in _osrc:
+    print("[FAIL] 打乱开关不得强制关闭即时判定——两者完全解耦，判定与正确答案照常，只隐藏解析文字")
+    fail = True
+
+# 盐要落库，否则进程重启后恢复考试会变成原序
+if "optSalt = if (shuffleOptions) OptionShuffle.newSalt() else 0L" not in _rsrc:
+    print("[FAIL] startExam 须把会话盐写入 exam_records.optSalt（恢复考试据此还原相同选项顺序）")
+    fail = True

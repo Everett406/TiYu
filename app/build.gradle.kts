@@ -19,9 +19,9 @@ android {
         // 预览包（draft release）：`-PtiyuPreview=true` 切版本号，源码保持干净。
         // 预览包 versionCode 抬高，可覆盖安装线上正式版；versionName 带 preview 后缀，
         // 一眼能分清手上装的是哪一版。
-        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 82 else 91
+        versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 82 else 92
         versionName = if (providers.gradleProperty("tiyuPreview").orNull == "true")
-            "2.19.26-preview" else "2.19.32"
+            "2.19.26-preview" else "2.19.33"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
@@ -121,8 +121,14 @@ dependencies {
     // WorkManager OneTime 自续在 ROM 杀后台下蒸发（「打开 APP 才通知」根因），全仓已无 androidx.work 引用
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")  // v2.19.27：1.9.0 → 1.11.0（跳过 1.12.0-RC 预发布）
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")  // v2.19.27：1.10.2 → 1.11.0
     // v2.17.0：拍照搜题整体下线，随之移除的依赖包括 ML Kit 中文离线识别（bundled，约 18MB）、
     // 拍照 EXIF 摆正库、以及自建取景页用的 CameraX 四件套。
     // 至此应用回到「零联网 OCR / 零 native 代码 / 零相机依赖」的纯离线形态。
+
+    // v2.19.33：恢复 v2.11.0 的 OptionShuffle 答案映射单测（纯 JUnit，不引 Android 依赖）。
+    // 那次功能因「打乱后解析里写死的选项字母会错位」被整体 revert，测试也随之删除；
+    // 本版按用户新口径做（打乱即隐藏解析文字，与即时判定完全解耦），映射逻辑本身未改，故测试原样收回。
+    testImplementation("junit:junit:4.13.2")
 }

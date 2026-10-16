@@ -1130,10 +1130,20 @@ private fun AboutSheet(
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx()))
                 )
             }
+            // v2.19.33 重写：旧文案还停在「顺序刷题/随机刷题/模考/错题本」四件套，
+            // 而 app 早已不是那四件套了——五种题型、题库导入、打卡热力图、分享卡、
+            // 桌面小组件、快捷方式都在。介绍比功能少，久了就成了误导。
             Text(
-                "题屿把无人机装调修理的题库搬进了手机，顺序刷题、随机刷题、模拟考试和错题本，都在这座小岛上。",
+                "题屿把无人机装调的题库搬进了手机，顺手做成了一间自习室。",
                 color = ui.text, fontSize = 14.sp, lineHeight = 25.sp, fontFamily = AboutKai,
                 modifier = Modifier.padding(top = 14.dp)
+            )
+            Text(
+                "五种题型都能答，答错了自动收进错题本，连续答对就毕业；模考能限时、能即时判对错，" +
+                    "还能优先抽没做过的题、把选项打乱。打卡、学习热力图、成绩分享卡、桌面小组件都在，" +
+                    "题库不够的话可以自己导入 CSV 或 ZIP。",
+                color = ui.text, fontSize = 14.sp, lineHeight = 25.sp, fontFamily = AboutKai,
+                modifier = Modifier.padding(top = 12.dp)
             )
             Text(
                 "做它的原因很简单：刷题不想一直抱着厚厚的文档，想在手机上随时做几道题。做着做着，就长成了现在的样子。",
