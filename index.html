@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>题屿 TiYu — 无人机装调离线刷题</title>
+<meta name="description" content="题屿 TiYu：把无人机装调题库装进手机的离线刷题 App。支持刷题、模考、错题本、打卡热力图，五种题型，题库可自行导入。">
+<meta property="og:title" content="题屿 TiYu — 无人机装调离线刷题">
+<meta property="og:description" content="离线刷题 / 全真模考 / 错题本强化 / 打卡热力图。题库可自行导入。">
+<meta property="og:type" content="website">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  :root{
+    --bg:#F6F1E9; --bg2:#EFE8DB;
+    --ink:#1B1811; --onInk:#F8F4EC;
+    --text:#26211A; --sub:#8D8474; --line:#E4DCCD;
+    --accent:#E07830; --correct:#3E9B4F;
+    --card:rgba(255,255,255,.62); --cardB:rgba(255,255,255,.9);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14120F; --bg2:#1C1915;
+      --ink:#F2EBDD; --onInk:#1B1811;
+      --text:#EDE6DA; --sub:#9A9083; --line:#332D26;
+      --card:rgba(255,255,255,.05); --cardB:rgba(255,255,255,.08);
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:0 22px}
+  .hero{padding:72px 0 40px}
+  h1{font-size:clamp(30px,6vw,46px);margin:0 0 6px;letter-spacing:-.02em}
+  .tag{color:var(--sub);font-size:clamp(14px,2.4vw,17px);margin:0 0 28px}
+  .lede{font-size:16px;max-width:640px;margin:0 0 30px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:14px 26px;border-radius:999px;background:var(--ink);color:var(--onInk);
+    text-decoration:none;font-weight:700;font-size:16px;border:none;cursor:pointer;
+    transition:transform .12s ease, opacity .12s ease;
+  }
+  .btn:hover{transform:translateY(-1px);opacity:.92}
+  .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:600}
+  .meta{color:var(--sub);font-size:13px;margin-top:16px}
+  section{padding:44px 0;border-top:1px solid var(--line)}
+  h2{font-size:21px;margin:0 0 6px}
+  h2 + .sub{color:var(--sub);font-size:14px;margin:0 0 22px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:12px}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:18px 20px;backdrop-filter:blur(8px);
+  }
+  .card h3{margin:0 0 4px;font-size:15px}
+  .card p{margin:0;color:var(--sub);font-size:13.5px;line-height:1.7}
+  ul.clean{margin:0;padding-left:0;list-style:none}
+  ul.clean li{
+    padding:13px 0;border-bottom:1px dashed var(--line);
+    display:flex;gap:14px;align-items:flex-start;
+  }
+  ul.clean li:last-child{border-bottom:none}
+  .q{font-weight:600;flex:0 0 auto;min-width:0}
+  .a{color:var(--sub);font-size:14px;flex:1}
+  .note{
+    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:14px;padding:16px 20px;color:var(--sub);font-size:14px;
+  }
+  .note b{color:var(--text)}
+  footer{padding:40px 0 60px;color:var(--sub);font-size:13px;border-top:1px solid var(--line)}
+  footer a{color:var(--sub)}
+  code{background:var(--cardB);padding:2px 6px;border-radius:6px;font-size:13px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;background:var(--cardB);border:1px solid var(--line);
+        border-radius:999px;padding:3px 11px;font-size:12px;color:var(--sub);margin:0 6px 6px 0}
+  @media (max-width:520px){ .hero{padding:48px 0 30px} section{padding:34px 0} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>题屿 TiYu</h1>
+    <p class="tag">无人机装调 · 离线刷题 / 全真模考 / 错题本</p>
+    <p class="lede">
+      把厚厚的一摞题库装进手机，随时随地做几道。核心功能<strong>全部离线</strong>，
+      不收集任何数据；唯一联网行为是你手动点「检查更新」。
+    </p>
+    <div class="row">
+      <!-- 固定名资产，releases/latest/download 永远指向最新正式版 -->
+      <a class="btn" id="dl" href="#">下载 APK</a>
+      <a class="btn ghost" href="https://github.com/Everett406/TiYu/releases">全部版本</a>
+    </div>
+    <p class="meta" id="meta">正在读取最新版本…</p>
+  </header>
+
+  <section>
+    <h2>能做什么</h2>
+    <p class="sub">不是花哨功能，是把「刷题」这件事做完整。</p>
+    <div class="grid">
+      <div class="card"><h3>五种题型</h3><p>单选、多选、判断、填空、简答。答案与解析都在题库里，不必翻纸质书。</p></div>
+      <div class="card"><h3>全真模考</h3><p>倒计时自动交卷、可开即时判定、可优先抽没做过的题、错题优先、单选多选还能打乱选项。</p></div>
+      <div class="card"><h3>错题本</h3><p>答错自动收录，连续答对若干次自动「毕业」移出，也可以手动全量重练。</p></div>
+      <div class="card"><h3>打卡与热力图</h3><p>每日目标、学习热力图、连续打卡、护眼提醒与每日提醒。</p></div>
+      <div class="card"><h3>桌面小组件</h3><p>桌面直接看今日进度、快捷进入错题本与快速模考，不用先打开 App。</p></div>
+      <div class="card"><h3>题库可导入</h3><p>自己的题库能导进来：纯文字导 CSV，带图打包 ZIP。支持图片题。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>常见问题</h2>
+    <p class="sub">Q&amp;A</p>
+    <ul class="clean">
+      <li><span class="q">安装会被拦吗？</span><span class="a">会。GitHub 上的 APK 不是应用商店来源，手机会提示「未知来源」。按系统引导允许一次即可。</span></li>
+      <li><span class="q">更新怎么弄？</span><span class="a">设置 → 关于题屿 → 检查更新。有新版会提示，下载安装覆盖即可，学习数据自动迁移，不用卸载。</span></li>
+      <li><span class="q">要联网吗？</span><span class="a">不需要。刷题、模考、错题本、统计全部离线运行，也没有广告、没有内购、没有账号。</span></li>
+      <li><span class="q">会收集数据吗？</span><span class="a">不会。所有学习记录只存在你手机本地，不上传、不同步。</span></li>
+      <li><span class="q">支持哪些机型？</span><span class="a">Android 12 及以上（API 31+）。</span></li>
+      <li><span class="q">怎么换成自己的题库？</span><span class="a">设置 → 题库管理 → 导入题库。列头需含「题干」「答案」，可含「题型/选项A…/解析/图片」。带图题把 CSV 和图片文件夹一起打包成 ZIP。</span></li>
+      <li><span class="q">换手机怎么迁移？</span><span class="a">暂不支持跨设备同步（没有服务器，也没有账号）。当前题库导入功能可以把你自己的题带过去。</span></li>
+      <li><span class="q">题目有错怎么办？</span><span class="a">欢迎反馈——站内没有任何联系方式，见仓库 Issues。</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>关于这个项目</h2>
+    <p class="sub">
+      <span class="pill">Android 原生</span>
+      <span class="pill">Jetpack Compose</span>
+      <span class="pill">Room</span>
+      <span class="pill">零广告</span>
+      <span class="pill">零内购</span>
+      <span class="pill">零收集</span>
+    </p>
+    <div class="note">
+      <p style="margin:0 0 10px">
+        <b>关于题库数据。</b>内置题库的<b>版权归原始题库编制方所有</b>，
+        随本应用分发使用；仓库中的 <code>LICENSE</code>（Apache-2.0）
+        只覆盖<b>应用代码</b>，不覆盖题库内容。
+      </p>
+      <p style="margin:0">
+        想要自己的题库，用设置里的导入功能即可——这是这个 App 为数不多但我一直在做的事。
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin:0 0 8px">
+      题屿 TiYu · <span id="fver">—</span> ·
+      <a href="https://github.com/Everett406/TiYu">源码</a> ·
+      <a href="https://github.com/Everett406/TiYu/releases">历史版本</a>
+    </p>
+    <p style="margin:0">纯自用项目，没有公司、没有融资、没有客服。</p>
+  </footer>
+</div>
+
+<script>
+/*
+ * 版本与下载直链
+ *
+ * 用 releases/latest 的 302 拿 tag（不消耗 API 配额），再拼出固定名资产的
+ * 直链 releases/latest/download/TiYu-latest.apk —— 那个名字不带版本号，
+ * 所以永远指向最新正式版，页面不用跟着版本更新。
+ */
+const REPO = 'Everett406/TiYu';
+const DL   = `https://github.com/${REPO}/releases/latest/download/TiYu-latest.apk`;
+const meta = document.getElementById('meta');
+const fver = document.getElementById('fver');
+document.getElementById('dl').href = DL;
+
+fetch(`https://github.com/${REPO}/releases/latest`)
+  .then(r => r.url)                       // 跟随重定向，末段就是 tag
+  .then(u => {
+    const tag = decodeURIComponent(u.split('/').pop());
+    meta.textContent = `最新版 ${tag} · Android 12+ · 约 36 MB · 覆盖安装不丢数据`;
+    fver.textContent = tag;
+  })
+  .catch(() => {
+    meta.textContent = 'Android 12+ · 约 36 MB · 覆盖安装不丢数据';
+  });
+</script>
+</body>
+</html>
