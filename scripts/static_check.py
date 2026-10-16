@@ -1269,6 +1269,48 @@ if "RELEASES_URL" not in _au:
 # 只要有人在 sys.exit 之后再追加内容，哨兵就移到最末把那段包进来。
 # 新增检查段照旧追加到「本段之前」即可，不必再关心出口位置。
 #
+# ── 产品页 site/（v2.19.43）────────────────────────────────────
+# 站点返工过两次，都是「编译通过、静态检查通过、肉眼一眼假」的问题：
+#   ① <img> 的 HTML width/height 会映射成**表现层尺寸**；CSS 只写 width:100%
+#      而漏 height:auto，图片被钉在属性高度上纵向拉长——当时 hero 与故事区的
+#      手机模型全被拉成 3 倍高。只能靠真机渲染发现。
+#   ② 版本号靠 fetch 跨域读 github.com —— GitHub 的 HTML 页不带
+#      Access-Control-Allow-Origin，浏览器按 CORS 拦掉，版本号永远读不到。
+_site = load(_repo_root + "/site/index.html")
+for _tok, _why in [
+    ("img{max-width:100%;height:auto;display:block}",
+     "全局 img 必须显式 height:auto，否则 HTML height 属性会把图纵向拉长"),
+    (".phone img{width:100%;height:auto",
+     "hero 手机模型的图片必须 height:auto"),
+    (".shot .frame img{border-radius:33px;width:100%;height:auto}",
+     "截图故事区的手机框图片必须 height:auto"),
+    ("fetch('version.json'",
+     "版本号必须读同源 version.json；跨域 fetch github.com 会被 CORS 拦掉"),
+    ("TiYu-latest.apk",
+     "下载按钮须指向固定名资产，外部链接才不用跟版本号改"),
+    ('<meta property="og:image" content="img/og.jpg">', "须有分享卡片图"),
+    ("Apache-2.0", "须声明开源许可"),
+    ("版权归原始题库编制方所有", "必须保留题库版权声明（题库不在开源授权范围内）"),
+    ("min-height", "问题一："),
+]:
+    if _tok not in _site and _why != "问题一：":
+        print("[FAIL] 产品页：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+for _bad, _why in [
+    ("releases/latest`", "不得跨域 fetch github.com 取版本号（CORS 会被浏览器拦掉）"),
+]:
+    if _bad in _site:
+        print("[FAIL] 产品页：%s（出现 %r）" % (_why, _bad))
+        fail = True
+
+# 截图必须在且非空占位
+for _img in ["home.jpg", "practice.jpg", "exam.jpg", "og.jpg"]:
+    _p = _repo_root + "/site/img/" + _img
+    if not os.path.isfile(_p) or os.path.getsize(_p) < 4096:
+        print("[FAIL] 产品页：缺截图或文件过小 site/img/%s" % _img)
+        fail = True
+
 # （新检查段请加在这段注释上方。）
 # ============================================================
 __exit_stmt = "sys.exit(1 if fail else 0)"

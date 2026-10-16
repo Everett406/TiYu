@@ -16,8 +16,8 @@ env:
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
   IS_PREVIEW: 'false'
-  APP_VERSION_NAME: 2.19.42
-  APP_VERSION_TAG: v2.19.42
+  APP_VERSION_NAME: 2.19.43
+  APP_VERSION_TAG: v2.19.43
 
 jobs:
   build:
@@ -140,6 +140,25 @@ jobs:
         with:
           # subtree split 需要完整历史
           fetch-depth: 0
+
+      # v2.19.43：产品页的版本号改读同源 version.json。
+      # 页面在浏览器里无法跨域读 GitHub（HTML 页不带 Access-Control-Allow-Origin，
+      # fetch 会被 CORS 直接拦掉），所以版本号由发版时写进 site/ 一起发布。
+      - name: Write version.json
+        run: |
+          APK=dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
+          SIZE=$(( $(stat -c%s "$APK" 2>/dev/null || echo 0) / 1048576 ))
+          cat > site/version.json <<EOF
+          {
+            "version": "${{ env.APP_VERSION_NAME }}",
+            "tag": "${{ env.APP_VERSION_TAG }}",
+            "apk": "TiYu-${{ env.APP_VERSION_NAME }}.apk",
+            "stableApk": "TiYu-latest.apk",
+            "sizeMB": ${SIZE},
+            "minSdk": 31,
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
 
       - name: Publish site to gh-pages
         run: |

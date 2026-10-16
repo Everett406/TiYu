@@ -2,7 +2,7 @@
 
 # 题屿 · TiYu
 
-**题屿 TiYu**（原「无人机装调题库 DroneQuiz」，v2.8.8 起更名）— Android 原生刷题 / 模考 / 错题本应用 · Jetpack Compose · 液态玻璃 UI
+**离线刷题的无人机装调备考 App** · Jetpack Compose · 液态玻璃 UI
 
 [![Release](https://img.shields.io/github/v/release/Everett406/TiYu?style=flat-square)](https://github.com/Everett406/TiYu/releases)
 [![Build APK](https://github.com/Everett406/TiYu/actions/workflows/build.yml/badge.svg)](https://github.com/Everett406/TiYu/actions/workflows/build.yml)
@@ -10,23 +10,47 @@
 ![Platform](https://img.shields.io/badge/platform-Android%2012%2B-3DDC84?style=flat-square)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.2.20-7F52FF?style=flat-square)
 
-内置《无人机装调题库（含解析）》**800 题**（单选 640 / 判断 160），
-支持多题库管理与自定义题库导入（CSV / ZIP，含图片题，五种题型）、模考自动阅卷、错题强化训练与每日学习提醒。
+🌐 **[产品页 everett406.github.io/TiYu](https://everett406.github.io/TiYu/)**
 
-[下载最新 APK](https://github.com/Everett406/TiYu/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/Everett406/TiYu/issues)
+⬇️ **[下载最新 APK](https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk)**（约 36 MB，固定名直链，永远指向最新正式版）
+
+[全部版本与更新日志](https://github.com/Everett406/TiYu/releases) · [问题反馈](https://github.com/Everett406/TiYu/issues)
 
 </div>
 
 ---
 
+## 界面
+
+<div align="center">
+<table>
+<tr>
+<td width="33%" align="center"><b>首页</b><br><sub>进度环 · 连续打卡 · 学习热力图</sub></td>
+<td width="33%" align="center"><b>刷题</b><br><sub>题型筛选 · 顺序随机 · 进度接续</sub></td>
+<td width="33%" align="center"><b>模考</b><br><sub>题数时长 · 题型占比 · 及格分</sub></td>
+</tr>
+<tr>
+<td><img src="docs/img/home.jpg" width="270" alt="首页"></td>
+<td><img src="docs/img/practice.jpg" width="270" alt="刷题"></td>
+<td><img src="docs/img/exam.jpg" width="270" alt="模考"></td>
+</tr>
+</table>
+</div>
+
+> 截图与应用内壁纸配色同源：奶油纸感底 + 墨黑主操作 + 橙色点缀，底栏为真折射玻璃。
+
+---
+
 ## 目录
 
+- [界面](#界面)
 - [项目简介](#项目简介)
 - [功能特性](#功能特性)
 - [安装与使用](#安装与使用)
 - [技术栈](#技术栈)
 - [应用架构](#应用架构)
   - [源码结构](#源码结构)
+  - [渐进式模糊（已移除）](#渐进式模糊v21912-已整体移除交接重点)
   - [液态玻璃实现（交接重点）](#液态玻璃实现交接重点)
   - [刷题会话双槽机制（v2.7.4 交接重点）](#刷题会话双槽机制v274-交接重点)
   - [打赏弹窗机制（v2.7.4）](#打赏弹窗机制v274)
@@ -65,10 +89,11 @@
 |------|----------|
 | **首页** | 时间问候 + 昵称、学习进度环、预估通过率条、近 7 日刷题量柱状图 / 正确率折线（Canvas 自绘）、连续打卡双卡、错题提示、上次模考成绩速览；全局壁纸之上铺主题纱（wallScrim）保证可读性 |
 | **刷题** | **配置入口页**（`PracticeConfig.kt`：题型多选 / 筛选 chips、顺序 / 随机双模式、「将接续上次进度 · 第 N/M 题」实时提示、重新开始胶囊按钮）→ 全屏刷题页（`HorizontalPager` 左右滑题、点选即判、答错抖动 + 解析弹簧展开、题号面板单一数据源、自动切题、**题目图片**小图点开大图）；**顺序与随机两套进度槽独立记忆，且按题库隔离**（v2.7.4 双槽 + v2.8.8 读口校验，见下文）；**顺序模式循环补漏**（v2.8.6：刷到末题自动开新一轮，只挑没刷过的题）；**防沉迷**（v2.8.6：连续刷题 20 分钟弹窗提醒看远处，考试不受影响）；重新开始按钮带二次确认 |
-| **模考** | 题数、时长、及格分（合格线）可拖滑杆配置；**题型构成**在高级选项内（自动按库占比配比 / 手动比例滑杆联动 / 拖拽排序，v2.8.3–2.8.4）；倒计时（< 60s 红色脉冲）、到时自动交卷、交卷确认、玻璃答题卡面板（按题型分段 + 点号跳题）、自动阅卷；**已完成历史记录可单击回看成绩页**（数据库按 examId 重建，v2.7.4）；进行中记录可继续 / 放弃 / 删除 |
+| **模考** | 题数、时长、及格分（合格线）可拖滑杆配置；**打乱选项顺序**（仅单选/多选，判断题不打乱，防背答案，v2.19.33）；**优先未答**（抽 `question_stats.attempts = 0` 的题，v2.19.32）；**错题优先**（错题本 `removed = 0` 优先于未答，v2.19.35）；**即时判定**开关（作答当场出对错 / 交卷后统一判，v2.19.31）；**配置记忆**（题数、时长、题型占比下次沿用，可一键恢复默认，v2.19.41）；**题型构成**在高级选项内（自动按库占比配比 / 手动比例滑杆联动 / 拖拽排序，v2.8.3–2.8.4）；倒计时（< 60s 红色脉冲）、到时自动交卷、交卷确认、玻璃答题卡面板（按题型分段 + 点号跳题）、自动阅卷；**已完成历史记录可单击回看成绩页**（数据库按 examId 重建，v2.7.4）；进行中记录可继续 / 放弃 / 删除 |
 | **模考成绩页** | 得分 / 用时 / 正误统计、**合格线回显**（开考时设定的分数定格存档，v2.8.6）、错题解析懒加载列表（`LazyColumn` 滚动流畅，v2.7.4 优化）、右上角浅色「三点」删除本次记录（**每周限删 2 次**，ISO 周自动重置，配额弹窗告知） |
 | **错题本** | 答错自动收录、「连续答对 N 次」三档移除策略、错题特训入口（不占用刷题进度槽）、分类筛选胶囊、展开解析、像素级连续映射滚动把手、条目删除（30dp 触达区 + 缩放淡出 / 其余条目弹性靠拢动画，v2.8.7） |
-| **搜索** | 题干 / 选项 / 解析全文检索、搜索历史（最多 8 条）、结果解析弹簧展开动画 |
+| **搜索** | 题干 / 选项 / 解析全文检索、搜索历史（最多 8 条）、结果卡片逐条浮现（alpha + 模糊 + 上移，55ms 递进）、命中答案折叠为单字母一行 |
+| **解析** | 全站收敛到唯一 `ParseBlock`：默认折叠；展开后**逐字对焦**（20 字/秒，单字 290ms 内由「透明 + 3px 模糊」淡入并变清晰，blur 走 easeOut 提前收干净）。排版真值取自 `TextMeasurer`，已完成字由 Canvas 一次绘制、仅正在入场的 ≤7 字挂 `BlurEffect`，容器高度随已渲染行数平滑变化（v2.19.40–2.19.42） |
 | **设置** | 主题三档、字号四档、**阅读字体四款**（手机自带 / 思源黑体 / 思源宋体 / 霞鹜文楷，内置子集化字体文件）、刷题顺序、自动切题、及格分滑杆、错题移除阈值、每日提醒（WorkManager，刷过当天不打扰）、**防沉迷**（连续刷题 20 分钟提醒，考试不受影响）、壁纸（内置 4 张 + 自定义 + 可选模糊）、昵称、底栏玻璃模糊三档、**题库管理**（多题库切换 / 导入 CSV·ZIP / 重命名 / 删除 / 清空恢复，带图题目支持）、清空学习记录、画面特效开关、**使用引导**（题库管理与关于之间，随时重走导览）、**关于**（底部弹窗：应用介绍 / 检查更新 / 请喝奶茶） |
 
 ### 交互与视觉
@@ -144,7 +169,10 @@
 ```
 TiYu/
 ├── app/src/main/
-│   ├── AndroidManifest.xml              # 权限：POST_NOTIFICATIONS、VIBRATE、INTERNET（仅检查更新）；竖屏锁定
+│   ├── AndroidManifest.xml              # 权限：INTERNET（仅检查更新/探测发布页）、POST_NOTIFICATIONS、
+│   │                                    #       VIBRATE、SCHEDULE_EXACT_ALARM + USE_EXACT_ALARM、
+│   │                                    #       REQUEST_IGNORE_BATTERY_OPTIMIZATIONS、RECEIVE_BOOT_COMPLETED；
+│   │                                    #       竖屏锁定。不申请 CAMERA，也不申请任何存储权限。
 │   ├── assets/questions.json            # 内置题库（800 题，version=2）
 │   ├── res/
 │   │   ├── font/                        # 内置阅读字体（子集化）：Noto Sans SC、Noto Serif SC、霞鹜文楷 各 regular/medium(bold)
@@ -190,7 +218,13 @@ TiYu/
 │       │   ├── highlight/ shadow/ internal/（AGSL 着色器、图层记录）
 │       │   └── catalog/utils/（DampedDragAnimation / InteractiveHighlight 等官方示例工具类）
 │       └── com/kyant/shapes/            # ★ vendored 官方连续曲率形状（Capsule/RoundedRectangle，同因 compileSdk 不升 maven 依赖）
-├── .github/workflows/build.yml          # CI：构建 → 签名 → Artifact → 自动发 Release
+├── site/                                # ★ 产品页（GitHub Pages 发布物）
+│   ├── index.html                       #   单文件页面：配色取自 ui/theme/Theme.kt，水墨远山取自内置壁纸
+│   ├── version.json                     #   发版时由 CI 写入（页面在浏览器里无法跨域读 GitHub）
+│   ├── favicon.svg
+│   └── img/                             #   home / practice / exam 三张真实截图 + og.jpg 分享卡
+├── docs/img/                            # README 用截图（与 site/img 同源）
+├── .github/workflows/build.yml          # CI：构建 → 签名 → Artifact → 发 Release → 部署 Pages
 ├── scripts/                             # 工具脚本（Python，见「工具脚本」节）
 ├── CHANGELOG.md / NOTICE / LICENSE / FONT_LICENSES(assets)
 ├── build.gradle.kts                     # 插件版本集中声明
@@ -328,6 +362,15 @@ v2.7.4 教训固化：**错题解析展开后 20+ 条全量组合在外层滚动
 | `nickname` | string | 昵称（≤5 字） | "" |
 | `reading_font` | string | 阅读字体 system/sans/serif/kai | "system" |
 | `search_history` | string(JSON) | 搜索历史数组（≤8 条，最新在前） | [] |
+| `exam_instant_judge` | bool | 模考**即时判定**：作答当场出对错；关则整卷交完再判 | false |
+| `exam_shuffle_options` | bool | 模考**打乱选项**：仅单选/多选，判断题不打乱 | false |
+| `exam_prefer_unseen` | bool | 模考**优先未答**（`question_stats.attempts = 0` 优先抽） | true |
+| `exam_prefer_wrong` | bool | 模考**错题优先**（错题本 `removed = 0` 优先抽，优先级高于未答） | false |
+| `exam_quick_config` | string(JSON) | 模考配置记忆（`ExamQuickConfig`：题型题数 / 时长 / 题型顺序），供下次沿用 | null |
+| `daily_goal` | int | 每日目标题数（5–500） | 30 |
+| `eye_care_reminder` | bool | 护眼提醒 | false |
+| `share_card_name` / `_slogan` / `_accent` / `_theme` | string | 分享卡片自定义文案与主题 | "" |
+| `wrong_last_type` / `wrong_last_cat` | string | 错题本上次筛选条件 | "" |
 | `usage_ms` | long | 累计刷题毫秒（打赏门槛，仅答题页前台心跳累计） | 0 |
 | `support_prompted` | bool | 打赏弹窗已弹过 | false |
 | `support_refused` | bool | 打赏永久拒绝 | false |
@@ -421,7 +464,13 @@ Checkout → JDK 21(Temurin) → Gradle Setup
   → 重命名为 TiYu-${APP_VERSION_NAME}.apk
   → Upload Artifact
   → softprops/action-gh-release 自动发布到 tag ${APP_VERSION_TAG}
+  → （pages job）写 site/version.json → git subtree split --prefix=site → 强推 gh-pages
 ```
+
+**产品页**：[https://everett406.github.io/TiYu/](https://everett406.github.io/TiYu/)，由 `site/` 目录经 `git subtree split` 发布到 `gh-pages` 分支。
+
+- 固定名资产 `TiYu-latest.apk` 让 `[releases/latest/download/TiYu-latest.apk](https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk)` 成为**永不过期的直链**，页面与任何外部引用都不必跟着版本号改；仅正式版更新它，preview/draft 不抢「最新」这个位置；
+- **版本号由 CI 写入 `site/version.json`**，页面同源读取。不能用 `fetch('https://github.com/.../releases/latest')` 再读 `r.url` ——那是跨域请求 GitHub 的 HTML 页，GitHub 不返回 `Access-Control-Allow-Origin`，浏览器会按 CORS 直接拦掉，站点永远读不到版本号（v2.19.43 修）。
 
 - workflow 配置了 `paths-ignore: ['**.md']`：**只改 Markdown 文档的提交不会触发构建**，避免同版本号 tag 重复发布；
 - 兜底手段：纯文档 / CI 配置微调的提交，commit message 里带 `[skip ci]` 可强制跳过本次构建；
