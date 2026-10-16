@@ -10,6 +10,7 @@
 
 退出码：0 = PASS，1 = FAIL（缺失必备 API / 括号不平衡 / 目录不存在）。
 """
+import json
 import os
 import shutil
 import subprocess
@@ -1309,6 +1310,59 @@ for _img in ["home.jpg", "practice.jpg", "exam.jpg", "og.jpg"]:
     _p = _repo_root + "/site/img/" + _img
     if not os.path.isfile(_p) or os.path.getsize(_p) < 4096:
         print("[FAIL] 产品页：缺截图或文件过小 site/img/%s" % _img)
+        fail = True
+
+# ── 产品页的可玩 demo（v2.19.44）────────────────────────────────
+# 页面上那道题是**原题原解析**，直接取自 assets/questions.json。
+# 手抄进 HTML 时很容易顺手"润色"——加引号、删一句、改标点——
+# 那就等于篡改题库内容。已发生过一次（给 A项加了引号、漏抄了末句）。
+# 所以这里逐字比对，抄错即失败。
+_bank = json.load(open(_repo_root + "/app/src/main/assets/questions.json", encoding="utf-8"))
+_qs = _bank if isinstance(_bank, list) else _bank.get("questions", [])
+_byid = {}
+for _q in _qs:
+    _byid.setdefault(str(_q.get("id")), []).append(_q)
+
+_siteblk = _site[_site.index("const BANK = ["):_site.index("nEl.onclick")] \
+    if "const BANK = [" in _site else ""
+_demo_ids = re.findall(r"\{ id:(\d+),", _siteblk)
+if not _demo_ids:
+    print("[FAIL] 产品页 demo：找不到题目数据块（BANK）")
+    fail = True
+for _qid in _demo_ids:
+    _src = _byid.get(_qid)
+    if not _src:
+        print("[FAIL] 产品页 demo：题库中不存在 id=%s" % _qid)
+        fail = True
+        continue
+    _q = _src[0]
+    _exp = _q.get("explanation", "")
+    if _exp and _exp not in _siteblk:
+        # 定位第一处差异，便于排查
+        _m = re.search(r"id=" + re.escape(_qid) + r".*?e:'([^']*)'", _siteblk, re.S)
+        _got = _m.group(1) if _m else ""
+        _at = next((k for k in range(min(len(_exp), len(_got))) if _exp[k] != _got[k]), None)
+        _ctx = ""
+        if _at is not None:
+            _ctx = "（首个差异 @%d：原文…%s… 页面…%s…）" % (
+                _at, _exp[max(0, _at - 12):_at + 12], _got[max(0, _at - 12):_at + 12])
+        print("[FAIL] 产品页 demo：id=%s 的解析与题库不一致%s" % (_qid, _ctx))
+        fail = True
+    for _o in _q.get("options", []):
+        if _o not in _siteblk:
+            print("[FAIL] 产品页 demo：id=%s 的选项 %r 与题库不一致" % (_qid, _o))
+            fail = True
+
+# demo 的揭示动画参数须与 App 内 ParseBlock 一致
+for _tok, _why in [
+    ("const CPS = 20", "逐字速度须为 20 字/秒，与 App 一致"),
+    ("ENTRY = 290", "单字入场须 290ms，与 App 一致"),
+    ("BLUR = 3", "起始模糊须 3px，与 App 一致"),
+    ("fill:'both'", "WAAPI 必须 fill:'both'；'backwards' 会让动画结束后回落到 opacity:0，整段解析永远看不见"),
+    ("cubic-bezier(.1,.85,.25,1)", "模糊须用 easeOut 提前收干净，与 App 一致"),
+]:
+    if _tok not in _site:
+        print("[FAIL] 产品页 demo：%s（缺 %r）" % (_why, _tok))
         fail = True
 
 # （新检查段请加在这段注释上方。）
