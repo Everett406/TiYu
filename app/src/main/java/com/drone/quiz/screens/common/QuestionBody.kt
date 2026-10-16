@@ -812,7 +812,7 @@ fun WrongAnswerBlock(q: Question, userAnswer: String?) {
             )
         }
         Text(
-            "正确答案：${q.correctAnswerText()}",
+            "正确答案：${q.correctAnswerText(brief = true)}",
             color = ui.correct,
             fontSize = 12.sp,
             modifier = Modifier.padding(top = 4.dp)

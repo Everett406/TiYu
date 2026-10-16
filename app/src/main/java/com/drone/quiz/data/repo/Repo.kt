@@ -54,13 +54,20 @@ data class Question(
     val blankCount: Int
         get() = Regex("_{3,}").findAll(text).count()
 
-    /** 正确答案的可读文本（成绩页 / 解析） */
-    fun correctAnswerText(): String = when (type) {
+    /**
+     * 正确答案的可读文本（成绩页 / 解析）。
+     *
+     * @param brief true = 单选只给字母（`B`），不给「B·选项全文」。
+     *   判定结果区里四个选项就在上方摆着，再把选项文字抄一遍纯属冗余
+     *   （用户反馈：「把选项全部抄一遍，其实不用再显示这个了」）。
+     *   但搜索结果折叠态只显示题干、选项要展开才看得到，那里**必须**给全文——
+     *   只写个「B」用户无从对照。所以按调用场景传，不是一刀切。
+     */
+    fun correctAnswerText(brief: Boolean = false): String = when (type) {
         QuestionTypes.JUDGE -> if (answer == 0) "正确" else "错误"
         QuestionTypes.SINGLE -> {
             val label = optionLabel(answer, false)
-            val opt = options.getOrNull(answer).orEmpty()
-            "$label·$opt"
+            if (brief) label else "$label·${options.getOrNull(answer).orEmpty()}"
         }
         QuestionTypes.MULTI -> multiAnswerSet.sorted().joinToString("、") { optionLabel(it, false) }
         QuestionTypes.BLANK -> blankAnswers.joinToString("；") { vs ->

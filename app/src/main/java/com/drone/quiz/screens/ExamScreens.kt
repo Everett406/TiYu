@@ -1568,7 +1568,7 @@ private fun ExamQuestionCard(
                 Column(Modifier.padding(top = 16.dp)) {
                     ResultHeader(
                         verdict,
-                        " · 正确答案：${q.correctAnswerText()}"
+                        " · 正确答案：${q.correctAnswerText(brief = true)}"
                     )
                     // 打乱生效时不显示解析：解析文字绑定的是原始选项字母
                     if (!hideExplanation) ParseBlock(q.explanation)

@@ -88,7 +88,11 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(backdrop: Backdrop) {
+fun SettingsScreen(
+    backdrop: Backdrop,
+    // v2.19.34：历程是独立路由，导航权在 AppRoot，设置页只管"喊一声"
+    onOpenHistory: () -> Unit = {}
+) {
     val ui = LocalUi.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1050,6 +1054,12 @@ fun SettingsScreen(backdrop: Backdrop) {
         updateMsg = updateMsg,
         onDismiss = { showAboutSheet = false },
         onOpenReleases = { AppUpdater.openReleases(context) },
+        onOpenHistory = {
+            // 先关关于弹窗再导航：两个 overlay 同屏会有层级问题
+            // （同 v2.8.10 打赏弹窗那次踩的坑，不同屏后层级问题自然消失）
+            showAboutSheet = false
+            onOpenHistory()
+        },
         onCheckUpdate = { checkUpdate() },
         // v2.8.10：先关关于弹窗，等退场动画走完再拉起打赏弹窗。
         // 根因：打赏弹窗宿主在 App 启动时就注册进 GlassOverlayPortal（列表底部），
@@ -1096,6 +1106,7 @@ private fun AboutSheet(
     updateMsg: String?,
     onDismiss: () -> Unit,
     onOpenReleases: () -> Unit,
+    onOpenHistory: () -> Unit = {},
     onCheckUpdate: () -> Unit,
     onSupport: () -> Unit
 ) {
@@ -1109,12 +1120,42 @@ private fun AboutSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 22.dp)
         ) {
-            Text(
-                "关于题屿",
-                color = ui.text, fontSize = 23.sp, fontWeight = FontWeight.Bold,
-                fontFamily = AboutKai,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "关于题屿",
+                    color = ui.text, fontSize = 23.sp, fontWeight = FontWeight.Bold,
+                    fontFamily = AboutKai,
+                    modifier = Modifier.weight(1f)
+                )
+                // v2.19.34：发展历程入口
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable(
+                            interactionSource = null,
+                            indication = null,
+                            onClick = onOpenHistory
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        AppIcons.Timer, null, tint = ui.textSub,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        "历程",
+                        color = ui.textSub, fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+            }
             // 虚线分隔（参考用户旧版刷题本的文档式排版）
             Canvas(
                 Modifier

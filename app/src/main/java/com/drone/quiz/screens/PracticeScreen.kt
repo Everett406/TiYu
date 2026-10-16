@@ -847,7 +847,7 @@ private fun ChoiceSection(q: Question, ua: UserAnswer?, onCommit: (UserAnswer) -
         Column(Modifier.padding(top = 16.dp)) {
             ResultHeader(
                 judgeAnswer(q, ua),
-                " · 正确答案：${q.correctAnswerText()}"
+                " · 正确答案：${q.correctAnswerText(brief = true)}"
             )
             ParseBlock(q.explanation)
         }
@@ -926,7 +926,7 @@ private fun MultiSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
                 // 此时 visible 已为 false 而 ua 可能已是 null —— 不能用 ua!!
                 YourAnswerLine(pickedAnswerText(q.options, ua?.picked))
             }
-            CorrectAnswerLine(q.correctAnswerText())
+            CorrectAnswerLine(q.correctAnswerText(brief = true))
             ParseBlock(q.explanation)
         }
     }
@@ -966,7 +966,7 @@ private fun BlankSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
         ) {
             Column(Modifier.padding(top = 16.dp)) {
                 ResultHeader(judgeAnswer(q, ua))
-                CorrectAnswerLine(q.correctAnswerText())
+                CorrectAnswerLine(q.correctAnswerText(brief = true))
                 ParseBlock(q.explanation)
             }
         }

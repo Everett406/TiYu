@@ -899,3 +899,35 @@ if "setExamInstantJudge(false)" in _osrc:
 if "optSalt = if (shuffleOptions) OptionShuffle.newSalt() else 0L" not in _rsrc:
     print("[FAIL] startExam 须把会话盐写入 exam_records.optSalt（恢复考试据此还原相同选项顺序）")
     fail = True
+
+# 7.z2) 发展历程页（v2.19.34）
+#      数据表 AppHistory.kt 由 scripts/gen_history.py 从 git log 生成，
+#      若两者脱节，页面就会开始讲历史里没有的事——比不写还糟。
+#      static_check 无 git 环境时跳过比对（--check 单独在发版流程里跑）。
+_hsrc = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen.kt")
+if not _hsrc:
+    print("[FAIL] HistoryScreen.kt 缺失——关于页「历程」入口会跳空")
+    fail = True
+else:
+    for _tok, _why in [
+        ("AppHistory.ALL", "时间轴数据源"),
+        ("HistoryScreen(backdrop: Backdrop", "须传 backdrop，否则玻璃卡没有折射层"),
+    ]:
+        if _tok not in _hsrc:
+            print(f"[FAIL] 发展历程页：{_why}（缺 {_tok}）")
+            fail = True
+_dsrc = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/AppHistory.kt")
+if not _dsrc:
+    print("[FAIL] AppHistory.kt 缺失——请跑 python3 scripts/gen_history.py")
+    fail = True
+else:
+    # 单选正确答案只给字母（v2.19.34 用户反馈：选项已在上方摆着，不必再抄一遍选项全文）
+    _r2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+    if "fun correctAnswerText(brief: Boolean = false)" not in _r2:
+        print("[FAIL] correctAnswerText 缺 brief 参数——判定区会继续把选项全文抄一遍")
+        fail = True
+    # 搜索页折叠态只显示题干、选项看不到，那里必须保留全文
+    _ss = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SearchScreen.kt")
+    if "correctAnswerText(brief = true)" in _ss:
+        print("[FAIL] 搜索页折叠态不给选项，只写字母用户无从对照，须保留全文（brief 不要传 true）")
+        fail = True

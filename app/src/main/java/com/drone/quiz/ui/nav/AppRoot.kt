@@ -83,6 +83,7 @@ import com.drone.quiz.screens.HomeScreen
 import com.drone.quiz.screens.PracticeConfigScreen
 import com.drone.quiz.screens.PracticeRunScreen
 import com.drone.quiz.screens.SearchScreen
+import com.drone.quiz.screens.HistoryScreen
 import com.drone.quiz.screens.SettingsScreen
 import com.drone.quiz.screens.WrongBookScreen
 import com.drone.quiz.screens.ExternalBankFile
@@ -124,6 +125,8 @@ object Routes {
     // v2.17.0：搜索页带初始关键词（外部导入未命中 / 其它入口引导文字搜索），
     // destination 改 pattern 形式；navigate("search") 仍可匹配（参数默认空）
     const val SEARCH_PATTERN = "search?init={init}"
+    // v2.19.34：发展历程（从「关于题屿」旁进入，不在底栏 tab 里）
+    const val HISTORY = "history"
 
     /** Tab 页对应的 destination route（practice 的 destination route 是 pattern 形式） */
     val tabDestinations = listOf(HOME, PRACTICE_PATTERN, EXAM_CONFIG, WRONG, SETTINGS)
@@ -480,7 +483,14 @@ fun AppRoot(settings: RootSettings) {
                     )
                 }
                 composable(Routes.SETTINGS) {
-                    SettingsScreen(backdrop = bgBackdrop)
+                    SettingsScreen(
+                        backdrop = bgBackdrop,
+                        onOpenHistory = { navController.navigate(Routes.HISTORY) { launchSingleTop = true } }
+                    )
+                }
+                // v2.19.34 发展历程：全屏页，不在底栏 tab 中
+                composable(Routes.HISTORY) {
+                    HistoryScreen(backdrop = bgBackdrop) { navController.popBackStack() }
                 }
             }
             }
