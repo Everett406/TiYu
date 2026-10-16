@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -37,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -134,6 +134,17 @@ fun HistoryScreen(backdrop: Backdrop, onBack: () -> Unit) {
     }
 }
 
+/**
+ * 时间轴几何（drawBehind 画线用，不参与测量）。
+ *
+ * 坐标都相对条目左上角：左列宽 [GUTTER]，节点在其中水平居中，
+ * 节点顶距条目顶 [NODE_TOP]，探出卡片底 [LINE_OVERSHOOT]。
+ */
+private val GUTTER = 22.dp
+private val NODE_TOP = 22.dp
+private val NODE_SIZE = 9.dp
+private val LINE_OVER = 10.dp
+
 /** 单个版本条目：左侧竖线 + 节点，右侧玻璃卡 */
 @Composable
 private fun HistoryRow(
@@ -144,52 +155,46 @@ private fun HistoryRow(
     onToggle: () -> Unit
 ) {
     val ui = LocalUi.current
-    // v2.19.37 修「时间轴断成一段段」。
+    // v2.19.38 重写时间轴的画法。**前两版都是错的**，而且第二版还引入了新 bug：
     //
-    // 病灶：v2.19.36 把竖线从 9999.dp 改成了固定 24.dp（当时为了不让末条拖长尾），
-    // 结果**线长与卡片高度彻底脱钩**。真机截图实测：每条线只有 24~32px，
-    // 而条目间距 361~363px——线只占 8%，剩下 92% 全是空白。于是整条轴
-    // 看着是一串棒棒糖，而不是一根时间轴。
+    // · v2.19.36 固定 24.dp → 线长与卡片高度脱钩，断成一段段；
+    // · v2.19.37 改 IntrinsicSize.Min + weight → **与 AnimatedVisibility 冲突**：
+    //   内在测量（IntrinsicSize）不跟随尺寸动画，所以收起展开的详情时，
+    //   条目留出一大块空白、内容"啪"地跳回去，收起动画等于没有
+    //   （用户反馈 v2.19.37 引入）。根子在于：用**测量**去驱动一条线。
     //
-    // 修法：外层 Row 用 IntrinsicSize.Min 让左右两列取齐高（左列内容少、
-    // 右列卡片高），左列 fillMaxHeight，竖线 weight(1f) 吃掉剩余空间——
-    // 线长自动等于「本条卡片高度 − 节点偏移」，与标题几行无关。
+    // 现改为在 Row 的 drawBehind 里画线：Row 高度由卡片自然决定，
+    // drawBehind 拿到的 size 就是真实布局高度，线长自动跟随；
+    // 更关键的是它**不参与测量**，AnimatedVisibility 的收放动画恢复正常。
     Row(
         Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
+            .drawBehind {
+                if (isLast) return@drawBehind
+                val x = (GUTTER / 2).toPx()
+                drawLine(
+                    color = ui.textSub.copy(alpha = 0.20f),
+                    start = Offset(x, (NODE_TOP + NODE_SIZE).toPx()),
+                    // 探出卡片底一点：齐平会读作"被卡片截断"
+                    end = Offset(x, size.height + LINE_OVER.toPx()),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+            }
     ) {
-        // ---- 时间轴轴线与节点 ----
+        // ---- 只有节点，不再有竖线（竖线在 drawBehind 里） ----
         Column(
-            Modifier
-                .width(22.dp)
-                .fillMaxHeight(),
+            Modifier.width(GUTTER),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(Modifier.height(NODE_TOP))
             Box(
                 Modifier
-                    .padding(top = 22.dp)
-                    .size(9.dp)
+                    .size(NODE_SIZE)
                     .clip(CircleShape)
                     .background(
                         if (e.reverted) ui.wrong else ui.textSub.copy(alpha = 0.55f)
                     )
             )
-            if (!isLast) {
-                Box(
-                    Modifier
-                        .width(1.5.dp)
-                        .weight(1f)
-                        .background(ui.textSub.copy(alpha = 0.20f))
-                )
-                // 线要略微探出卡片底部（v2.19.37）：Row 高度只到卡片底，
-                // 若线正好齐平卡片底，视觉上像"被卡片截断"；探出去 10dp
-                // 才读得出"这条线还要连到下一个节点"。
-                Spacer(Modifier.height(10.dp))
-            } else {
-                // 末条不画线：空占位保底，保证节点仍与上方节点同一水平线
-                Spacer(Modifier.weight(1f))
-            }
         }
 
         GlassCard(

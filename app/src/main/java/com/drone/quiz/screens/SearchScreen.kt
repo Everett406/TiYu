@@ -66,6 +66,20 @@ import com.drone.quiz.ui.theme.LocalUi
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.Animatable
+
+import androidx.compose.animation.core.FastOutSlowInEasing
+
+import androidx.compose.animation.core.tween
+
+import androidx.compose.ui.draw.blur
+
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.graphicsLayer
+
+import androidx.compose.foundation.lazy.itemsIndexed
+
 
 /**
  * 题目搜索页：题干 / 选项 / 解析 全文检索（防抖 300ms，最多返回 80 条）。
@@ -262,9 +276,13 @@ fun SearchScreen(
                     )
                 }
             }
-            items(results, key = { it.id }) { q ->
+            // v2.19.39：逐条渐入。错峰延迟 + alpha 0→1 + blur 12→0，三个并行，
+            // 一条一条从上往下接力（用户口径：「依次从上到下，一个一个显示出来」）。
+            // 见 SearchResultItem 内的 revealProgress——这里只传下标。
+            itemsIndexed(results, key = { _, it -> it.id }) { idx, q ->
                 SearchResultItem(
                     q = q,
+                    index = idx,
                     expanded = expandedId == q.id,
                     backdrop = backdrop,
                     onClick = { expandedId = if (expandedId == q.id) null else q.id }
@@ -279,11 +297,59 @@ fun SearchScreen(
 @Composable
 private fun SearchResultItem(
     q: Question,
+    index: Int,
     expanded: Boolean,
     backdrop: Backdrop,
     onClick: () -> Unit
 ) {
     val ui = LocalUi.current
+
+    // v2.19.39 逐条进场。
+    //
+    // 三件事**并行**跑（用户口径）：alpha 从 0 到 1、blur 从 12dp 到 0、
+    // 整卡从 translateY(14.dp) 归零。blur 让文字"从模糊里长出来"，
+    // 比单纯淡入有质感得多。
+    //
+    // 关键取舍：**blur 不能挂在 GlassCard 的 Modifier 上**。玻璃卡的折射
+    // (drawBackdrop) 需要读它背后的内容，若自身被 blur，折射源与渲染目标
+    // 重叠，会出现边缘发虚/采样错位。所以 blur + alpha 走外层 Box 的
+    // graphicsLayer，GlassCard 保持干净——折射照常，只让整卡看起来在"浮现"。
+    //
+    // 错峰：每条延后 index * 55ms，上限 12 条（再往后就等太久了，用户会以为卡住）。
+    // 用 Animatable 而非 animate*AsState，因为要"延迟启动 + 可被打断"。
+    val progress = remember(q.id) { Animatable(0f) }
+    LaunchedEffect(q.id) {
+        val delayMs = (index * 55L).coerceAtMost(12 * 55L)
+        if (delayMs > 0) kotlinx.coroutines.delay(delayMs)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing)
+        )
+    }
+    val p = progress.value
+
+    // v2.19.39：解析的独立开合态，与卡片 expanded 解耦
+    var explanationOpen by remember(q.id) { mutableStateOf(false) }
+
+    Box(
+        Modifier.graphicsLayer {
+            alpha = p
+            // blur 每帧新建 BlurEffect 有分配开销，但只在这 420ms 里、且仅可见条目，
+            // 可接受；p≈1 时直接不挂，省掉稳态开销。
+            if (p < 0.995f) {
+                // radiusX/Y 是 **px(Float)**，不是 Dp——12dp 先转 px 再随进度收拢。
+                // 本版 Compose 的 BlurEffect 只有 (x, y, TileMode) 签名，
+                // 没有 BlurEdgeTreatment 参数（那是更晚版本才加的边缘策略）。
+                // TileMode.Clamp 即"边缘延展"，卡片渐显时不会露出透明边——
+                // 正是这里要的效果。
+                val r = 12.dp.toPx() * (1f - p)
+                renderEffect = BlurEffect(r, r, TileMode.Clamp)
+            } else {
+                renderEffect = null
+            }
+            translationY = 14.dp.toPx() * (1f - p)
+        }
+    ) {
     GlassCard(
         backdrop = backdrop,
         modifier = Modifier
@@ -392,29 +458,79 @@ private fun SearchResultItem(
                             )
                         }
                     }
-                    if (q.explanation.isNotBlank()) {
-                        Text(
-                            q.explanation,
-                            color = ui.textSub,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier
-                                .padding(top = 8.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(ui.ink.copy(alpha = 0.05f))
-                                .padding(10.dp)
-                                .fillMaxWidth()
-                        )
-                    }
                 }
             }
             if (!expanded) {
                 Text(
-                    "点开查看全部选项与解析",
+                    "点开查看全部选项",
                     color = ui.textSub, fontSize = 11.sp,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
+
+            // v2.19.39：解析恒为折叠（用户口径：「无论在什么情况下，这个解析都是
+            // 折叠的状态，因为这样能够让人更集中注意力」）。
+            //
+            // 原先解析与选项同在卡片展开区里——展开即见解析，等于"看一眼选项"
+            // 的同时就把答案讲解读了，注意力被带跑。现在解析有**自己独立**的开关，
+            // 与卡片开合无关：卡片展开只出选项，解析要点下方按钮才出。
+            AnimatedVisibility(
+                visible = explanationOpen,
+                enter = expandVertically(tween(240)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(200)) + fadeOut(tween(160))
+            ) {
+                Column(
+                    Modifier
+                        .padding(top = 10.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ui.ink.copy(alpha = 0.05f))
+                        .clickable(
+                            interactionSource = null,
+                            indication = null,
+                            onClick = { explanationOpen = false }
+                        )
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        q.explanation,
+                        color = ui.textSub,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+            if (q.explanation.isNotBlank()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(
+                            interactionSource = null,
+                            indication = null,
+                            onClick = { explanationOpen = !explanationOpen }
+                        )
+                        .padding(vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (explanationOpen) "收起解析" else "查看解析",
+                        color = ui.textSub, fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Icon(
+                        if (explanationOpen) AppIcons.ChevronRight else AppIcons.ChevronRight,
+                        null,
+                        tint = ui.textSub,
+                        modifier = Modifier
+                            .size(13.dp)
+                            .graphicsLayer { rotationZ = if (explanationOpen) 90f else 0f }
+                    )
+                }
+            }
         }
+    }
     }
 }

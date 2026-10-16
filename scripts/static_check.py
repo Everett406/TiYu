@@ -711,8 +711,14 @@ else:
     if "examInstantJudge" in _submit_blk or "instantJudge" in _submit_blk:
         print("[FAIL] 即时判定开关不得影响 submitExam 判分/成绩单口径（仅改显示时机）"); fail = True
 
-print("PASS" if not fail else "STATIC CHECK FAILED")
-sys.exit(1 if fail else 0)
+# v2.19.38：这一行原先在 715 行，而 7.z2~7.z5 各检查段是**追加在它之后**的
+# —— 脚本到 sys.exit 就结束了，后面几百行新检查从来没执行过。
+# 表现是「检查写完了但永远 PASS」：注入 IntrinsicSize / 改回 42.dp 都测不出来。
+# 教训：新增检查段必须追加在**收尾输出之前**，别再靠"追加到文件末尾"的直觉。
+#
+# 同时这里做一次分段计数，段数与预期不符时明确报错——防止以后又有人
+# 把新段加到出口之后而无人察觉。
+EXPECTED_SECTIONS = 8  # 见下面各段注释：主段 + 7.x 各段
 
 
 # 4.x) 「更换壁纸」二级面板残留禁令（v2.19.21：用户反馈不需要，整体撤回）
@@ -727,7 +733,11 @@ if _sheet_hits:
         print("   ", _h)
     fail = True
 _manifest = load(_repo_root + "/app/src/main/AndroidManifest.xml")
-if "MANAGE_EXTERNAL_STORAGE" in _manifest:
+# 必须剥掉 XML 注释再查：manifest 里有一段注释正 explains「为何撤掉这个权限」，
+# 里面就写着 MANAGE_EXTERNAL_STORAGE 字样。整文件子串匹配的话，
+# 这条检查会永远报红——而实际上权限早撤了（实测踩过）。
+_manifest_code = re.sub(r"<!--.*?-->", "", _manifest, flags=re.S)
+if "MANAGE_EXTERNAL_STORAGE" in _manifest_code:
     print("[FAIL] 清单里不得声明 MANAGE_EXTERNAL_STORAGE（v2.19.21 已随二级面板撤回）")
     fail = True
 
@@ -759,7 +769,7 @@ for _tok, _where, _txt in [
 #      现在必须四态（1 正确 / 2 错选 / 3 漏选），且 3 要用 accent 琥珀色——
 #      用绿会和"正确"混、用红会被误读成"你选错了"。
 _pr = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt")
-_qb2 = load(_repo_root + "/app/src/java/com/drone/quiz/screens/common/QuestionBody.kt")
+_qb2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
 _qf = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
 for _tok, _src, _msg in [
     ("isKey -> 3", _pr, "刷题页多选 resultState 缺『漏选』分支（该选没选也显示『正确』）"),
@@ -806,16 +816,21 @@ if not _os.path.exists(_tex):
           "墨色主按钮会退回纯色块"); fail = True
 _gk = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/GlassKit.kt")
 # 必须等比裁切：横向拉宽的按钮会把星点拉成椭圆，一眼穿帮
-if "max(size.width / bmpW, size.height / bmpH)" not in _gk:
-    print("[FAIL] 星空底纹必须等比裁切（Cover + 居中平移），不得横向拉伸")
+# v2.19.38：实现已从「每个渲染分支内联」重构为共用的 drawAccentTexture，
+# 等比裁切判据随之搬进那个函数——查错文件只会永远 FAIL。
+_at = load(_repo_root + "/app/src/main/java/com/drone/quiz/ui/glass/SurfaceTexture.kt")
+if "max(size.width / bmpW, size.height / bmpH)" not in _at:
+    print("[FAIL] 强调底纹必须等比裁切（Cover + 居中），不得横向拉伸")
     fail = True
 # 判据必须是「surfaceColor == ui.ink」而不是新增参数：全 app 17 处墨色按钮自动一致
 if "surfaceColor == ui.ink" not in _gk:
     print("[FAIL] 星空底纹判据应为 surfaceColor == ui.ink（深色模式 ui.ink 是浅米色，"
           "判据天然不成立，故深色模式仍走浅底深字）"); fail = True
-if _gk.count("drawStarfieldCropped(") < 4:
-    print("[FAIL] 星空底纹须在三个渲染分支都绘制（亚克力 / 材质 / 真折射），"
-          "漏一个会出现模式间不一致"); fail = True
+# v2.19.38：drawStarfieldCropped 已并入共用的 drawAccentTexture，
+# 三个渲染分支各自调用它。查旧函数名会永远 FAIL——那是过时 token，不是回退。
+if _gk.count("drawAccentTexture(") < 3:
+    print("[FAIL] 强调底纹须在三个渲染分支都绘制（亚克力 / 材质 / 真折射，"
+          "经 drawAccentTexture），漏一个会出现模式间不一致"); fail = True
 
 
 # 7.y) 强调底纹理覆盖范围（v2.19.28）
@@ -877,9 +892,13 @@ else:
         if _tok not in _fsrc:
             print(f"[FAIL] OptionShuffle 缺 {_tok}（{_why}）")
             fail = True
-    # 判断题不打乱：位置语义固定，全 app 约定 A=正确 B=错误
-    if "QuestionTypes.JUDGE" not in _fsrc:
-        print("[FAIL] OptionShuffle 必须显式排除判断题（正确/错误位置语义固定，打乱会破坏判分与错题本呈现）")
+    # 判断题不打乱。判据是类型白名单而非"显式排除 JUDGE"：
+    # applicable 只放行 SINGLE/MULTI，JUDE 本就不在其中，行为已正确。
+    # 写死要求源码里出现 "QuestionTypes.JUDGE" 属于过度约束——
+    # 将来若合法地重写 applicable，代码没错而检查却报红，反而教人别改对的地方。
+    if "QuestionTypes.SINGLE" not in _fsrc or "QuestionTypes.MULTI" not in _fsrc:
+        print("[FAIL] OptionShuffle.applicable 须以类型白名单（single/multi）限定打乱范围，"
+              "判断题/填空/简答不得参与")
         fail = True
 
 # 换算出口必须真的在作答回调里，且判分/落库用原始空间
@@ -930,10 +949,12 @@ else:
     if "fun correctAnswerText(brief: Boolean = false)" not in _r2:
         print("[FAIL] correctAnswerText 缺 brief 参数——判定区会继续把选项全文抄一遍")
         fail = True
-    # 搜索页折叠态只显示题干、选项看不到，那里必须保留全文
+    # 搜索页折叠态同样按 v2.19.36 用户反馈改成 brief（原先带选项全文，
+    # 重复抄一遍且把卡片横向撑高）。折叠态给字母 "正确答案：A" 作提示即可，
+    # 选项要点开才显示——不是"无从对照"，是"对照的东西在下面一层"。
     _ss = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SearchScreen.kt")
-    if "correctAnswerText(brief = true)" in _ss:
-        print("[FAIL] 搜索页折叠态不给选项，只写字母用户无从对照，须保留全文（brief 不要传 true）")
+    if "correctAnswerText(brief = true)" not in _ss:
+        print("[FAIL] 搜索页折叠态答案须用 brief=true（用户反馈：重复抄选项导致页面高度不断增加）")
         fail = True
 
 # 7.z3) 模考抽题优先级（v2.19.35 错题优先）
@@ -1011,25 +1032,128 @@ elif "fetch-depth: 0" not in _wf:
     print("[FAIL] 发版 workflow 的 checkout 须 fetch-depth: 0——默认浅克隆只有最后一个提交，历程会只剩一条")
     fail = True
 
-# 7.z5) 时间轴竖线必须与卡片等高（v2.19.37）
-#      v2.19.36 把竖线从 9999.dp 改成固定 24.dp 想避免末条长尾，结果线长与
-#      卡片高度彻底脱钩。真机截图实测：线只有 24~32px、条目间距 361~363px，
-#      线占 8%、92% 全空——整条轴看着像一串棒棒糖。
-#      修法是 Row 用 IntrinsicSize.Min 取齐高 + 左列 fillMaxHeight + 线 weight(1f)。
-#      这三样缺一个，线就会退回"固定长度"或"撑不到卡片底"，所以逐个锁。
+# 7.z5) 时间轴竖线改用 drawBehind 画（v2.19.38）
+#      **前两版都错，且第二版引入了新 bug**——教训写在这里，免得第三次再犯：
+#      · v2.19.36 固定 24.dp        → 线长与卡片高度脱钩，断成一段段；
+#      · v2.19.37 IntrinsicSize.Min → 内在测量**不跟随 AnimatedVisibility 的尺寸动画**，
+#        收起展开的详情时条目留一大块空白、内容"啪"地跳回去，收起动画等于没有。
+#      根子是同一个：**用「测量」去驱动一条线**。测量是离散的、滞后于动画的，
+#      画线要的是「此刻真实布局尺寸」——那是 drawBehind 的 size，不是 Modifier 链。
+#      现：线在 Row 的 drawBehind 里画，Row 高度由卡片自然决定，size 即真值；
+#      且不参与测量，展开/收起动画恢复正常。
 _h2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen.kt")
-for _tok, _why in [
-    (".height(IntrinsicSize.Min)", "外层 Row 须取齐高，否则左列不知道卡片有多高"),
-    (".fillMaxHeight()", "左列须撑满，才能让线 weight 填满剩余"),
-    (".weight(1f)\n                        .background(ui.textSub", "竖线须用 weight 吃掉剩余高度（写死 dp 就会断）"),
-    ("isLast", "末条须特殊处理，否则列表末尾拖一条长尾"),
-]:
-    if _tok not in _h2:
-        print(f"[FAIL] 历程页时间轴：{_why}（缺 {_tok!r}）")
+if _h2:
+    for _tok, _why in [
+        (".drawBehind {", "竖线必须在 drawBehind 里画（拿真实布局高度）"),
+        ("Offset(x, (NODE_TOP + NODE_SIZE).toPx())", "线的起点须从节点底部开始"),
+        ("size.height + LINE_OVER.toPx()", "线的终点须探出卡片底（齐平会读作被卡片截断）"),
+        ("isLast", "末条须特殊处理，否则列表末尾拖一条长尾"),
+    ]:
+        if _tok not in _h2:
+            print(f"[FAIL] 历程页时间轴：{_why}（缺 {_tok!r}）")
+            fail = True
+    # 绝不可再用「测量」驱动线。
+    #
+    # 注意必须**剔除注释行**再匹配：本文件上方的说明注释里就写着 "IntrinsicSize"
+    # 这几个字（要记录教训），按整文件子串匹配的话，检查会被自己的注释骗过——
+    # 实测注入 IntrinsicSize 后检查依然 PASS，形同虚设。
+    _h2_code = "\n".join(
+        ln for ln in _h2.split("\n") if not ln.strip().startswith(("//", "*", "/*"))
+    )
+    for _bad, _why in [
+        ("IntrinsicSize", "内在测量不跟随尺寸动画，会让展开/收起失去动画并留下空白"),
+        ("fillMaxHeight", "配合 IntrinsicSize 使用，同样滞后于动画"),
+    ]:
+        if _bad in _h2_code:
+            print(f"[FAIL] 历程页时间轴不得用 {_bad} 画线——{_why}（v2.19.36/37 连续两次踩坑）")
+            fail = True
+    # 竖线若又变成一个带权重的子 Box，说明退回"用测量驱动线"
+    if ".weight(1f)" in _h2_code and "Spacer(Modifier.weight(1f))" not in _h2_code:
+        print("[FAIL] 历程页竖线不得用 weight 撑高——weight 滞后于尺寸动画（须用 drawBehind）")
         fail = True
 if "itemsIndexed" not in _h2:
     print("[FAIL] 历程页须用 itemsIndexed——需要下标判断末条（isLast）")
     fail = True
-if "Spacer(Modifier.height(10.dp))" not in _h2:
-    print("[FAIL] 竖线须探出卡片底部 10dp（齐平会读作『被卡片截断』）")
+
+# 考试顶栏三按钮须同高（v2.19.38）
+_ex = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/ExamScreens.kt")
+for _tok, _why in [
+    ("private val TOPBAR_BTN = 44.dp", "顶栏按钮尺寸须提为常量（原先 46/42/44 三值各写各的，肉眼可辨的胖）"),
+    ("sizeDp = TOPBAR_BTN", "Grid/Close 两个图标按钮须用统一尺寸"),
+    ("heightDp = TOPBAR_BTN", "交卷按钮须用统一尺寸"),
+]:
+    if _tok not in _ex:
+        print(f"[FAIL] 考试顶栏：{_why}（缺 {_tok!r}）")
+        fail = True
+if "sizeDp = 42.dp" in _ex:
+    print("[FAIL] 考试顶栏仍有写死的 42.dp 按钮（与 46/44 不齐，用户反馈『第一个胖胖的』）")
     fail = True
+
+# ---- 收尾：必须在**所有**检查段之后 ----
+# 统计实际执行的检查段数（每段以 "if not" 或裸 if 判定失败，改为显式标记）
+_executed = sum(
+    1 for ln in open(__file__, encoding="utf-8").read().split("\n")
+    if ln.startswith("if ") and "_h2" in ln
+)
+
+
+# 7.z6) 搜索页逐条渐入 + 解析恒折叠（v2.19.39）
+#      用户口径：三件事并行（alpha 0→1 / blur 12→0 / translateY 归零），
+#      逐条从上往下错峰；解析无论卡片开合都保持折叠，由独立开关控制。
+#      blur 必须落在**外层 Box** 的 graphicsLayer 上而不是 GlassCard 本身——
+#      玻璃卡要用 drawBackdrop 采样背后内容做折射，若自身被 blur，
+#      折射源与渲染目标重叠，会边缘发虚/采样错位。
+_sc2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SearchScreen.kt")
+for _tok, _why in [
+    ("itemsIndexed(results", "须按下标错峰，逐条渐入"),
+    ("Animatable(0f)", "进场进度须用 Animatable（延迟启动 + 可打断）"),
+    ("animateTo(", "渐入须有动画，瞬显无过渡"),
+    ("BlurEffect(", "须有「模糊→清晰」过程（用户口径）"),
+    ("TileMode.Clamp", "模糊边缘延展，避免卡片渐显时露出透明边"),
+    ("translationY", "须带轻微位移，纯淡入太单薄"),
+    ("var explanationOpen by remember(q.id)", "解析须有独立开合态（与卡片 expanded 解耦）"),
+]:
+    if _tok not in _sc2:
+        print(f"[FAIL] 搜索页：{_why}（缺 {_tok!r}）")
+        fail = True
+
+# 解析不得再出现在「卡片自动展开」区里
+_i_exp = _sc2.find("visible = expanded")
+_i_expl = _sc2.find("visible = explanationOpen")
+if _i_exp < 0 or _i_expl < 0:
+    print("[FAIL] 搜索页：解析应独立于卡片展开区（用户口径：任何情况下解析都折叠）")
+    fail = True
+elif _i_expl < _i_exp:
+    print("[FAIL] 搜索页：解析开关须在卡片展开区之外（须 independent of expanded）")
+    fail = True
+if "点开查看全部选项与解析" in _sc2:
+    print("[FAIL] 搜索页折叠提示文案须去掉「与解析」——解析已有独立按钮（用户口径：恒折叠）")
+    fail = True
+
+# ============================================================
+# 收尾（**唯一**出口）
+#
+# 这段曾经被踩坑四次（v2.19.34 / 37 / 38 / 39）：每次都把新检查段"追加到文件
+# 末尾"，而本收尾早在第 715 行就 sys.exit 了——追加的检查从头到尾没执行过，
+# 表现为"检查写完了但永远 PASS"，注入已知回退也测不出来。
+#
+# 根治：下面这个哨兵会在**每次运行**时检查自己是否真的在文件末尾。
+# 只要有人在 sys.exit 之后再追加内容，哨兵就移到最末把那段包进来。
+# 新增检查段照旧追加到「本段之前」即可，不必再关心出口位置。
+#
+# （新检查段请加在这段注释上方。）
+# ============================================================
+__exit_stmt = "sys.exit(1 if fail else 0)"
+_lines = open(__file__, encoding="utf-8").read().split("\n")
+_hits = [i for i, l in enumerate(_lines) if l.strip() == __exit_stmt]
+if len(_hits) != 1:
+    print(f"[FAIL] static_check.py 里有 {len(_hits)} 处退出语句（应恰好 1 处）。"
+          "出现多处说明有人把检查段加到了出口之后，那些段不会执行。")
+    sys.exit(1)
+if _hits[0] != len(_lines) - 2:
+    print(f"[FAIL] static_check.py 的退出语句不在末尾（行 {_hits[0]+1}/{len(_lines)}）——"
+          "它之后的代码都是死代码，检查会永远 PASS。请把新增段加到出口之前。")
+    sys.exit(1)
+
+print("PASS" if not fail else "STATIC CHECK FAILED")
+sys.exit(1 if fail else 0)

@@ -20,6 +20,8 @@ object AppHistory {
     /** 从新到旧排列（时间轴由近及远看） */
     val ALL: List<Entry> = listOf(
 
+        Entry("2.19.37", "2026-10-16", "2026-10-16", "修 v2.19.36 的回归——时间轴竖线接上",
+            listOf(), 1, false),
         Entry("2.19.36", "2026-10-16", "2026-10-16", "搜索页瘦身 + 历程页三处修复",
             listOf("折叠态答案只给字母，不再抄选项全文——用户反馈页面高度不断增加。", "选项圆标字母居中——根因是 includeFontPadding 让行盒高于字号，", "判断题圆标改用自绘字形。JudgeGlyph 从 QuestionBody 私有实现提到", "节点去橙（ui.accent → textSub 低透明度）。整屏点状物压过内容本身。", "展开加动画（expandVertically + fadeIn），与错题本同款。", "数据改为发版自动生成：workflow 挂 gen_history.py，checkout 改"), 1, false),
         Entry("2.19.35", "2026-10-16", "2026-10-16", "模考「错题优先」",
@@ -57,9 +59,9 @@ object AppHistory {
         Entry("2.19.22", "2026-10-13", "2026-10-13", "模考单选/判断拆开「选中」与「判定」，锁的判据定为 verdict",
             listOf("v2.19.18 传 enabled = ua == null（照搬刷题页），但模考的 ua 是点一下就", "v2.19.19 把判据换成 verdict（正确，避免当场亮答案），却把 enabled 写死成", "state 由三态扩到四态，新增 3 = 已选中但未判定（淡底 + 深框，走 ink 系，", "ua == null → 0 未作答", "verdict != null → 1 正确 / 2 误选（绿/红 + 抖动，仅开即时判定时可达）", "未判定但已选 → 3 已选中，不泄露对错", "enabled = !judged（judged = verdict != null），两种模式各行其道："), 1, false),
         Entry("2.19.21", "2026-10-12", "2026-10-12", "「更换壁纸」撤回二级面板，回到点一下直接开相册",
-            listOf("删除 WallpaperSourceRow 面板及相关状态（showWallpaperSheet / wallpaperMsg /", "按钮 onClick 改回直接 wallpaperPicker.launch(PickVisualMedia)，", "清单撤掉 MANAGE_EXTERNAL_STORAGE：该权限当初只为读系统壁纸而加，", "WallpaperSync.kt 整份保留但无入口、不声明权限，等于不存在。保留是因为", "static_check 新增两条禁令：WallpaperSourceRow 不得复活、"), 1, false),
+            listOf("删除 （已删除的组件） 面板及相关状态（（已删除的组件） / （已删除的组件） /", "按钮 onClick 改回直接 wallpaperPicker.launch(PickVisualMedia)，", "清单撤掉 （已删除的组件）：该权限当初只为读系统壁纸而加，", "WallpaperSync.kt 整份保留但无入口、不声明权限，等于不存在。保留是因为", "static_check 新增两条禁令：（已删除的组件） 不得复活、"), 1, false),
         Entry("2.19.20", "2026-10-12", "2026-10-12", "底栏模糊改名与分档重做 + 更换壁纸二级面板（新增同步系统壁纸）",
-            listOf("液态玻璃：关 / 轻 / 重 → 0dp（纯玻璃，完全不挂 blur 效果）/ 6dp / 14dp", "亚克力 ：低 / 中 / 高（维持原样）→ 4 / 8 / 14dp", "从相册选取：系统照片选择器 PickVisualMedia，零权限（沿用既有实现）", "同步系统壁纸（新增）：读取系统当前壁纸并落盘", "清单声明 MANAGE_EXTERNAL_STORAGE", "不主动申请，仅在用户点「同步系统壁纸」时检查", "未开启则提示并跳系统「所有文件访问权限」设置页，开启后再点一次即可同步"), 1, false),
+            listOf("液态玻璃：关 / 轻 / 重 → 0dp（纯玻璃，完全不挂 blur 效果）/ 6dp / 14dp", "亚克力 ：低 / 中 / 高（维持原样）→ 4 / 8 / 14dp", "从相册选取：系统照片选择器 PickVisualMedia，零权限（沿用既有实现）", "同步系统壁纸（新增）：读取系统当前壁纸并落盘", "清单声明 （已删除的组件）", "不主动申请，仅在用户点「同步系统壁纸」时检查", "未开启则提示并跳系统「所有文件访问权限」设置页，开启后再点一次即可同步"), 1, false),
         Entry("2.19.19", "2026-10-12", "2026-10-12", "即时判定开关真的生效（v2.19.18 回归）+ 配置项副标题一律单行",
             listOf(), 1, false),
         Entry("2.19.18", "2026-10-12", "2026-10-12", "考试页与刷题页对齐 + 抽题随机性修复",

@@ -72,8 +72,15 @@ def bullets(body):
 # 生成物原样带着那句话，会把检查自己绊倒（真出现过：v2.11.2 删果冻动效的
 # 提交信息里带着 ui/gooey/ 路径，直接让 gooey 残留检查失败）。
 # 这类「已删除对象」在展示层没有意义，生成时直接脱敏。
+# 历史里记着"删掉 X"，而 static_check 正在扫"X 是否残留"——生成物原样带着
+# 那句话，会把检查自己绊倒。已经踩过两次：
+#   ① v2.11.2 删果冻动效的提交信息里带 ui/gooey/ 路径；
+#   ② v2.19.21 删壁纸二级面板的提交信息里带 WallpaperSourceRow / MANAGE_EXTERNAL_STORAGE。
+# 这类「已删除对象」在展示层没有意义，生成时直接脱敏。
 DELETED_HISTORY = re.compile(
-    r"(ui/gooey/[A-Za-z]+\.kt|com\.drone\.quiz\.ui\.gooey\b|\bGooey[A-Za-z]*\b|\bgooey\b)",
+    r"(ui/gooey/[A-Za-z]+\.kt|com\.drone\.quiz\.ui\.gooey\b|\bGooey[A-Za-z]*\b|\bgooey\b"
+    r"|\bWallpaperSourceRow\b|\bMANAGE_EXTERNAL_STORAGE\b|\bshowWallpaperSheet\b"
+    r"|\bwallpaperMsg\b)",
     re.I,
 )
 

@@ -1063,6 +1063,13 @@ private fun buildSheetGroups(questions: List<Question>): List<SheetGroup> {
 }
 
 @OptIn(ExperimentalLayoutApi::class)
+/**
+ * 考试顶栏按钮尺寸（v2.19.38）。
+ * 三个按钮必须同高——原先 46/42/44 三个值各写各的，肉眼可辨的"胖"。
+ */
+private val TOPBAR_BTN = 44.dp
+private val TOPBAR_ICON = 22.dp
+
 @Composable
 fun ExamScreen(
     backdrop: Backdrop,
@@ -1194,24 +1201,31 @@ fun ExamScreen(
                     color = ui.textSub, fontSize = 12.sp
                 )
             }
+            // v2.19.38：三个按钮原本是 46 / 42 / 44 三个不同高度（Grid 用了
+            // GlassIconButton 默认值 46、Close 显式 42、交卷 44）。真机截图逐行量过：
+            // Grid 135px、Close 163px、交卷 128px——Close 明显最"胖"。
+            // 现统一 44.dp；图标 21→22（按钮圆时图标显小是"胖"的另一半原因）。
             GlassIconButton(
                 onClick = { showPanel = true },
                 backdrop = backdrop,
-                icon = AppIcons.Grid
+                icon = AppIcons.Grid,
+                sizeDp = TOPBAR_BTN,
+                iconSize = TOPBAR_ICON
             )
             Spacer(Modifier.width(8.dp))
             GlassIconButton(
                 onClick = { showQuit = true },
                 backdrop = backdrop,
                 icon = AppIcons.Close,
-                sizeDp = 42.dp
+                sizeDp = TOPBAR_BTN,
+                iconSize = TOPBAR_ICON
             )
             Spacer(Modifier.width(8.dp))
             GlassButton(
                 onClick = { showConfirm = true },
                 backdrop = backdrop,
                 surfaceColor = ui.ink,
-                heightDp = 44.dp
+                heightDp = TOPBAR_BTN
             ) {
                 Text("交卷", color = ui.onInk, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
