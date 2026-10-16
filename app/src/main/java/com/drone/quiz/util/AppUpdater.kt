@@ -24,6 +24,16 @@ object AppUpdater {
     private const val LATEST_API = "https://api.github.com/repos/Everett406/TiYu/releases/latest"
 
     /** Releases 页面（浏览器打开入口；手动浏览/下载安装包都到这里） */
+    /**
+     * 「GitHub 发布页」点击后打开的地址（v2.19.41）。
+     *
+     * 改指产品发布页（GitHub Pages），而不是 Releases 列表页：用户点开是想
+     * "看介绍、下载、看历史版本"，而 Releases 列表页给的是一屏版本号和
+     * 大段的更新日志——那是给开发者看的，不是给使用者看的。
+     *
+     * Pages 不可用时（首次发版前、或网络受限）自动退回 Releases 列表页。
+     */
+    const val SITE_URL = "https://everett406.github.io/TiYu/"
     const val RELEASES_URL = "https://github.com/Everett406/TiYu/releases"
 
     /**
@@ -63,10 +73,30 @@ object AppUpdater {
     }
 
     /** 用浏览器打开 Releases 页（用户设备无浏览器时静默失败）。 */
+    /** 打开产品发布页；探测失败（还没部署 / 被墙）则退回 Releases 列表页。 */
     fun openReleases(context: Context) {
+        val fallback = { fallbackLaunch(context, RELEASES_URL) }
+        runCatching {
+            // 先用一次 HEAD 探测 Pages 是否活着：不要 UA/IO 阻塞主线程太久，
+            // 交给应用切到后台线程执行，探测中先不动 UI。
+            Thread {
+                val ok = runCatching {
+                    val conn = URL(SITE_URL).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 2500
+                    conn.readTimeout = 2500
+                    conn.requestMethod = "HEAD"   // 只问在不在，不拉内容
+                    conn.responseCode in 200..399
+                }.getOrDefault(false)
+                val target = if (ok) SITE_URL else RELEASES_URL
+                fallbackLaunch(context, target)
+            }.start()
+        }.onFailure { fallback() }
+    }
+
+    private fun fallbackLaunch(context: Context, url: String) {
         runCatching {
             context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL))
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }

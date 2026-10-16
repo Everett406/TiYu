@@ -174,6 +174,8 @@ fun ExamConfigScreen(
     // v2.8.3 题型构成：自动按库内占比 / 手动拖比例滑杆（百分比，联动让出份额）
     var autoMix by remember { mutableStateOf(true) }
     var ratios by remember { mutableStateOf<Map<String, Int>>(emptyMap()) } // 题型 → 0..100
+    // v2.19.41：从已存配置回填过（用于「恢复上次设置」提示）
+    var restoredFrom by remember { mutableStateOf(false) }
 
     val recentExams by remember(settings.currentBank) {
         ServiceLocator.repo.recentExams(settings.currentBank)
@@ -206,6 +208,40 @@ fun ExamConfigScreen(
             preferUnseen = st.examPreferUnseen
             shuffleOptions = st.examShuffleOptions
             preferWrong = st.examPreferWrong
+
+            // v2.19.41 模考设置记忆。
+            //
+            // 病灶：开考时其实**一直有**在存（setExamQuickConfig，快捷方式「快速
+            // 模考」就靠它），但配置页打开时从不去读——count/durationMin/
+            // judgeRatio/ratios 四个 state 全是硬编码初值（50 / 60 / 0.3 / 空）。
+            // 于是表现为「开关记住了、滑杆没记住」：开关走 st.* 有持久化，
+            // 滑杆走 remember 硬编码，每次进页面都回到默认。
+            //
+            // 现在把已存配置回填进来。注意 counts 是"题型→题数"而非总题数，
+            // 要反推回 UI 的两个量（总题数 + 手动比例）：
+            //  · 总题数 = counts 之和
+            //  · 手动比例由 counts 折算，再按题库实际题量归一（题库变了比例才有意义）
+            runCatching {
+                ServiceLocator.settings.examQuickConfig()?.takeIf { it.counts.isNotEmpty() }
+            }.getOrNull()?.let { qc ->
+                val sum = qc.counts.values.sum()
+                if (sum > 0) {
+                    count = sum
+                    durationMin = qc.durationMin
+                    autoMix = st.examAutoMix
+                    if (!st.examAutoMix) {
+                        // 按各题型实际题量归一化，还原成 0..100 的比例
+                        val avail = ServiceLocator.repo.bankTypeCounts(bank)
+                        val denom = qc.counts.values.sum().toFloat().coerceAtLeast(1f)
+                        ratios = qc.counts.entries.associate { (t, n) ->
+                            t to (((n / denom) * 100f).roundToInt())
+                        }
+                        // 归一化后可能有零头没分配完，补给份数最多的题型
+                        ratios = fixRatiosRoundOff(ratios, qc.counts.keys.toList(), avail)
+                    }
+                    restoredFrom = true
+                }
+            }
             autoMix = st.examAutoMix
             ratios = autoRatios(types, bankTypeCounts)
         }
@@ -289,6 +325,46 @@ fun ExamConfigScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
         ) {
+
+            // v2.19.41：已按上次设置填好，明确告诉用户"这是上次的、不用重设"，
+            // 否则用户会以为这还是默认值、又手动调一遍（那就白记忆了）。
+            if (restoredFrom) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "已沿用上次的设置",
+                        color = ui.accent, fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "恢复默认",
+                        color = ui.textSub, fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(
+                                interactionSource = null,
+                                indication = null,
+                                onClick = {
+                                    count = 50
+                                    durationMin = 60
+                                    judgeRatio = 0.3f
+                                    autoMix = true
+                                    ratios = autoRatios(bankTypes, bankTypeCounts)
+                                    restoredFrom = false
+                                    scope.launch {
+                                        ServiceLocator.settings.setExamQuickConfig(null)
+                                    }
+                                }
+                            )
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
 
             if (classicMode) {
                 // ---- 考试设置：2×2 紧凑网格（单选+判断题库） ----
@@ -1063,6 +1139,26 @@ private fun buildSheetGroups(questions: List<Question>): List<SheetGroup> {
 }
 
 @OptIn(ExperimentalLayoutApi::class)
+/**
+ * 比例归一化的零头分配（v2.19.41）。
+ *
+ * counts 反推比例后四舍五入会掉零头（三个题型各 33% 只剩 99%），
+ * 剩下的 1% 得补给某个题型，否则"手动配比"永远凑不满 100、
+ * 份数会整体偏小。把余量给**当前库内题量最多**的那个题型最不容易显出偏差。
+ */
+private fun fixRatiosRoundOff(
+    ratios: Map<String, Int>,
+    types: List<String>,
+    avail: Map<String, Int>
+): Map<String, Int> {
+    val total = ratios.values.sum()
+    if (total == 100 || total == 0) return ratios
+    val target = types.maxByOrNull { avail[it] ?: 0 } ?: return ratios
+    return ratios.toMutableMap().apply {
+        this[target] = ((this[target] ?: 0) + (100 - total)).coerceAtLeast(0)
+    }
+}
+
 /**
  * 考试顶栏按钮尺寸（v2.19.38）。
  * 三个按钮必须同高——原先 46/42/44 三个值各写各的，肉眼可辨的"胖"。

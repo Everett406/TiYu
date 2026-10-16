@@ -62,6 +62,13 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
+          # v2.19.41：再存一份**不带版本号**的固定名资产。
+          # releases/latest/download/ 只认固定名——有了它，产品页和任何外部
+          # 直链都能写死 TiYu-latest.apk，不必跟着版本号改。
+          # 仅正式版更新它：preview/draft 不该抢"最新"这个位置。
+          if [ "${{ env.IS_PREVIEW }}" != "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk dist/TiYu-latest.apk
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -77,7 +84,9 @@ jobs:
           # 预览通道：draft = 仓库内可见可下载，但不会对外公开
           draft: ${{ env.IS_PREVIEW == 'true' }}
           prerelease: ${{ env.IS_PREVIEW == 'true' }}
-          files: dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
+          files: |
+            dist/TiYu-${{ env.APP_VERSION_NAME }}.apk
+            dist/TiYu-latest.apk
           body: |
             ## 题屿 TiYu v2.19.40
 
@@ -107,3 +116,25 @@ jobs:
             ---
 
             **安装**：下载下方 `TiYu-2.19.40.apk` **覆盖安装**即可，学习数据自动迁移。
+
+  # 产品发布页（v2.19.41）：静态站，GitHub Pages 托管，零成本零服务器。
+  # 与 Release job 并行，两者互不依赖——APK 发版成功与页面部署成功是两件事。
+  pages:
+    name: Deploy product site
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
