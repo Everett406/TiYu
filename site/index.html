@@ -821,12 +821,17 @@ addEventListener('scroll', onScroll, { passive: true });
    （对应 App v2.19.33 的「打乱选项」，判断题不打乱）。
 
    逐字浮现的参数与 App 内 ParseBlock 完全一致：
-     56 字/秒 · 单字入场 230ms · 起始模糊 3px
+     67 字/秒 · 单字入场 340ms · 起始模糊 6.5px
      透明度线性，模糊走 easeOut 提前收干净
      —— 若模糊与透明度同步结束，最后一点模糊会落在已满不透明度的字上，
         读起来是脏点而不是「对焦」。
    ═══════════════════════════════════════════════════════════ */
-const CPS = 56, ENTRY = 230, BLUR = 3;
+const CPS = 67, ENTRY = 340, BLUR = 6.5;
+/* 模糊随进度衰减：1 - p^0.55，慢启动后段陡收。
+   （原先用的 1-easeOut(p) = (1-p)^2 是急减速，模糊在字还没看清时就烧完了，
+     等 alpha 爬到 0.5、眼睛终于能看清它时，模糊只剩 0.75px——对 26px 高的字
+     是 2.9%，肉眼基本无感。新的曲线让模糊覆盖「字真正可见」的整段。） */
+const blurOf = p => BLUR * (1 - Math.pow(Math.max(0, Math.min(1, p)), 0.55));
 const BANK = [
   // 原题原解析，取自 assets/questions.json。挑「短而贴题」的三道：
   // 解析长度决定逐字浮现的总时长（字数 × 50ms + 290ms），太长网页上要干等。
@@ -863,9 +868,19 @@ function reveal(el, text){
     // 透明度：线性走到底
     sp.animate([{opacity:0},{opacity:1}],
       {duration:ENTRY, delay:d, easing:'linear', fill:'both'});
-    // 模糊：easeOut 提前收干净，比透明度更早到达 0
-    sp.animate([{filter:`blur(${BLUR}px)`},{filter:'blur(0px)'}],
-      {duration:ENTRY, delay:d, easing:'cubic-bezier(.1,.85,.25,1)', fill:'both'});
+    // 模糊：blurOf(p) = BLUR*(1-p^0.55) 的关键帧近似（easing 用 linear，
+    // 曲线的"慢启动"完全由关键帧位置表达，不靠 easing 二次加工）。
+    // 74% 之后直接归零 —— 那时 blur 已不足 1px（字高的 3.8%），
+    // 肉眼无感却仍占着一个滤镜图层，与 App 侧的 1.0px 阈值等效。
+    sp.animate([
+      {offset:0.00, filter:`blur(${BLUR.toFixed(2)}px)`},
+      {offset:0.15, filter:`blur(${(BLUR*0.666).toFixed(2)}px)`},
+      {offset:0.30, filter:`blur(${(BLUR*0.484).toFixed(2)}px)`},
+      {offset:0.45, filter:`blur(${(BLUR*0.359).toFixed(2)}px)`},
+      {offset:0.60, filter:`blur(${(BLUR*0.245).toFixed(2)}px)`},
+      {offset:0.74, filter:'blur(0px)'},
+      {offset:1.00, filter:'blur(0px)'},
+    ], {duration:ENTRY, delay:d, easing:'linear', fill:'both'});
   });
 }
 

@@ -1155,9 +1155,15 @@ for _tok, _why in [
     # 旧实现把每个字做成独立 Text 节点竖排（每字一行 → 高度暴涨），
     # 且在组合期读 System.currentTimeMillis()（非状态驱动 → 抖动）。
     # 以下检查锚定的是**结构性不变量**，不是可被重命名骗过去的字符串。
-    ("REVEAL_CPS = 56f", "逐字揭示速度须为 56 字/秒（用户两次嫌慢，20→36→56）"),
-    ("ENTRY_MS = 230f", "单字入场须为 230ms"),
-    ("BLUR_PX = 3f", "起始模糊半径须为 3px（参考实现口径）"),
+    ("REVEAL_CPS = 67f", "逐字揭示速度须为 67 字/秒（用户三次嫌慢，20→36→56→67）"),
+    ("ENTRY_MS = 340f", "单字入场须为 340ms（用户要求渐显/模糊周期更长）"),
+    ("BLUR_PX = 6.5f", "起始模糊须为 6.5px——3px 只有字高的 11%，肉眼无感"),
+    # v2.19.49：模糊曲线从 (1-p)^2 换成 1-p^0.55。
+    # 旧曲线是急减速，模糊在「字看得见」之前就烧完了（p=0.5 时仅剩 0.75px），
+    # 用户反馈「模糊感觉不明显」正源于此。换慢启动曲线让模糊覆盖可见区间。
+    ("private fun blurOf(p: Float)", "须有独立的模糊衰减曲线"),
+    ("1f - t.pow(0.55f)", "模糊曲线必须是慢启动的 1-p^0.55，而不是 (1-p)^2 急减速"),
+    ("renderEffect = if (blur > 1f)", "模糊阈值取 1px：更低肉眼无感却仍占 RenderEffect 图层"),
     # v2.19.47 纵向对齐：占位框必须与单字**自然盒子**重合。
     # 用 lineHeight 撑高的占位框 + TextCenter 对齐，会让字整体下沉一个 descent
     # （用户截图：动画中的字与前后静止字不在一条基线上）。
@@ -1165,7 +1171,6 @@ for _tok, _why in [
      "占位框须用不带 lineHeight 的 charStyle 测量，否则基线会整体下沉"),
     ("placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter",
      "占位框垂直对齐方式"),
-    ("private fun easeOut", "blur 须用 easeOut 提前收干净，否则末尾残影落在满不透明度的字上"),
     ("BlurEffect(blur, blur, TileMode.Clamp)", "逐字模糊须用 BlurEffect"),
     ("arrivalOf", "须按逐字到达时刻推进，而非一次性全出"),
     ("withFrameNanos", "动画时钟须由帧回调驱动；组合期读 System.currentTimeMillis 会导致抖动"),
@@ -1513,13 +1518,13 @@ for _name, _pat, _unit, _why in [
                   % (_v, _c.group(1) if _c else "缺失"))
             fail = True
     elif _name == "ENTRY":
-        _e = re.search(r"const CPS = [\d.]+, ENTRY = (\d+), BLUR = [\d]+;", _site)
+        _e = re.search(r"const CPS = [\d.]+, ENTRY = (\d+), BLUR = [\d.]+;", _site)
         if not _e or abs(float(_e.group(1)) - float(_v)) > 0.01:
             print("[FAIL] 产品页 demo：ENTRY 与 App 的 ENTRY_MS 不一致（App=%s Page=%s）"
                   % (_v, _e.group(1) if _e else "缺失"))
             fail = True
     else:
-        _b = re.search(r"const CPS = [\d.]+, ENTRY = \d+, BLUR = (\d+);", _site)
+        _b = re.search(r"const CPS = [\d.]+, ENTRY = \d+, BLUR = ([\d.]+);", _site)
         if not _b or abs(float(_b.group(1)) - float(_v)) > 0.01:
             print("[FAIL] 产品页 demo：BLUR 与 App 的 BLUR_PX 不一致（App=%s Page=%s）"
                   % (_v, _b.group(1) if _b else "缺失"))
@@ -1530,9 +1535,17 @@ if "fill:'both'" not in _site:
     print("[FAIL] 产品页 demo：WAAPI 必须 fill:'both'；'backwards' 会让动画结束后回落到 "
           "opacity:0，整段解析永远看不见")
     fail = True
-if "cubic-bezier(.1,.85,.25,1)" not in _site:
-    print("[FAIL] 产品页 demo：模糊须用 easeOut 提前收干净，与 App 一致")
-    fail = True
+# 模糊曲线与 App 一致：慢启动的 1-p^0.55（关键帧近似），
+# 74% 之后归零 —— 那时 blur 已不足 1px，与 App 侧的 1.0px 阈值等效。
+for _tok, _why in [
+    ("Math.pow(Math.max(0, Math.min(1, p)), 0.55)",
+     "demo 的模糊曲线须与 App 的 blurOf 同一套（1-p^0.55）"),
+    ("offset:0.74, filter:'blur(0px)'",
+     "74% 之后须归零，等效于 App 侧的 1.0px 阈值，省掉无意义的滤镜图层"),
+]:
+    if _tok not in _site:
+        print("[FAIL] 产品页 demo：%s（缺 %r）" % (_why, _tok))
+        fail = True
     if _tok not in _site:
         print("[FAIL] 产品页 demo：%s（缺 %r）" % (_why, _tok))
         fail = True

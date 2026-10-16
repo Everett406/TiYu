@@ -16,8 +16,8 @@ env:
   # versionCode 抬高可覆盖安装线上正式版、Release 以 draft 发布（仓库里可见可下载，
   # 但不对外公开）。验证通过后把 IS_PREVIEW 改回 false、版本号去掉后缀即可正式发。
   IS_PREVIEW: 'false'
-  APP_VERSION_NAME: 2.19.48
-  APP_VERSION_TAG: v2.19.48
+  APP_VERSION_NAME: 2.19.49
+  APP_VERSION_TAG: v2.19.49
 
 jobs:
   build:

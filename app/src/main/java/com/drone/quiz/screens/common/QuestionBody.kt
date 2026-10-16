@@ -110,6 +110,7 @@ import androidx.compose.ui.text.drawText
 
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
+import kotlin.math.pow
 
 
 import androidx.compose.ui.text.buildAnnotatedString
@@ -529,18 +530,34 @@ fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
  * 换行、行高、字距、基线全部与其他文字同源，不可能对不齐。
  * 容器高度也由 Text 自然撑开——不需要再去推算「已经渲染到第几行」。
  */
-private const val REVEAL_CPS = 56f              // 字/秒（20 → 36 → 56，用户两次嫌慢）
-private const val ENTRY_MS = 230f                // 单字入场时长
-private const val BLUR_PX = 3f                   // 起始模糊半径
-private const val TAIL_WINDOW = 16               // 同时可能在入场的字数上限（230ms / 17.9ms ≈ 13，留 3 个余量）
+private const val REVEAL_CPS = 67f              // 字/秒（20→36→56→67，用户三次嫌慢）
+private const val ENTRY_MS = 340f                // 单字入场时长（用户要求渐显/模糊周期更长）
+private const val BLUR_PX = 6.5f                 // 起始模糊半径
+private const val TAIL_WINDOW = 26               // 同时可能在入场的字数上限（340ms / 14.9ms ≈ 23，留 3 个余量）
 
 /** 第 i 个字的到达时刻（ms） */
 private fun arrivalOf(i: Int) = i * (1000f / REVEAL_CPS)
 
-/** blur 专用 easeOut：前段猛、尾巴收得快，保证模糊先于透明度收干净 */
-private fun easeOut(t: Float): Float {
-    val inv = 1f - t.coerceIn(0f, 1f)
-    return 1f - inv * inv
+/**
+ * 模糊随进度的衰减（v2.19.49 重写）。
+ *
+ * 之前用的是 `1 - easeOut(p)`，展开就是 **(1-p)²** —— 一条**急减速**曲线：
+ * 模糊在字还几乎看不见的时候（alpha≈0.2）就已经掉到 1.9px，等 alpha 爬到
+ * 0.5、一双眼睛终于能看清它时，模糊只剩 0.75px。对 13sp（约 26px 高）的字
+ * 来说那是字高的 2.9%，肉眼基本无感——用户反馈「模糊感觉不明显」正是这个。
+ *
+ * 换成 **1 - p^0.55**：慢启动、后段陡收。
+ *   p=0.3 → 3.15px（字高 12%）：刚能看清时，明确看得出是糊的
+ *   p=0.6 → 1.59px（6%）      ：仍在对焦
+ *   p=0.9 → 0.37px             ：收尾
+ *   p=1   → 0                  ：**精确归零**，不会停在非 0 留脏点
+ *
+ * 关键在于模糊现在覆盖了「字真正可见」的整段，而不是抢在可见之前烧完。
+ * 透明度仍走线性——线性才是「渐显」该有的匀速感。
+ */
+private fun blurOf(p: Float): Float {
+    val t = p.coerceIn(0f, 1f)
+    return BLUR_PX * (1f - t.pow(0.55f))
 }
 
 @Composable
@@ -647,9 +664,13 @@ private fun RevealText(text: String, modifier: Modifier = Modifier) {
                     style = charStyle,
                     modifier = Modifier.graphicsLayer {
                         val p = ((frameMs - arrivalOf(i)) / ENTRY_MS).coerceIn(0f, 1f)
-                        val blur = BLUR_PX * (1f - easeOut(p))
+                        val blur = blurOf(p)
                         alpha = p
-                        renderEffect = if (blur > 0.05f) {
+                        // 阈值 1.0px：blur 降到字高的 3.8% 时肉眼已基本无感，
+                        // 却仍占着一个 RenderEffect 图层。入场周期拉长后同时在场
+                        // 的字多达 23 个，砍掉这批能省约四分之一的图层开销，
+                        // 而「对焦感」最明显的前 74% 进度完全保留。
+                        renderEffect = if (blur > 1f) {
                             BlurEffect(blur, blur, TileMode.Clamp)
                         } else null
                     }
