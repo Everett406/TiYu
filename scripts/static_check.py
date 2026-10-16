@@ -1148,16 +1148,39 @@ for _tok, _why in [
      "ParseBlock 须有 autoOpen 参数（搜索页解析随卡片展开，不需要独立按钮）"),
     ("var open by remember(explanation) { mutableStateOf(autoOpen) }",
      "解析须默认折叠（用户口径：无论考试还是刷题都不该默认摊开）"),
-    ("点击展开解析", "折叠态须有可点的展开入口"),
+    ("查看解析", "折叠态须有可点的展开入口"),
+    # ── v2.19.42 用户回归：容器暴涨 + 吐字抖动 + 看不到对焦效果 ──
+    # 旧实现把每个字做成独立 Text 节点竖排（每字一行 → 高度暴涨），
+    # 且在组合期读 System.currentTimeMillis()（非状态驱动 → 抖动）。
+    # 以下检查锚定的是**结构性不变量**，不是可被重命名骗过去的字符串。
     ("REVEAL_CPS = 20f", "逐字揭示速度须为 20 字/秒（用户口径）"),
-    ("REVEAL_BLUR_PX = 3f", "起始模糊半径 3px（用户指定参考页的参数）"),
+    ("ENTRY_MS = 290f", "单字入场须为 290ms（参考实现口径）"),
+    ("BLUR_PX = 3f", "起始模糊半径须为 3px（参考实现口径）"),
     ("private fun easeOut", "blur 须用 easeOut 提前收干净，否则末尾残影落在满不透明度的字上"),
-    ("BlurEffect(blurPx, blurPx, TileMode.Clamp)", "逐字模糊须用 BlurEffect"),
-    ("revealArrivalMs", "须按逐字到达时刻推进，而非一次性全出"),
+    ("BlurEffect(blur, blur, TileMode.Clamp)", "逐字模糊须用 BlurEffect"),
+    ("arrivalOf", "须按逐字到达时刻推进，而非一次性全出"),
+    ("withFrameNanos", "动画时钟须由帧回调驱动；组合期读 System.currentTimeMillis 会导致抖动"),
+    ("rememberTextMeasurer", "须用 TextMeasurer 取排版真值，否则无法让容器高度跟随文字"),
+    ("getHorizontalPosition", "须用真实排版坐标定位每个字，否则换行后位置全错"),
+    ("LaunchedEffect(targetH)", "高度动画须以 targetH 为 key，否则高度不会跟随文字变化"),
+    ("curLine", "容器高度须按当前渲染行数计算，而非一次撑到全文高度"),
 ]:
     if _tok not in _qb3:
         print("[FAIL] 解析组件：%s（缺 %r）" % (_why, _tok))
         fail = True
+
+# 反向禁令：绝不能退回「逐字独立 Text 节点竖排」——那是高度暴涨的根因
+for _bad, _why in [
+    ("val ch in tail", "不得把每个字做成独立 Text 节点（每字一行 → 容器高度暴涨）"),
+]:
+    if _bad in _qb3:
+        print("[FAIL] 解析组件：%s（出现 %r）" % (_why, _bad))
+        fail = True
+
+# 标题行合并：解析 / 查看解析 / 收起 必须同一行（用户 v2.19.42 明确要求）
+if 'if (open) "收起" else "查看解析"' not in _qb3:
+    print("[FAIL] 解析组件：标题行须合并为一行，右侧在「查看解析」/「收起」间切换")
+    fail = True
 
 # 六处调用点：不得再有自己画解析的（说明又分叉了）
 for _f, _min in [

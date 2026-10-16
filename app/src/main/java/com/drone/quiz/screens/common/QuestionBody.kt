@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -85,7 +86,29 @@ import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TileMode
 
 import kotlinx.coroutines.delay
+import androidx.compose.animation.core.LinearEasing
 
+import androidx.compose.runtime.mutableFloatStateOf
+
+import androidx.compose.runtime.withFrameNanos
+
+import androidx.compose.ui.text.AnnotatedString
+
+import androidx.compose.ui.text.rememberTextMeasurer
+
+import androidx.compose.ui.unit.Dp
+
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+import androidx.compose.ui.geometry.Offset
+
+import androidx.compose.ui.platform.LocalDensity
+
+import androidx.compose.ui.text.ExperimentalTextApi
+
+import androidx.compose.ui.text.drawText
+
+import androidx.compose.ui.unit.Constraints
 
 /**
  * 题型作答组件族（v2.8.0）：刷题页与模考页共用。
@@ -399,9 +422,8 @@ fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
             .background(ui.ink.copy(alpha = 0.05f))
             .padding(14.dp)
     ) {
-        Text("解析", color = ui.textSub, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
         if (!hasText) {
+            Text("解析", color = ui.textSub, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Text(
                 "暂无解析",
                 color = ui.text,
@@ -411,172 +433,97 @@ fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
             return@Column
         }
 
-        if (!open) {
-            // 折叠态：容器内一行可点的标题，不把按钮放到容器外面去
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(
-                        interactionSource = null,
-                        indication = null,
-                        onClick = { open = true }
-                    )
-                    .padding(vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "点击展开解析",
-                    color = ui.textSub,
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f)
+        // v2.19.42：标题行合并为一行（用户口径：「查看解析」和「解析」放在同一行，
+        // 「收起」也要跟「解析」在同一行）。
+        // 原来「解析」独占一行、下面再来一行按钮，既多占一行高度又显得松散。
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(
+                    interactionSource = null,
+                    indication = null,
+                    onClick = { open = !open }
                 )
-                Icon(
-                    AppIcons.ChevronRight,
-                    null,
-                    tint = ui.textSub,
-                    modifier = Modifier.size(13.dp)
-                )
-            }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "解析",
+                color = ui.textSub, fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                if (open) "收起" else "查看解析",
+                color = ui.textSub, fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Icon(
+                AppIcons.ChevronRight,
+                null,
+                tint = ui.textSub,
+                modifier = Modifier
+                    .padding(start = 2.dp)
+                    .size(14.dp)
+                    .graphicsLayer { rotationZ = if (open) 90f else 0f }
+            )
         }
 
         AnimatedVisibility(
             visible = open,
-            enter = expandVertically(tween(240)) + fadeIn(tween(180)),
-            exit = shrinkVertically(tween(200)) + fadeOut(tween(160))
+            enter = expandVertically(tween(200)) + fadeIn(tween(160)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(140))
         ) {
-            Column(Modifier.padding(top = 6.dp)) {
-                // 收起入口放正文上方：解析常有几百字，放末尾要先滚到底才能收
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(
-                            interactionSource = null,
-                            indication = null,
-                            onClick = { open = false }
-                        )
-                        .padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "收起",
-                        color = ui.textSub,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        AppIcons.ChevronRight,
-                        null,
-                        tint = ui.textSub,
-                        modifier = Modifier
-                            .size(12.dp)
-                            .graphicsLayer { rotationZ = 90f }
-                    )
-                }
-                RevealText(
-                    text = explanation,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
+            RevealText(
+                text = explanation,
+                modifier = Modifier.padding(top = 6.dp)
+            )
         }
     }
 }
 
 /**
- * 逐字揭示的一段解析（v2.19.40）。
+ * 逐字「对焦」揭示（v2.19.42 重写）。
  *
- * 效果参考 https://jybho64bv1h9h.space.mcode.cn：每个字从「全透明 + 模糊」
- * 开始，一边变清晰一边淡入，模拟对焦。速度 20 字/秒（用户口径；参考页是 12）。
+ * 效果同参考实现：每个字从「完全透明 + 3px 模糊」开始，在 [ENTRY_MS] 内一边淡入
+ * 一边变清晰。20 字/秒，故同一时刻约有 6 个字同时在入场，各自进度不同。
  *
- * **每个字有自己的到达时间戳**，而不是只记"当前可见多少字"——只有逐字时间戳
- * 才能算出"这一个字入场走到哪了"：同一条时间轴上第 3 个字可能还在 40%，
- * 而第 80 个字早已完成。
+ * —— v2.19.41 那一版为什么不对（用户反馈：「容器高度一开始给得特别大、
+ * 而且没有跟着下面的字的高度来变化」「吐字一直在抖，看不到想要的吐字效果」）——
  *
- * **blur 用 easeOut、opacity 用线性**，且 blur 收得更快。若两者同速，动画末尾
- * 残留的那点模糊会落在已满不透明度的字上，看着像脏点而不是对焦——参考页明确
- * 点了这条（它的结论是 blur 至少要比 opacity 提前 25% 收干净）。
+ * ① **每个字做成了独立 Text 节点**，竖着排在 Column 里 → 每个字各占一行，
+ *    容器高度暴涨到十几行。所以「一开始就给得特别大」。
+ *
+ * ② **进度在组合期读 `System.currentTimeMillis()`**。组合不是每次重组都发生在
+ *    同一时刻，读到的是「此刻」，于是同一个字每次重组拿到的 alpha/blur 都不同
+ *    → 文字反复跳变 = 抖动。而且时钟不是状态，动画不会稳定驱动重组。
+ *
+ * ③ **没有排版真值**。既不知道整段文字换行后有多高、每个字在第几行第几列，
+ *    就没法让容器高度跟着文字长，也没法只对"正在入场的那几个字"挂模糊——
+ *    一挂就挂到全部字上，全段一起糊。
+ *
+ * 现改为（参考实现的要点，逐条对齐）：
+ * · **TextMeasurer 量一次全文**，拿到真实排版：总高度、每行边界、每字 x/y。
+ *   已完成的字用 Canvas `drawText` 一次画完——自然换行、一个节点、无抖动。
+ * · **每个字带自己的到达时刻**（`i * 50ms`），逐帧查询"这个字入场到哪了"。
+ *   进度由 `withInfiniteAnimationFrameNanos` 的帧时钟驱动 → 状态化、连续、可预测。
+ * · **只有正在入场的字（≤7 个）挂 BlurEffect**，且各自模糊度不同。
+ * · **容器高度 = 已渲染部分的真实高度**（行数 × 行高），用 Animatable 平滑趋近。
+ * · **blur 用 easeOut、alpha 用线性**，blur 收得更快——否则末尾残影落在满不透明度的
+ *   字上，读起来是脏点而不是对焦（参考实现的原话）。
+ *
+ * 「积压追赶」参考实现里有，但我们**不需要**：那套是给 LLM 流式输出设计的
+ * （字符到达时刻不可预知，可能积压）。我们的文本一次性全知，到达时刻可以精确
+ * 排好，不存在积压。
  */
-@Composable
-private fun RevealText(text: String, modifier: Modifier = Modifier) {
-    val ui = LocalUi.current
-    val chars = remember(text) { text.toList() }
-    // 已完整入场的字数 + 正在入场的那一批（用于算尾段的逐字进度）
-    val settled = remember(text) { mutableStateOf(0) }
-    val startAt = remember(text) { System.currentTimeMillis() }
+private const val REVEAL_CPS = 20f              // 字/秒
+private const val ENTRY_MS = 290f                // 单字入场时长（参考实现 290ms）
+private const val BLUR_PX = 3f                   // 起始模糊半径
+private const val TAIL_WINDOW = 7                // 同时可能在入场的字数上限
 
-    LaunchedEffect(text) {
-        var i = 0
-        while (i < chars.size) {
-            val due = revealArrivalMs(i)
-            val wait = due - (System.currentTimeMillis() - startAt)
-            if (wait > 0) delay(wait)
-            val now = System.currentTimeMillis() - startAt
-            var n = i
-            while (n < chars.size && revealArrivalMs(n) <= now) n++
-            if (n == i) n = i + 1   // 兜底：时间没走到也推进一个，防死循环
-            settled.value = n
-            i = n
-        }
-    }
-
-    if (chars.isEmpty()) return
-
-    // 尾段（正在入场的那几个字）逐字渲染，各算各的进度 → 各自的 blur/alpha
-    val tailStart = (settled.value - 1).coerceAtLeast(0).coerceAtMost(chars.size)
-    val doneText = chars.take(tailStart).joinToString("")
-    val tail = chars.drop(tailStart)
-
-    Column(modifier.fillMaxWidth()) {
-        if (doneText.isNotEmpty()) {
-            Text(
-                doneText,
-                color = ui.text,
-                fontSize = 13.sp,
-                lineHeight = 21.sp
-            )
-        }
-        if (tail.isNotEmpty()) {
-            // 用 InlineTextContent/AnnotatedString 一次组合，但尾段按字给不同 graphicsLayer
-            // —— 逐字 Text 节点太碎，改用 Text + buildAnnotatedString 无法挂 per-char layer，
-            // 故尾段仍逐字 Row 组合；尾段长度上限 12 字（见 revealArrivalMs）故成本可控。
-            tail.forEachIndexed { k, ch ->
-                val idx = tailStart + k
-                val elapsed = System.currentTimeMillis() - startAt - revealArrivalMs(idx)
-                val p = (elapsed.toFloat() / REVEAL_PER_CHAR_MS).coerceIn(0f, 1f)
-                val blurPx = REVEAL_BLUR_PX * (1f - easeOut(p))
-                Text(
-                    ch.toString(),
-                    color = ui.text,
-                    fontSize = 13.sp,
-                    lineHeight = 21.sp,
-                    modifier = Modifier.graphicsLayer {
-                        alpha = p
-                        if (blurPx > 0.05f) {
-                            renderEffect = BlurEffect(blurPx, blurPx, TileMode.Clamp)
-                        } else {
-                            renderEffect = null
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-/** 揭示速度，字/秒（用户口径 20） */
-private const val REVEAL_CPS = 20f
-
-/** 单字入场时长（ms） */
-private const val REVEAL_PER_CHAR_MS = 260f
-
-/** 起始模糊半径（px），取自参考页 */
-private const val REVEAL_BLUR_PX = 3f
-
-/** 同时逐字渲染的尾段长度上限——超过部分会被此前的"已完成段"合并掉 */
-private const val REVEAL_TAIL_MAX = 12
+/** 第 i 个字的到达时刻（ms） */
+private fun arrivalOf(i: Int) = i * (1000f / REVEAL_CPS)
 
 /** blur 专用 easeOut：前段猛、尾巴收得快，保证模糊先于透明度收干净 */
 private fun easeOut(t: Float): Float {
@@ -584,18 +531,108 @@ private fun easeOut(t: Float): Float {
     return 1f - inv * inv
 }
 
-/**
- * 第 [index] 个字的到达时刻（相对起点，毫秒）。
- *
- * 追赶机制（参考页结论）：积压超过阈值就提速，否则 300 字的解析要读十几秒。
- * 这里用「按已过时间反推」的方式——理论时刻 20 字/秒，但任何一个字都不晚于
- * `index * (1000/最小速度)` 到达，最慢 4 字/秒封顶。
- */
-private fun revealArrivalMs(index: Int): Long {
-    if (index <= 0) return 0L
-    val ideal = index * (1000f / REVEAL_CPS)
-    val slowest = index * (1000f / 4f)
-    return ideal.coerceAtMost(slowest).toLong()
+@Composable
+private fun RevealText(text: String, modifier: Modifier = Modifier) {
+    val ui = LocalUi.current
+    @OptIn(ExperimentalTextApi::class)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val style = remember(ui.text) {
+        TextStyle(fontSize = 13.sp, lineHeight = 21.sp, color = ui.text)
+    }
+
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val wPx: Int = with(density) { maxWidth.roundToPx() }
+
+        // ---- 排版真值：量一次，后续每帧复用 ----
+        val layout: TextLayoutResult = remember(text, wPx) {
+            measurer.measure(
+                text = AnnotatedString(text), style = style,
+                constraints = Constraints(maxWidth = wPx)
+            )
+        }
+        // TextLayoutResult 自带 lineCount / height
+        // TextLayoutResult 未公开 height；用行数 × 行高得到等效高度
+        val fullH = with(density) { 21.sp.toPx() } * layout.lineCount
+        val lineH = if (layout.lineCount > 0) fullH / layout.lineCount else 0f
+
+        // ---- 动画时钟：由帧回调驱动，非组合期读系统时钟 ----
+        // key 随"这一题是否在揭示"变化：换题即重置，不会把上一题的进度带过来。
+        var frameMs by remember(text) { mutableFloatStateOf(0f) }
+        val totalMs = arrivalOf(text.length - 1) + ENTRY_MS
+
+        LaunchedEffect(text) {
+            val t0 = withFrameNanos { it }
+            while (true) {
+                val elapsed = (withFrameNanos { it } - t0) / 1_000_000f
+                // 停止条件是「最后一个字走完入场」，不是「最后一个字出现」
+                if (elapsed >= totalMs) { frameMs = totalMs; break }
+                frameMs = elapsed
+            }
+        }
+
+        val n = text.length
+        if (n == 0) return@BoxWithConstraints
+
+        // ---- 逐帧算：已到达的字数 + 各自进度 ----
+        val arrived = ((frameMs / (1000f / REVEAL_CPS)).toInt() + 1).coerceIn(0, n)
+        val last = arrived - 1
+        // 尾段起点：这些字已到达但还在入场中，需要挂模糊
+        val tailStart = (last - (TAIL_WINDOW - 1)).coerceAtLeast(0)
+        val tailEnd = last   // 含
+        val settledText = text.substring(0, tailStart)
+
+        // ---- 容器高度：跟着「正在渲染的那几行」平滑长 ----
+        // 按尾段最后一个字所在行算——它正是当前内容能达到的最低行。
+        val tailLine = layout.getLineForOffset(tailEnd)
+        val curLine = layout.getLineTop(tailLine) / lineH + 1f
+        val targetH = (curLine.coerceAtLeast(1f) * lineH).coerceAtMost(fullH)
+        // key 用 targetH（不是 text）：targetH 每帧随行数变化，effect 才会跟着重跑。
+        // 否则用 text 做 key 时 effect 只跑一次，高度就永远停在初始值 —— 正是用户说的
+        // 「没有跟着下面的字的高度来变化」。
+        val smoothH = remember(text) { Animatable(0f) }
+        LaunchedEffect(targetH) {
+            smoothH.animateTo(targetH, tween(120, easing = LinearEasing))
+        }
+        val hDp = with(density) { smoothH.value.toDp() }
+
+        Box(Modifier.fillMaxWidth().height(hDp)) {
+            // ---- 已完成的字：Canvas 一次画完（自然换行、无逐字节点） ----
+            if (tailStart > 0) {
+                val sub: TextLayoutResult = remember(text, tailStart, wPx) {
+                    measurer.measure(
+                        text = AnnotatedString(settledText), style = style,
+                        constraints = Constraints(maxWidth = wPx)
+                    )
+                }
+                Canvas(Modifier.fillMaxSize()) {
+                    drawText(sub, color = ui.text)
+                }
+            }
+
+            // ---- 尾段：逐字绝对定位，各挂各的 alpha + blur ----
+            for (i in tailStart..tailEnd) {
+                val p = ((frameMs - arrivalOf(i)) / ENTRY_MS).coerceIn(0f, 1f)
+                if (p >= 1f && i < tailEnd) continue
+                val x = layout.getHorizontalPosition(i, true)
+                val y = layout.getLineTop(layout.getLineForOffset(i))
+                val blur = BLUR_PX * (1f - easeOut(p))
+                Text(
+                    text = text.substring(i, i + 1),
+                    style = style.copy(color = ui.text),
+                    modifier = Modifier
+                        // 绝对定位到该字真实位置（TextMeasurer 给出）
+                        .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                        .graphicsLayer {
+                            alpha = p
+                            renderEffect = if (blur > 0.05f) {
+                                BlurEffect(blur, blur, TileMode.Clamp)
+                            } else null
+                        }
+                )
+            }
+        }
+    }
 }
 
 // ---------- 题目图片（v2.8.5，ZIP 导入的带图题库） ----------
