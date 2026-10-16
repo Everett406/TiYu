@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -22,7 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,11 +120,12 @@ fun HistoryScreen(backdrop: Backdrop, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 28.dp)
             ) {
-                items(AppHistory.ALL, key = { it.version }) { e ->
+                itemsIndexed(AppHistory.ALL, key = { _, it -> it.version }) { idx, e ->
                     HistoryRow(
                         backdrop = backdrop,
                         e = e,
                         expanded = expanded == e.version,
+                        isLast = idx == AppHistory.ALL.lastIndex,
                         onToggle = { expanded = if (expanded == e.version) null else e.version }
                     )
                 }
@@ -137,13 +140,30 @@ private fun HistoryRow(
     backdrop: Backdrop,
     e: AppHistory.Entry,
     expanded: Boolean,
+    isLast: Boolean,
     onToggle: () -> Unit
 ) {
     val ui = LocalUi.current
-    Row(Modifier.fillMaxWidth()) {
+    // v2.19.37 修「时间轴断成一段段」。
+    //
+    // 病灶：v2.19.36 把竖线从 9999.dp 改成了固定 24.dp（当时为了不让末条拖长尾），
+    // 结果**线长与卡片高度彻底脱钩**。真机截图实测：每条线只有 24~32px，
+    // 而条目间距 361~363px——线只占 8%，剩下 92% 全是空白。于是整条轴
+    // 看着是一串棒棒糖，而不是一根时间轴。
+    //
+    // 修法：外层 Row 用 IntrinsicSize.Min 让左右两列取齐高（左列内容少、
+    // 右列卡片高），左列 fillMaxHeight，竖线 weight(1f) 吃掉剩余空间——
+    // 线长自动等于「本条卡片高度 − 节点偏移」，与标题几行无关。
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+    ) {
         // ---- 时间轴轴线与节点 ----
         Column(
-            Modifier.width(22.dp),
+            Modifier
+                .width(22.dp)
+                .fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -155,14 +175,21 @@ private fun HistoryRow(
                         if (e.reverted) ui.wrong else ui.textSub.copy(alpha = 0.55f)
                     )
             )
-            // 竖线只在条目下方延伸一小段：靠卡片间距自然连成轴线，
-            // 不用 9999.dp 撑满（那会让最后一个条目下方拖一条长尾）
-            Box(
-                Modifier
-                    .width(1.5.dp)
-                    .height(24.dp)
-                    .background(ui.textSub.copy(alpha = 0.22f))
-            )
+            if (!isLast) {
+                Box(
+                    Modifier
+                        .width(1.5.dp)
+                        .weight(1f)
+                        .background(ui.textSub.copy(alpha = 0.20f))
+                )
+                // 线要略微探出卡片底部（v2.19.37）：Row 高度只到卡片底，
+                // 若线正好齐平卡片底，视觉上像"被卡片截断"；探出去 10dp
+                // 才读得出"这条线还要连到下一个节点"。
+                Spacer(Modifier.height(10.dp))
+            } else {
+                // 末条不画线：空占位保底，保证节点仍与上方节点同一水平线
+                Spacer(Modifier.weight(1f))
+            }
         }
 
         GlassCard(

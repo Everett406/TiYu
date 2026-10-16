@@ -1010,3 +1010,26 @@ if "python3 scripts/gen_history.py" not in _wf:
 elif "fetch-depth: 0" not in _wf:
     print("[FAIL] 发版 workflow 的 checkout 须 fetch-depth: 0——默认浅克隆只有最后一个提交，历程会只剩一条")
     fail = True
+
+# 7.z5) 时间轴竖线必须与卡片等高（v2.19.37）
+#      v2.19.36 把竖线从 9999.dp 改成固定 24.dp 想避免末条长尾，结果线长与
+#      卡片高度彻底脱钩。真机截图实测：线只有 24~32px、条目间距 361~363px，
+#      线占 8%、92% 全空——整条轴看着像一串棒棒糖。
+#      修法是 Row 用 IntrinsicSize.Min 取齐高 + 左列 fillMaxHeight + 线 weight(1f)。
+#      这三样缺一个，线就会退回"固定长度"或"撑不到卡片底"，所以逐个锁。
+_h2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen.kt")
+for _tok, _why in [
+    (".height(IntrinsicSize.Min)", "外层 Row 须取齐高，否则左列不知道卡片有多高"),
+    (".fillMaxHeight()", "左列须撑满，才能让线 weight 填满剩余"),
+    (".weight(1f)\n                        .background(ui.textSub", "竖线须用 weight 吃掉剩余高度（写死 dp 就会断）"),
+    ("isLast", "末条须特殊处理，否则列表末尾拖一条长尾"),
+]:
+    if _tok not in _h2:
+        print(f"[FAIL] 历程页时间轴：{_why}（缺 {_tok!r}）")
+        fail = True
+if "itemsIndexed" not in _h2:
+    print("[FAIL] 历程页须用 itemsIndexed——需要下标判断末条（isLast）")
+    fail = True
+if "Spacer(Modifier.height(10.dp))" not in _h2:
+    print("[FAIL] 竖线须探出卡片底部 10dp（齐平会读作『被卡片截断』）")
+    fail = True
