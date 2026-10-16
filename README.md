@@ -2,7 +2,7 @@
 
 # 题屿 · TiYu
 
-**离线刷题的无人机装调备考 App** · Jetpack Compose · 液态玻璃 UI
+**纯离线的刷题 App** · Jetpack Compose · 液态玻璃 UI
 
 [![Release](https://img.shields.io/github/v/release/Everett406/TiYu?style=flat-square)](https://github.com/Everett406/TiYu/releases)
 [![Build APK](https://github.com/Everett406/TiYu/actions/workflows/build.yml/badge.svg)](https://github.com/Everett406/TiYu/actions/workflows/build.yml)
@@ -73,7 +73,9 @@
 
 ## 项目简介
 
-**题屿**是一款面向**无人机装调员职业技能培训**的离线刷题应用（仓库 v2.8.8 起更名为 TiYu——题屿拼音，GitHub 仓库名不支持纯中文；包名沿用历史 `com.drone.quiz`，桌面名称与关于页自 v2.7.3 起为「题屿」）。应用内置 800 道含解析的正式题库，覆盖单选与判断两类题型，提供刷题练习、全真模考、错题本、题目搜索、学习打卡与每日提醒等完整学习闭环，同时支持通过设置页导入自定义题库（CSV / 带图片的 ZIP）以适配其他科目。
+**题屿**是一款**通用型离线刷题 App**（仓库 v2.8.8 起更名为 TiYu——题屿拼音，GitHub 仓库名不支持纯中文；包名沿用历史 `com.drone.quiz`，桌面名称与关于页自 v2.7.3 起为「题屿」）。
+
+应用本身**不绑定任何特定科目**：提供刷题练习、全真模考、错题本、题目搜索、学习打卡与每日提醒等完整学习闭环，五种题型，题库可随时通过设置页导入自定义题库（CSV / 带图片的 ZIP）。仓库里**随赠**一套 800 道含解析的题库作为开箱即用的示例——它只是随赠内容，不代表 App 的适用范围，用户导入自己的题库后即可用于任何科目。
 
 项目采用纯 Kotlin + Jetpack Compose 构建，UI 层基于 Kyant0 的 **AndroidLiquidGlass (backdrop)** 库实现了 Android 平台少见的「液态玻璃」视觉效果（折射、色散、振动度），并为此建立了一整套**运行时守护与自动降级机制**（BootGuard / CrashGuard / 安全模式），保证在低端 GPU 或异常渲染环境下应用始终可用。全部构建、签名与发版流程由 GitHub Actions 自动化完成，本地无需 Android Studio 亦可参与开发。
 
@@ -548,7 +550,7 @@ python3 scripts/convert_bank.py <题库.csv> [-o app/src/main/assets/questions.j
 - 自动识别列头（题干 / 选项A–H / 答案 / 解析 / 类型 / 分类 / 题号，支持中英文变体），多编码尝试（utf-8-sig / gb18030 等）；
 - 答案归一化：字母（A–H）、对/错、正确/错误、数字序号（1 起）均可解析；解析失败会逐行列出；
 - 输出 `version = 2`；**若替换的是新版题库，请手动递增 version**（如改为 3）并重新发版；
-- 当前内置题库：`version = 2`，800 题（单选 640 / 判断 160），单分类「无人机装调」。
+- 当前随赠题库：`version = 2`，800 题（单选 640 / 判断 160），单分类「无人机装调」。这是**随赠的示例题库**，不是 App 的能力边界；导入自定义题库即可用于任意科目。
 
 `scripts/gen_bank.py` 是初版 801 题参数化生成器（11 分类），仅作为历史数据源留存，不再用于当前题库。
 

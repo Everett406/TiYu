@@ -3,18 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>题屿 TiYu — 无人机装调员离线刷题 App</title>
-<meta name="description" content="题屿 TiYu：800 道含解析的无人机装调题库，五种题型，模考自动判分，错题强化。全部离线运行，无广告、无内购、无账号。">
+<title>题屿 TiYu — 离线刷题 App</title>
+<meta name="description" content="题屿 TiYu：纯离线的刷题 App，五种题型、模考自动判分、错题强化、题库可自行导入。随赠 800 道题库，也可换成你自己的。无广告、无内购、无账号。">
 <meta name="theme-color" content="#F6F1E9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171412" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
-<meta property="og:title" content="题屿 TiYu — 无人机装调员离线刷题 App">
-<meta property="og:description" content="800 道含解析的正式题库，五种题型，全真模考自动判分。全部离线，无广告无内购。">
+<meta property="og:title" content="题屿 TiYu — 离线刷题 App">
+<meta property="og:description" content="纯离线刷题：五种题型、模考自动判分、错题强化。题库随赠，也可自行导入。无广告无内购。">
 <meta property="og:image" content="img/og.jpg">
+<link rel="manifest" href="manifest.webmanifest">
 <meta property="og:url" content="https://everett406.github.io/TiYu/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="favicon.svg">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="icon" href="img/icon-192.png" type="image/png" sizes="192x192">
 <style>
 /* ═══════════════════════════════════════════════════════════
    题屿 TiYu · 产品页
@@ -86,7 +88,9 @@ a{color:inherit}
 .nav .mark{
   width:30px;height:30px;border-radius:9px;background:var(--ink);color:var(--onInk);
   display:grid;place-items:center;font-size:16px;font-weight:800;flex:0 0 auto;
+  object-fit:cover;overflow:hidden;
 }
+.nav .mark.img{border-radius:8px;box-shadow:0 1px 3px rgba(27,24,17,.22)}
 .nav .links{display:flex;gap:22px;margin-left:auto;font-size:14.5px;color:var(--sub)}
 .nav .links a{text-decoration:none;transition:color .18s;padding:10px 0;display:inline-block;line-height:20px}
 .nav .links a:hover{color:var(--text)}
@@ -111,10 +115,15 @@ a{color:inherit}
 .hero-grid>*{min-width:0}
 @media (max-width:980px){.hero-grid{grid-template-columns:minmax(0,1fr);gap:40px}}
 
+.apphead{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.appicon{
+  width:52px;height:52px;border-radius:13px;flex:0 0 auto;object-fit:cover;
+  box-shadow:0 2px 8px rgba(27,24,17,.16),0 0 0 1px rgba(27,24,17,.07);
+}
 .badge{
   display:inline-flex;align-items:center;gap:8px;
   background:var(--cardB);border:1px solid var(--line);border-radius:999px;
-  padding:6px 15px 6px 12px;font-size:12.5px;color:var(--sub);margin-bottom:22px;
+  padding:6px 15px 6px 12px;font-size:12.5px;color:var(--sub);margin-bottom:0;
 }
 .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--correct);flex:0 0 auto;
   box-shadow:0 0 0 3px color-mix(in srgb,var(--correct) 18%,transparent)}
@@ -137,23 +146,31 @@ h1 .thin{display:block;font-weight:500;color:var(--sub);font-size:.42em;letter-s
   background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 13%,transparent),transparent 72%);
   pointer-events:none;
 }
+/* 外层 tilt 只管旋转/位移，内层 float 只管上下浮动。
+   v2.19.46 修一个严重 bug：原先浮动动画写在 .phone 的 **margin-bottom** 上，
+   而 margin 参与布局 —— 页面总高度因此每 3.5 秒变化 13px。
+   人还在页面上时内容就会往上顶，滚动时尤其明显（自动化点击则会判定
+   元素「不稳定」而一直失败）。浮动必须走 transform，不碰布局。 */
+.tilt{position:relative;flex:0 0 auto;transform:rotate(-6.5deg) translateY(22px);z-index:1}
+.tilt.p2{transform:translateY(-14px);z-index:3;width:206px}
+.tilt.p3{transform:rotate(6.5deg) translateY(22px);z-index:2}
 .phone{
-  position:relative;flex:0 0 auto;width:190px;
+  position:relative;width:190px;
   border-radius:34px;padding:7px;
   background:linear-gradient(158deg,#35302A 0%,#1A1713 52%,#100E0C 100%);
   box-shadow:var(--shadowLg),0 0 0 1px rgba(255,255,255,.10) inset;
   animation:bob 7s ease-in-out infinite;
 }
 .phone img{width:100%;height:auto;border-radius:27px;background:#F6F1E9}
-.phone.p1{transform:rotate(-6.5deg) translateY(22px);z-index:1;animation-delay:-1.1s}
-.phone.p2{width:206px;transform:translateY(-14px);z-index:3;animation-delay:0s}
-.phone.p3{transform:rotate(6.5deg) translateY(22px);z-index:2;animation-delay:-2.3s}
-@keyframes bob{0%,100%{margin-bottom:0}50%{margin-bottom:-13px}}
+.tilt.p1 .phone{animation-delay:-1.1s}
+.tilt.p3 .phone{animation-delay:-2.3s}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-13px)}}
 @media (max-width:640px){
   /* 320px 视口里三台并排只剩每台 80px——索性收成一台，信息交给下方「界面」区 */
-  .phone.p1,.phone.p3{display:none}
+  .tilt.p1,.tilt.p3{display:none}
   .phones::before{width:160%}
-  .phone.p2{width:min(214px,58vw);transform:none}
+  .tilt.p2{width:min(214px,58vw);transform:none}
+  .phone{width:100%}
 }
 
 /* ── 统计条 ── */
@@ -399,7 +416,7 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
 <!-- ═══ 导航 ═══ -->
 <nav class="nav" id="nav">
   <div class="wrap" style="display:flex;align-items:center;gap:20px;width:100%">
-    <a class="brand" href="#top"><span class="mark">题</span><span>题屿 TiYu</span></a>
+    <a class="brand" href="#top"><img class="mark img" src="img/icon-192.png" alt="" width="30" height="30"><span>题屿 TiYu</span></a>
     <div class="links">
       <a href="#screens">界面</a>
       <a href="#features">功能</a>
@@ -417,11 +434,16 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div>
-      <span class="badge"><span class="dot"></span>全程离线 · 零广告 · 零内购 · 零账号</span>
-      <h1>题屿 TiYu<span class="thin">无人机装调员备考</span></h1>
+      <div class="apphead">
+        <img src="img/icon-192.png" alt="题屿 TiYu 应用图标" width="52" height="52" class="appicon">
+        <div>
+          <span class="badge"><span class="dot"></span>全程离线 · 零广告 · 零内购 · 零账号</span>
+        </div>
+      </div>
+      <h1>题屿 TiYu<span class="thin">纯离线刷题 App</span></h1>
       <p class="lede">
-        <b>800 道含解析的正式题库</b>，五种题型，全真模考自动判分，错题自动收录强化。
-        刷题、模考、统计<b>全部离线</b>，学到哪存在你自己手机里。
+        五种题型、全真模考自动判分、错题自动收录强化——<b>刷题、模考、统计全部离线</b>，
+        学到哪存在你自己手机里。随赠一套题库，也能换成你自己的。
       </p>
       <div class="cta">
         <a class="btn" href="https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk">
@@ -437,15 +459,14 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
     </div>
 
     <div class="phones">
-      <div class="phone p1"><img src="img/home.jpg" alt="题屿首页：学习进度环、连续打卡与学习热力图" width="760" height="1656" fetchpriority="high"></div>
-      <div class="phone p2"><img src="img/practice.jpg" alt="题屿刷题页：题型筛选、顺序随机模式与进度接续" width="760" height="1656" fetchpriority="high"></div>
-      <div class="phone p3"><img src="img/exam.jpg" alt="题屿模考页：题数、时长、判断题占比与及格分设置" width="760" height="1656" fetchpriority="high"></div>
+      <div class="tilt p1"><div class="phone"><img src="img/home.jpg" alt="题屿首页：学习进度环、连续打卡与学习热力图" width="760" height="1656" fetchpriority="high"></div></div>
+      <div class="tilt p2"><div class="phone"><img src="img/practice.jpg" alt="题屿刷题页：题型筛选、顺序随机模式与进度接续" width="760" height="1656" fetchpriority="high"></div></div>
+      <div class="tilt p3"><div class="phone"><img src="img/exam.jpg" alt="题屿模考页：题数、时长、判断题占比与及格分设置" width="760" height="1656" fetchpriority="high"></div></div>
     </div>
   </div>
 
   <div class="wrap">
     <div class="stats rv">
-      <div class="stat"><div class="n">800<em>题</em></div><div class="l">内置题库，含解析</div></div>
       <div class="stat"><div class="n">5<em>种</em></div><div class="l">单选 / 多选 / 判断 / 填空 / 简答</div></div>
       <div class="stat"><div class="n">0<em>条</em></div><div class="l">广告、内购与账号</div></div>
       <div class="stat"><div class="n">100<em>%</em></div><div class="l">核心功能离线运行</div></div>
@@ -516,10 +537,10 @@ footer .col b{display:block;color:var(--text);font-size:13.5px;margin-bottom:9px
   <div class="narrow">
     <p class="eyebrow rv">试一下</p>
     <h2 class="rv">不用下载，先做一道</h2>
-    <p class="sub rv">这就是 App 里逐字浮现的解析。题目取自内置题库，<b>选项顺序已打乱</b>——模考里也能开这个开关。</p>
+    <p class="sub rv">这就是 App 里逐字浮现的解析。<b>选项顺序已打乱</b>——模考里也能开这个开关。</p>
     <div class="quiz rv" id="quiz">
       <div class="quiz-hd">
-        <span class="qtag" id="qtag">无人机装调</span>
+        <span class="qtag" id="qtag">随赠题库</span>
         <span class="qidx" id="qidx"></span>
       </div>
       <p class="qstem" id="qstem"></p>
@@ -698,7 +719,7 @@ cd TiYu
         <b>应用代码</b>以 <a href="https://github.com/Everett406/TiYu/blob/main/LICENSE" style="color:var(--accent)">Apache-2.0</a> 授权开源，可自由使用、修改、分发。
       </p>
       <p>
-        <b>内置题库</b>（《无人机装调题库（含解析）》800 题）的<b>版权归原始题库编制方所有</b>，
+        <b>随赠题库</b>（含解析的 800 道题）的<b>版权归原始题库编制方所有</b>，
         仅随本应用分发使用，<b>不在上述开源授权范围内</b>。仓库中的 <code>LICENSE</code> 与
         <code>NOTICE</code> 都对此作了明确声明。
       </p>
@@ -736,7 +757,7 @@ cd TiYu
     <div class="cols">
       <div class="col">
         <b>题屿 TiYu</b>
-        <div style="max-width:30em;margin-top:6px">无人机装调员备考用的离线刷题 App。纯自用项目，没有公司、没有融资、没有客服。</div>
+        <div style="max-width:30em;margin-top:6px">纯离线的刷题 App，题库随赠、也可自行导入。个人项目，没有公司、没有融资、没有客服。</div>
       </div>
       <div class="col">
         <b>下载</b>
@@ -783,7 +804,7 @@ fetch('version.json', { cache: 'no-cache' })
   .then(v => {
     ver.textContent  = `最新版 v${v.version}`;
     fver.textContent = `v${v.version} · Android 12+`;
-    document.title   = `题屿 TiYu v${v.version} — 无人机装调员离线刷题 App`;
+    document.title   = `题屿 TiYu v${v.version} — 离线刷题 App`;
   })
   .catch(() => { /* 静态兜底文案已在 HTML 里，不覆盖 */ });
 
@@ -800,12 +821,12 @@ addEventListener('scroll', onScroll, { passive: true });
    （对应 App v2.19.33 的「打乱选项」，判断题不打乱）。
 
    逐字浮现的参数与 App 内 ParseBlock 完全一致：
-     20 字/秒 · 单字入场 290ms · 起始模糊 3px
+     36 字/秒 · 单字入场 260ms · 起始模糊 3px
      透明度线性，模糊走 easeOut 提前收干净
      —— 若模糊与透明度同步结束，最后一点模糊会落在已满不透明度的字上，
         读起来是脏点而不是「对焦」。
    ═══════════════════════════════════════════════════════════ */
-const CPS = 20, ENTRY = 290, BLUR = 3;
+const CPS = 36, ENTRY = 260, BLUR = 3;
 const BANK = [
   // 原题原解析，取自 assets/questions.json。挑「短而贴题」的三道：
   // 解析长度决定逐字浮现的总时长（字数 × 50ms + 290ms），太长网页上要干等。

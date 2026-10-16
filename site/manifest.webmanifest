@@ -1,0 +1,13 @@
+{
+  "name": "题屿 TiYu",
+  "short_name": "题屿",
+  "description": "纯离线刷题 App：五种题型、模考自动判分、错题强化。",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F6F1E9",
+  "theme_color": "#F6F1E9",
+  "icons": [
+    { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

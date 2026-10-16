@@ -110,6 +110,16 @@ import androidx.compose.ui.text.drawText
 
 import androidx.compose.ui.unit.Constraints
 
+
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+
+
+
+
 /**
  * 题型作答组件族（v2.8.0）：刷题页与模考页共用。
  * 设计要点：
@@ -484,43 +494,44 @@ fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
 }
 
 /**
- * 逐字「对焦」揭示（v2.19.42 重写）。
+ * 逐字「对焦」揭示（v2.19.46 重写）。
  *
- * 效果同参考实现：每个字从「完全透明 + 3px 模糊」开始，在 [ENTRY_MS] 内一边淡入
- * 一边变清晰。20 字/秒，故同一时刻约有 6 个字同时在入场，各自进度不同。
+ * 观感规格（与产品页 demo 同源）：每个字从「完全透明 + 3px 模糊」开始，
+ * 在 [ENTRY_MS] 内一边淡入一边变清晰。透明度线性，模糊走 easeOut 提前收干净
+ * ——若两者同步结束，最后一点模糊会落在已满不透明度的字上，
+ *   读起来是脏点而不是「对焦」。
  *
- * —— v2.19.41 那一版为什么不对（用户反馈：「容器高度一开始给得特别大、
- * 而且没有跟着下面的字的高度来变化」「吐字一直在抖，看不到想要的吐字效果」）——
+ * ── v2.19.42 为什么还是错的（用户实机反馈：「同一行不在一行里面」）──
  *
- * ① **每个字做成了独立 Text 节点**，竖着排在 Column 里 → 每个字各占一行，
- *    容器高度暴涨到十几行。所以「一开始就给得特别大」。
+ * 那一版把每个字做成独立 `Text`，再用
+ * `Modifier.offset { IntOffset(layout.getHorizontalPosition(i), ...) }`
+ * 手工把它挪到「它在全文排版里的位置」。
  *
- * ② **进度在组合期读 `System.currentTimeMillis()`**。组合不是每次重组都发生在
- *    同一时刻，读到的是「此刻」，于是同一个字每次重组拿到的 alpha/blur 都不同
- *    → 文字反复跳变 = 抖动。而且时钟不是状态，动画不会稳定驱动重组。
+ * 问题在于那条链路有三处对不上：
+ * · **已完成的字画在 Canvas 里，尾段的字是 Text 节点——两者是两套独立排版。**
+ *   前缀子串的换行位置与全文不同（例：全文 "AAA BBB" 在第 6 字后换行，
+ *   前缀 "AAA B" 单独排版时可能让第 6 字挤在行尾），于是 Canvas 的字
+ *   和 Text 的字**横向对不齐**。
+ * · `getHorizontalPosition` 给的是 advance（字形推进量），单字 Text 盒子的
+ *   内边距/字距与之不等，累积后整段字间距忽宽忽窄。
+ * · 每个字独占一行测量，纵向基线随单字盒子的 lineHeight 重算，
+ *   于是「同一行」的字**高低错落**——这就是用户看到的现象，
+ *   甚至伴随字符被跳过（「对流层顶至55km高度」后面直接跳到「下为平」，
+ *   中间的「以」不见了）。
  *
- * ③ **没有排版真值**。既不知道整段文字换行后有多高、每个字在第几行第几列，
- *    就没法让容器高度跟着文字长，也没法只对"正在入场的那几个字"挂模糊——
- *    一挂就挂到全部字上，全段一起糊。
+ * ── 现在的做法 ──
  *
- * 现改为（参考实现的要点，逐条对齐）：
- * · **TextMeasurer 量一次全文**，拿到真实排版：总高度、每行边界、每字 x/y。
- *   已完成的字用 Canvas `drawText` 一次画完——自然换行、一个节点、无抖动。
- * · **每个字带自己的到达时刻**（`i * 50ms`），逐帧查询"这个字入场到哪了"。
- *   进度由 `withInfiniteAnimationFrameNanos` 的帧时钟驱动 → 状态化、连续、可预测。
- * · **只有正在入场的字（≤7 个）挂 BlurEffect**，且各自模糊度不同。
- * · **容器高度 = 已渲染部分的真实高度**（行数 × 行高），用 Animatable 平滑趋近。
- * · **blur 用 easeOut、alpha 用线性**，blur 收得更快——否则末尾残影落在满不透明度的
- *   字上，读起来是脏点而不是对焦（参考实现的原话）。
+ * **整段文本用同一个 `Text` 节点**。已完成的字是普通文本；正在入场的
+ * 那几个字通过 `InlineTextContent` 挂上各自的 alpha 与 BlurEffect。
  *
- * 「积压追赶」参考实现里有，但我们**不需要**：那套是给 LLM 流式输出设计的
- * （字符到达时刻不可预知，可能积压）。我们的文本一次性全知，到达时刻可以精确
- * 排好，不存在积压。
+ * 这样做的关键在于：inline content 的**排版位置由 Compose 的文本布局自己算**，
+ * 换行、行高、字距、基线全部与其他文字同源，不可能对不齐。
+ * 容器高度也由 Text 自然撑开——不需要再去推算「已经渲染到第几行」。
  */
-private const val REVEAL_CPS = 20f              // 字/秒
-private const val ENTRY_MS = 290f                // 单字入场时长（参考实现 290ms）
+private const val REVEAL_CPS = 36f              // 字/秒（v2.19.46 由 20 调快到 36）
+private const val ENTRY_MS = 260f                // 单字入场时长
 private const val BLUR_PX = 3f                   // 起始模糊半径
-private const val TAIL_WINDOW = 7                // 同时可能在入场的字数上限
+private const val TAIL_WINDOW = 10               // 同时可能在入场的字数上限
 
 /** 第 i 个字的到达时刻（ms） */
 private fun arrivalOf(i: Int) = i * (1000f / REVEAL_CPS)
@@ -541,99 +552,106 @@ private fun RevealText(text: String, modifier: Modifier = Modifier) {
         TextStyle(fontSize = 13.sp, lineHeight = 21.sp, color = ui.text)
     }
 
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val wPx: Int = with(density) { maxWidth.roundToPx() }
+    val n = text.length
+    if (n == 0) return
 
-        // ---- 排版真值：量一次，后续每帧复用 ----
-        val layout: TextLayoutResult = remember(text, wPx) {
-            measurer.measure(
-                text = AnnotatedString(text), style = style,
-                constraints = Constraints(maxWidth = wPx)
-            )
+    // ---- 动画时钟：由帧回调驱动，不在组合期读系统时钟 ----
+    var frameMs by remember(text) { mutableFloatStateOf(0f) }
+    val totalMs = arrivalOf(n - 1) + ENTRY_MS
+    LaunchedEffect(text) {
+        val t0 = withFrameNanos { it }
+        while (true) {
+            val elapsed = (withFrameNanos { it } - t0) / 1_000_000f
+            // 停止条件是「最后一个字走完入场」，不是「最后一个字出现」
+            if (elapsed >= totalMs) { frameMs = totalMs; break }
+            frameMs = elapsed
         }
-        // TextLayoutResult 自带 lineCount / height
-        // TextLayoutResult 未公开 height；用行数 × 行高得到等效高度
-        val fullH = with(density) { 21.sp.toPx() } * layout.lineCount
-        val lineH = if (layout.lineCount > 0) fullH / layout.lineCount else 0f
+    }
 
-        // ---- 动画时钟：由帧回调驱动，非组合期读系统时钟 ----
-        // key 随"这一题是否在揭示"变化：换题即重置，不会把上一题的进度带过来。
-        var frameMs by remember(text) { mutableFloatStateOf(0f) }
-        val totalMs = arrivalOf(text.length - 1) + ENTRY_MS
+    // ---- 哪些字已经到达 ----
+    val arrived = ((frameMs / (1000f / REVEAL_CPS)).toInt() + 1).coerceIn(0, n)
+    val last = arrived - 1
+    val tailStart = (last - (TAIL_WINDOW - 1)).coerceAtLeast(0)
+    val tailEnd = last
 
-        LaunchedEffect(text) {
-            val t0 = withFrameNanos { it }
-            while (true) {
-                val elapsed = (withFrameNanos { it } - t0) / 1_000_000f
-                // 停止条件是「最后一个字走完入场」，不是「最后一个字出现」
-                if (elapsed >= totalMs) { frameMs = totalMs; break }
-                frameMs = elapsed
-            }
-        }
-
-        val n = text.length
-        if (n == 0) return@BoxWithConstraints
-
-        // ---- 逐帧算：已到达的字数 + 各自进度 ----
-        val arrived = ((frameMs / (1000f / REVEAL_CPS)).toInt() + 1).coerceIn(0, n)
-        val last = arrived - 1
-        // 尾段起点：这些字已到达但还在入场中，需要挂模糊
-        val tailStart = (last - (TAIL_WINDOW - 1)).coerceAtLeast(0)
-        val tailEnd = last   // 含
-        val settledText = text.substring(0, tailStart)
-
-        // ---- 容器高度：跟着「正在渲染的那几行」平滑长 ----
-        // 按尾段最后一个字所在行算——它正是当前内容能达到的最低行。
-        val tailLine = layout.getLineForOffset(tailEnd)
-        val curLine = layout.getLineTop(tailLine) / lineH + 1f
-        val targetH = (curLine.coerceAtLeast(1f) * lineH).coerceAtMost(fullH)
-        // key 用 targetH（不是 text）：targetH 每帧随行数变化，effect 才会跟着重跑。
-        // 否则用 text 做 key 时 effect 只跑一次，高度就永远停在初始值 —— 正是用户说的
-        // 「没有跟着下面的字的高度来变化」。
-        val smoothH = remember(text) { Animatable(0f) }
-        LaunchedEffect(targetH) {
-            smoothH.animateTo(targetH, tween(120, easing = LinearEasing))
-        }
-        val hDp = with(density) { smoothH.value.toDp() }
-
-        Box(Modifier.fillMaxWidth().height(hDp)) {
-            // ---- 已完成的字：Canvas 一次画完（自然换行、无逐字节点） ----
-            if (tailStart > 0) {
-                val sub: TextLayoutResult = remember(text, tailStart, wPx) {
-                    measurer.measure(
-                        text = AnnotatedString(settledText), style = style,
-                        constraints = Constraints(maxWidth = wPx)
-                    )
-                }
-                Canvas(Modifier.fillMaxSize()) {
-                    drawText(sub, color = ui.text)
-                }
-            }
-
-            // ---- 尾段：逐字绝对定位，各挂各的 alpha + blur ----
+    // ---- 前缀用普通文本，尾段逐字挂注解 ----
+    // 两者在**同一个 Text 节点**里合成，排版自然连续。
+    val annotated = remember(text, tailStart, tailEnd) {
+        buildAnnotatedString {
+            if (tailStart > 0) append(text.substring(0, tailStart))
             for (i in tailStart..tailEnd) {
-                val p = ((frameMs - arrivalOf(i)) / ENTRY_MS).coerceIn(0f, 1f)
-                if (p >= 1f && i < tailEnd) continue
-                val x = layout.getHorizontalPosition(i, true)
-                val y = layout.getLineTop(layout.getLineForOffset(i))
-                val blur = BLUR_PX * (1f - easeOut(p))
+                appendInlineContent(KEY_PREFIX + i, text.substring(i, i + 1))
+            }
+        }
+    }
+
+    // Placeholder 的宽度决定该字在行内占多宽——**必须与该字真实宽度一致**，
+    // 否则相邻字会重叠或拉开缝隙（这正是 v2.19.42 字距忽宽忽窄的同源问题）。
+    // 这里用 TextMeasurer 实测该字在当前 TextStyle 下的宽度，再按 em 比例
+    // 换算成 sp（用 sp 而非 px，字号/系统字体缩放设置变化时才能跟着变）。
+    val fontPx = with(density) { style.fontSize.toPx() }
+    val widthCache = remember(text, style, fontPx) { HashMap<Char, Float>() }
+    val heightCache = remember(text, style, fontPx) { HashMap<Char, Float>() }
+    fun ratioOfH(c: Char): Float = heightCache.getOrPut(c) {
+        if (fontPx <= 0f) 1f
+        else {
+            val h = measurer.measure(
+                text = AnnotatedString(c.toString()), style = style, constraints = Constraints()
+            ).size.height.toFloat()
+            Math.round(h / fontPx * 1000f) / 1000f
+        }
+    }
+
+    fun ratioOf(c: Char): Float = widthCache.getOrPut(c) {
+        if (fontPx <= 0f) 1f
+        else {
+            val w = measurer.measure(
+                text = AnnotatedString(c.toString()), style = style, constraints = Constraints()
+            ).size.width.toFloat()
+            // 量化到千分位，避免浮点尾差导致占位宽度抖动
+            Math.round(w / fontPx * 1000f) / 1000f
+        }
+    }
+
+    val inlineContent: Map<String, InlineTextContent> = remember(text, style, tailStart, tailEnd, widthCache, heightCache) {
+        (tailStart..tailEnd).associate { i ->
+            val c = text[i]
+            // graphicsLayer 的 block 只在图层更新时执行，读 state 不触发重组，
+            // 所以逐帧进度仍然连续，而不必每帧重组整段文本。
+            KEY_PREFIX + i to InlineTextContent(
+                placeholder = Placeholder(
+                    // height 取该字实测高度：占位过高会撑开行高，
+                    // 让吐字过程中整段文字的纵向节奏跟着抖。
+                    width = (style.fontSize.value * ratioOf(c)).sp,
+                    height = (style.lineHeight.value * ratioOfH(c)).sp,
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
+                )
+            ) {
                 Text(
-                    text = text.substring(i, i + 1),
-                    style = style.copy(color = ui.text),
-                    modifier = Modifier
-                        // 绝对定位到该字真实位置（TextMeasurer 给出）
-                        .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
-                        .graphicsLayer {
-                            alpha = p
-                            renderEffect = if (blur > 0.05f) {
-                                BlurEffect(blur, blur, TileMode.Clamp)
-                            } else null
-                        }
+                    text = c.toString(),
+                    style = style,
+                    modifier = Modifier.graphicsLayer {
+                        val p = ((frameMs - arrivalOf(i)) / ENTRY_MS).coerceIn(0f, 1f)
+                        val blur = BLUR_PX * (1f - easeOut(p))
+                        alpha = p
+                        renderEffect = if (blur > 0.05f) {
+                            BlurEffect(blur, blur, TileMode.Clamp)
+                        } else null
+                    }
                 )
             }
         }
     }
+
+    Text(
+        text = annotated,
+        style = style,
+        inlineContent = inlineContent,
+        modifier = modifier.fillMaxWidth()
+    )
 }
+
+private const val KEY_PREFIX = "c"
 
 // ---------- 题目图片（v2.8.5，ZIP 导入的带图题库） ----------
 

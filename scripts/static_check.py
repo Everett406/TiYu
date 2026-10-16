@@ -995,6 +995,7 @@ _ccc = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/Quest
 _sc = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/SearchScreen.kt")
 _jg = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/JudgeGlyph.kt")
 _hs = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen.kt")
+_hs_code = re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", _hs, flags=re.S))
 
 for _f, _src, _who in [("QuestionBody.kt", _ccc, "刷题"), ("SearchScreen.kt", _sc, "搜索页")]:
     if "includeFontPadding = false" not in _src:
@@ -1046,8 +1047,8 @@ _h2 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen
 if _h2:
     for _tok, _why in [
         (".drawBehind {", "竖线必须在 drawBehind 里画（拿真实布局高度）"),
-        ("Offset(x, (NODE_TOP + NODE_SIZE).toPx())", "线的起点须从节点底部开始"),
-        ("size.height + LINE_OVER.toPx()", "线的终点须探出卡片底（齐平会读作被卡片截断）"),
+        ("start = Offset(x, nodeCY)", "线的起点须在本节点圆心（与上一段在圆心处衔接）"),
+        ("size.height + ROW_GAP.toPx() + nodeCY", "线的终点须跨过条目间距接到下一个节点圆心"),
         ("isLast", "末条须特殊处理，否则列表末尾拖一条长尾"),
     ]:
         if _tok not in _h2:
@@ -1154,29 +1155,56 @@ for _tok, _why in [
     # 旧实现把每个字做成独立 Text 节点竖排（每字一行 → 高度暴涨），
     # 且在组合期读 System.currentTimeMillis()（非状态驱动 → 抖动）。
     # 以下检查锚定的是**结构性不变量**，不是可被重命名骗过去的字符串。
-    ("REVEAL_CPS = 20f", "逐字揭示速度须为 20 字/秒（用户口径）"),
-    ("ENTRY_MS = 290f", "单字入场须为 290ms（参考实现口径）"),
+    ("REVEAL_CPS = 36f", "逐字揭示速度须为 36 字/秒（用户 v2.19.46 要求调快）"),
+    ("ENTRY_MS = 260f", "单字入场须为 260ms"),
     ("BLUR_PX = 3f", "起始模糊半径须为 3px（参考实现口径）"),
     ("private fun easeOut", "blur 须用 easeOut 提前收干净，否则末尾残影落在满不透明度的字上"),
     ("BlurEffect(blur, blur, TileMode.Clamp)", "逐字模糊须用 BlurEffect"),
     ("arrivalOf", "须按逐字到达时刻推进，而非一次性全出"),
     ("withFrameNanos", "动画时钟须由帧回调驱动；组合期读 System.currentTimeMillis 会导致抖动"),
-    ("rememberTextMeasurer", "须用 TextMeasurer 取排版真值，否则无法让容器高度跟随文字"),
-    ("getHorizontalPosition", "须用真实排版坐标定位每个字，否则换行后位置全错"),
-    ("LaunchedEffect(targetH)", "高度动画须以 targetH 为 key，否则高度不会跟随文字变化"),
-    ("curLine", "容器高度须按当前渲染行数计算，而非一次撑到全文高度"),
+    # ── v2.19.46：定位方式换了，这条是重点 ──
+    # v2.19.42 把每个字做成独立 Text 再 offset 到「它在全文排版里的位置」，
+    # 结果字距忽宽忽窄、同一行高低错落、甚至跳字（用户实机：「同一行不在一行里面」）。
+    # 现在整段用**同一个 Text 节点**，只有正在入场的字经 InlineTextContent 挂
+    # 各自的 alpha/blur，排版位置交给 Compose 自己算。
+    ("appendInlineContent", "尾段字必须走 InlineTextContent，让排版位置由 Compose 计算"),
+    ("Placeholder(", "InlineTextContent 的占位宽度必须显式给出"),
+    ("rememberTextMeasurer", "占位宽度须用 TextMeasurer 实测，否则字距会错"),
+    ("inlineContent = inlineContent", "Text 必须接收 inlineContent map"),
 ]:
     if _tok not in _qb3:
         print("[FAIL] 解析组件：%s（缺 %r）" % (_why, _tok))
         fail = True
 
-# 反向禁令：绝不能退回「逐字独立 Text 节点竖排」——那是高度暴涨的根因
+# 反向禁令：绝不能退回「逐字独立 Text 节点 + 手工 offset 定位」。
+# 注意先剥掉块注释与行注释——本文件在注释里复述旧写法（写清「为什么不能那么做」），
+# 按原文匹配会把注释自己判成违规。
+_qb3_code = re.sub(r"/\*.*?\*/", "", _qb3, flags=re.S)
+_qb3_code = re.sub(r"//[^\n]*", "", _qb3_code)
 for _bad, _why in [
-    ("val ch in tail", "不得把每个字做成独立 Text 节点（每字一行 → 容器高度暴涨）"),
+    ("val ch in tail", "不得把每个字做成独立 Text 节点（每字一行 → 高度暴涨 / 排版错乱）"),
+    ("getHorizontalPosition(i", "不得用 getHorizontalPosition + offset 手工定位单字；"
+                                "那是 v2.19.42 字距错乱与跳字的根因"),
+    ("Modifier.offset { IntOffset", "不得用 offset 摆放单字，排版位置必须由 Compose 文本布局给出"),
 ]:
-    if _bad in _qb3:
+    if _bad in _qb3_code:
         print("[FAIL] 解析组件：%s（出现 %r）" % (_why, _bad))
         fail = True
+
+# 时间轴竖线必须接到下一个节点（用户 v2.19.46 反馈：线还是没连上）
+_hs = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HistoryScreen.kt")
+for _tok, _why in [
+    ("ROW_GAP", "时间轴条目间距须有具名常量，竖线要跨过它才能接上下一节点"),
+    ("size.height + ROW_GAP.toPx() + nodeCY",
+     "竖线终点须画到**下一个节点的圆心**；只画到本条目底部会在节点之间断开"),
+    ("start = Offset(x, nodeCY)", "竖线须从本节点圆心起算，与上一段在圆心处衔接"),
+]:
+    if _tok not in _hs:
+        print("[FAIL] 历程页时间轴：%s（缺 %r）" % (_why, _tok))
+        fail = True
+if "LINE_OVER" in _hs_code:
+    print("[FAIL] 历程页时间轴：LINE_OVER 已废弃（线只探出 10dp，接不到下一节点）")
+    fail = True
 
 # 标题行合并：解析 / 查看解析 / 收起 必须同一行（用户 v2.19.42 明确要求）
 if 'if (open) "收起" else "查看解析"' not in _qb3:
@@ -1292,9 +1320,17 @@ for _tok, _why in [
     ('<meta property="og:image" content="img/og.jpg">', "须有分享卡片图"),
     ("Apache-2.0", "须声明开源许可"),
     ("版权归原始题库编制方所有", "必须保留题库版权声明（题库不在开源授权范围内）"),
-    ("min-height", "问题一："),
+    ("@keyframes bob{0%,100%{transform:translateY(0)}",
+     "手机浮动动画必须走 transform；写在 margin-bottom 上会参与布局，"
+     "页面总高度周期性变化，内容会顶着人跳（v2.19.46 实测）"),
+    ('<img src="img/icon-192.png" alt="题屿 TiYu 应用图标"',
+     "hero 必须放 App 图标"),
+    ('<img class="mark img" src="img/icon-192.png"',
+     "导航必须用 App 图标作品牌标"),
+    ('rel="apple-touch-icon" href="img/apple-touch-icon.png"',
+     "须提供 apple-touch-icon（iOS 加到主屏用）"),
 ]:
-    if _tok not in _site and _why != "问题一：":
+    if _tok not in _site:
         print("[FAIL] 产品页：%s（缺 %r）" % (_why, _tok))
         fail = True
 
@@ -1355,8 +1391,8 @@ for _qid in _demo_ids:
 
 # demo 的揭示动画参数须与 App 内 ParseBlock 一致
 for _tok, _why in [
-    ("const CPS = 20", "逐字速度须为 20 字/秒，与 App 一致"),
-    ("ENTRY = 290", "单字入场须 290ms，与 App 一致"),
+    ("const CPS = 36", "逐字速度须为 36 字/秒，与 App 的 REVEAL_CPS 一致"),
+    ("ENTRY = 260", "单字入场须 260ms，与 App 的 ENTRY_MS 一致"),
     ("BLUR = 3", "起始模糊须 3px，与 App 一致"),
     ("fill:'both'", "WAAPI 必须 fill:'both'；'backwards' 会让动画结束后回落到 opacity:0，整段解析永远看不见"),
     ("cubic-bezier(.1,.85,.25,1)", "模糊须用 easeOut 提前收干净，与 App 一致"),

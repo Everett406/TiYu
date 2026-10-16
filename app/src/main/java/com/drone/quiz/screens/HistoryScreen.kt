@@ -138,12 +138,13 @@ fun HistoryScreen(backdrop: Backdrop, onBack: () -> Unit) {
  * 时间轴几何（drawBehind 画线用，不参与测量）。
  *
  * 坐标都相对条目左上角：左列宽 [GUTTER]，节点在其中水平居中，
- * 节点顶距条目顶 [NODE_TOP]，探出卡片底 [LINE_OVERSHOOT]。
+ * 节点顶距条目顶 [NODE_TOP]，条目间距 [ROW_GAP]（竖线要跨过它接上下一节点）。
  */
 private val GUTTER = 22.dp
 private val NODE_TOP = 22.dp
 private val NODE_SIZE = 9.dp
-private val LINE_OVER = 10.dp
+/** 条目间距：卡片 padding(bottom)，竖线必须跨过它才能接到下一个节点 */
+private val ROW_GAP = 10.dp
 
 /** 单个版本条目：左侧竖线 + 节点，右侧玻璃卡 */
 @Composable
@@ -164,19 +165,28 @@ private fun HistoryRow(
     //   （用户反馈 v2.19.37 引入）。根子在于：用**测量**去驱动一条线。
     //
     // 现改为在 Row 的 drawBehind 里画线：Row 高度由卡片自然决定，
-    // drawBehind 拿到的 size 就是真实布局高度，线长自动跟随；
-    // 更关键的是它**不参与测量**，AnimatedVisibility 的收放动画恢复正常。
+    // drawBehind 拿到的 size 就是真实布局高度；更关键的是它**不参与测量**，
+    // AnimatedVisibility 的收放动画恢复正常。
+    //
+    // v2.19.46 修「线接不上」：v2.19.38 把线画到 `size.height + LINE_OVER`，
+    // 而下一条目的线是从**它自己**的 `NODE_TOP + NODE_SIZE` 起算的。
+    // 两者之间隔着整整一个 ROW_GAP(10dp) + NODE_TOP+NODE_SIZE(31dp)，
+    // 于是每两个节点之间都断开约 21dp——截图上一段一段的就是这么来的。
+    //
+    // 现在线画「节点中心 → 下一个节点中心」，跨过间距，天然连续。
     Row(
         Modifier
             .fillMaxWidth()
             .drawBehind {
                 if (isLast) return@drawBehind
                 val x = (GUTTER / 2).toPx()
+                val nodeCY = (NODE_TOP + NODE_SIZE / 2).toPx()
                 drawLine(
-                    color = ui.textSub.copy(alpha = 0.20f),
-                    start = Offset(x, (NODE_TOP + NODE_SIZE).toPx()),
-                    // 探出卡片底一点：齐平会读作"被卡片截断"
-                    end = Offset(x, size.height + LINE_OVER.toPx()),
+                    color = ui.textSub.copy(alpha = 0.24f),
+                    // 从本节点圆心起，画到**下一个**条目的节点圆心：
+                    // 终点 = 本条目高 + 条目间距 + 下一节点的圆心偏移
+                    start = Offset(x, nodeCY),
+                    end = Offset(x, size.height + ROW_GAP.toPx() + nodeCY),
                     strokeWidth = 1.5.dp.toPx()
                 )
             }

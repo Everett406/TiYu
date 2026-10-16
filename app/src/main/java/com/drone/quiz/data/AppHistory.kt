@@ -20,6 +20,8 @@ object AppHistory {
     /** 从新到旧排列（时间轴由近及远看） */
     val ALL: List<Entry> = listOf(
 
+        Entry("2.19.45", "2026-10-16", "2026-10-16", "修滚动动效的强制同步布局与 hover 位移（v2.19.44 跟进）",
+            listOf("IntersectionObserver 判定 hero 是否在视口内，出视口即停止更新", "水墨山位置改用 offsetTop + scrollY 直接算，不再读 getBoundingClientRect"), 1, false),
         Entry("2.19.44", "2026-10-16", "2026-10-16", "修复移动端不可用 + 产品页加可玩答题 demo 与连续滚动镜头",
             listOf("全部列改 minmax(0, …)，并给直接子元素 min-width:0，允许列被压回容器宽", "窄屏 hero 收成**一台**手机（另两张在下方「界面」区完整呈现，信息不丢），", "html 加 overflow-x:clip 兜底", "触摸目标：footer 与行内链接只有 15–16px、导航链接 25px，补 padding 到 44px", "题目为 assets/questions.json 原题原解析，**选项顺序打乱**", "揭示参数与 App 内 ParseBlock 完全一致：20 字/秒、单字 290ms、起始模糊 3px、", "挑了三道短题（对流层 / 大气组成 / 执照携带），把总时长压到 4.5s"), 1, false),
         Entry("2.19.43", "2026-10-16", "2026-10-16", "产品页重做 + README 产品化改造",
