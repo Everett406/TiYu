@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import com.drone.quiz.screens.common.JudgeBadgeGlyph
+import com.drone.quiz.screens.common.ParseBlock
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.PlatformTextStyle
@@ -328,8 +329,6 @@ private fun SearchResultItem(
     }
     val p = progress.value
 
-    // v2.19.39：解析的独立开合态，与卡片 expanded 解耦
-    var explanationOpen by remember(q.id) { mutableStateOf(false) }
 
     Box(
         Modifier.graphicsLayer {
@@ -462,75 +461,17 @@ private fun SearchResultItem(
             }
             if (!expanded) {
                 Text(
-                    "点开查看全部选项",
+                    "点开查看全部选项与解析",
                     color = ui.textSub, fontSize = 11.sp,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
 
-            // v2.19.39：解析恒为折叠（用户口径：「无论在什么情况下，这个解析都是
-            // 折叠的状态，因为这样能够让人更集中注意力」）。
-            //
-            // 原先解析与选项同在卡片展开区里——展开即见解析，等于"看一眼选项"
-            // 的同时就把答案讲解读了，注意力被带跑。现在解析有**自己独立**的开关，
-            // 与卡片开合无关：卡片展开只出选项，解析要点下方按钮才出。
-            AnimatedVisibility(
-                visible = explanationOpen,
-                enter = expandVertically(tween(240)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(200)) + fadeOut(tween(160))
-            ) {
-                Column(
-                    Modifier
-                        .padding(top = 10.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(ui.ink.copy(alpha = 0.05f))
-                        .clickable(
-                            interactionSource = null,
-                            indication = null,
-                            onClick = { explanationOpen = false }
-                        )
-                        .padding(12.dp)
-                ) {
-                    Text(
-                        q.explanation,
-                        color = ui.textSub,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-            if (q.explanation.isNotBlank()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(
-                            interactionSource = null,
-                            indication = null,
-                            onClick = { explanationOpen = !explanationOpen }
-                        )
-                        .padding(vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        if (explanationOpen) "收起解析" else "查看解析",
-                        color = ui.textSub, fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        if (explanationOpen) AppIcons.ChevronRight else AppIcons.ChevronRight,
-                        null,
-                        tint = ui.textSub,
-                        modifier = Modifier
-                            .size(13.dp)
-                            .graphicsLayer { rotationZ = if (explanationOpen) 90f else 0f }
-                    )
-                }
-            }
+            // 解析交给共用的 ParseBlock：默认折叠、点开逐字「对焦」揭示。
+            // 与刷题页/模考页/错题本完全同一套观感与交互，全 app 只此一份实现。
+            ParseBlock(q.explanation, autoOpen = true)
         }
     }
     }
 }
+

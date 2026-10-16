@@ -66,6 +66,26 @@ import com.drone.quiz.ui.theme.backdropIsDark
 import com.kyant.backdrop.Backdrop
 import com.drone.quiz.data.repo.JUDGE_CHECK
 import com.drone.quiz.data.repo.JUDGE_CROSS
+import androidx.compose.animation.AnimatedVisibility
+
+import androidx.compose.animation.core.tween
+
+import androidx.compose.animation.expandVertically
+
+import androidx.compose.animation.fadeIn
+
+import androidx.compose.animation.fadeOut
+
+import androidx.compose.animation.shrinkVertically
+
+import androidx.compose.foundation.layout.width
+
+import androidx.compose.ui.graphics.BlurEffect
+
+import androidx.compose.ui.graphics.TileMode
+
+import kotlinx.coroutines.delay
+
 
 /**
  * 题型作答组件族（v2.8.0）：刷题页与模考页共用。
@@ -351,9 +371,26 @@ fun YourAnswerLine(text: String) {
     Text("你的答案：$text", color = ui.textSub, fontSize = 12.sp)
 }
 
+/**
+ * 解析块：**默认折叠**，展开时逐字「对焦」揭示（v2.19.40）。
+ *
+ * 全 app 唯一的解析组件——刷题（单选/多选/填空/简答）、模考、错题本、
+ * 搜索页共六处调用，全部走这里。想改解析的观感只改这一处。
+ *
+ * **容器外壳沿用原样**（圆角 + 淡底 + "解析"小标题），只换里面的呈现方式，
+ * 免得六处各自画一套、越改越不一致。
+ *
+ * **为什么默认折叠**（用户口径）：解析默认摊开时，眼睛在"确认对错"和
+ * "读长段讲解"之间来回跳，注意力被带跑。先把选项想完，需要时再点开。
+ *
+ * @param autoOpen 默认 false（折叠）。传 true 可让特定场景直接展开。
+ */
 @Composable
-fun ParseBlock(explanation: String) {
+fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
     val ui = LocalUi.current
+    var open by remember(explanation) { mutableStateOf(autoOpen) }
+    val hasText = explanation.isNotBlank()
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -363,14 +400,202 @@ fun ParseBlock(explanation: String) {
             .padding(14.dp)
     ) {
         Text("解析", color = ui.textSub, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text(
-            explanation.ifBlank { "暂无解析" },
-            color = ui.text,
-            fontSize = 13.sp,
-            lineHeight = 21.sp,
-            modifier = Modifier.padding(top = 4.dp)
-        )
+
+        if (!hasText) {
+            Text(
+                "暂无解析",
+                color = ui.text,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            return@Column
+        }
+
+        if (!open) {
+            // 折叠态：容器内一行可点的标题，不把按钮放到容器外面去
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        interactionSource = null,
+                        indication = null,
+                        onClick = { open = true }
+                    )
+                    .padding(vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "点击展开解析",
+                    color = ui.textSub,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    AppIcons.ChevronRight,
+                    null,
+                    tint = ui.textSub,
+                    modifier = Modifier.size(13.dp)
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = open,
+            enter = expandVertically(tween(240)) + fadeIn(tween(180)),
+            exit = shrinkVertically(tween(200)) + fadeOut(tween(160))
+        ) {
+            Column(Modifier.padding(top = 6.dp)) {
+                // 收起入口放正文上方：解析常有几百字，放末尾要先滚到底才能收
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(
+                            interactionSource = null,
+                            indication = null,
+                            onClick = { open = false }
+                        )
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "收起",
+                        color = ui.textSub,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Icon(
+                        AppIcons.ChevronRight,
+                        null,
+                        tint = ui.textSub,
+                        modifier = Modifier
+                            .size(12.dp)
+                            .graphicsLayer { rotationZ = 90f }
+                    )
+                }
+                RevealText(
+                    text = explanation,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
     }
+}
+
+/**
+ * 逐字揭示的一段解析（v2.19.40）。
+ *
+ * 效果参考 https://jybho64bv1h9h.space.mcode.cn：每个字从「全透明 + 模糊」
+ * 开始，一边变清晰一边淡入，模拟对焦。速度 20 字/秒（用户口径；参考页是 12）。
+ *
+ * **每个字有自己的到达时间戳**，而不是只记"当前可见多少字"——只有逐字时间戳
+ * 才能算出"这一个字入场走到哪了"：同一条时间轴上第 3 个字可能还在 40%，
+ * 而第 80 个字早已完成。
+ *
+ * **blur 用 easeOut、opacity 用线性**，且 blur 收得更快。若两者同速，动画末尾
+ * 残留的那点模糊会落在已满不透明度的字上，看着像脏点而不是对焦——参考页明确
+ * 点了这条（它的结论是 blur 至少要比 opacity 提前 25% 收干净）。
+ */
+@Composable
+private fun RevealText(text: String, modifier: Modifier = Modifier) {
+    val ui = LocalUi.current
+    val chars = remember(text) { text.toList() }
+    // 已完整入场的字数 + 正在入场的那一批（用于算尾段的逐字进度）
+    val settled = remember(text) { mutableStateOf(0) }
+    val startAt = remember(text) { System.currentTimeMillis() }
+
+    LaunchedEffect(text) {
+        var i = 0
+        while (i < chars.size) {
+            val due = revealArrivalMs(i)
+            val wait = due - (System.currentTimeMillis() - startAt)
+            if (wait > 0) delay(wait)
+            val now = System.currentTimeMillis() - startAt
+            var n = i
+            while (n < chars.size && revealArrivalMs(n) <= now) n++
+            if (n == i) n = i + 1   // 兜底：时间没走到也推进一个，防死循环
+            settled.value = n
+            i = n
+        }
+    }
+
+    if (chars.isEmpty()) return
+
+    // 尾段（正在入场的那几个字）逐字渲染，各算各的进度 → 各自的 blur/alpha
+    val tailStart = (settled.value - 1).coerceAtLeast(0).coerceAtMost(chars.size)
+    val doneText = chars.take(tailStart).joinToString("")
+    val tail = chars.drop(tailStart)
+
+    Column(modifier.fillMaxWidth()) {
+        if (doneText.isNotEmpty()) {
+            Text(
+                doneText,
+                color = ui.text,
+                fontSize = 13.sp,
+                lineHeight = 21.sp
+            )
+        }
+        if (tail.isNotEmpty()) {
+            // 用 InlineTextContent/AnnotatedString 一次组合，但尾段按字给不同 graphicsLayer
+            // —— 逐字 Text 节点太碎，改用 Text + buildAnnotatedString 无法挂 per-char layer，
+            // 故尾段仍逐字 Row 组合；尾段长度上限 12 字（见 revealArrivalMs）故成本可控。
+            tail.forEachIndexed { k, ch ->
+                val idx = tailStart + k
+                val elapsed = System.currentTimeMillis() - startAt - revealArrivalMs(idx)
+                val p = (elapsed.toFloat() / REVEAL_PER_CHAR_MS).coerceIn(0f, 1f)
+                val blurPx = REVEAL_BLUR_PX * (1f - easeOut(p))
+                Text(
+                    ch.toString(),
+                    color = ui.text,
+                    fontSize = 13.sp,
+                    lineHeight = 21.sp,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = p
+                        if (blurPx > 0.05f) {
+                            renderEffect = BlurEffect(blurPx, blurPx, TileMode.Clamp)
+                        } else {
+                            renderEffect = null
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+/** 揭示速度，字/秒（用户口径 20） */
+private const val REVEAL_CPS = 20f
+
+/** 单字入场时长（ms） */
+private const val REVEAL_PER_CHAR_MS = 260f
+
+/** 起始模糊半径（px），取自参考页 */
+private const val REVEAL_BLUR_PX = 3f
+
+/** 同时逐字渲染的尾段长度上限——超过部分会被此前的"已完成段"合并掉 */
+private const val REVEAL_TAIL_MAX = 12
+
+/** blur 专用 easeOut：前段猛、尾巴收得快，保证模糊先于透明度收干净 */
+private fun easeOut(t: Float): Float {
+    val inv = 1f - t.coerceIn(0f, 1f)
+    return 1f - inv * inv
+}
+
+/**
+ * 第 [index] 个字的到达时刻（相对起点，毫秒）。
+ *
+ * 追赶机制（参考页结论）：积压超过阈值就提速，否则 300 字的解析要读十几秒。
+ * 这里用「按已过时间反推」的方式——理论时刻 20 字/秒，但任何一个字都不晚于
+ * `index * (1000/最小速度)` 到达，最慢 4 字/秒封顶。
+ */
+private fun revealArrivalMs(index: Int): Long {
+    if (index <= 0) return 0L
+    val ideal = index * (1000f / REVEAL_CPS)
+    val slowest = index * (1000f / 4f)
+    return ideal.coerceAtMost(slowest).toLong()
 }
 
 // ---------- 题目图片（v2.8.5，ZIP 导入的带图题库） ----------

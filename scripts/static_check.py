@@ -1111,24 +1111,69 @@ for _tok, _why in [
     ("BlurEffect(", "须有「模糊→清晰」过程（用户口径）"),
     ("TileMode.Clamp", "模糊边缘延展，避免卡片渐显时露出透明边"),
     ("translationY", "须带轻微位移，纯淡入太单薄"),
-    ("var explanationOpen by remember(q.id)", "解析须有独立开合态（与卡片 expanded 解耦）"),
+    # v2.19.40：搜索页解析不再有独立开关（随卡片展开），
+    # 折叠态由共用的 ParseBlock 内部负责。此处只查逐条渐入那三项。
+
 ]:
     if _tok not in _sc2:
         print(f"[FAIL] 搜索页：{_why}（缺 {_tok!r}）")
         fail = True
 
-# 解析不得再出现在「卡片自动展开」区里
-_i_exp = _sc2.find("visible = expanded")
-_i_expl = _sc2.find("visible = explanationOpen")
-if _i_exp < 0 or _i_expl < 0:
-    print("[FAIL] 搜索页：解析应独立于卡片展开区（用户口径：任何情况下解析都折叠）")
+# v2.19.40：搜索页解析随卡片展开（用户口径：统一，别搞独立开关），
+# 故此处**不再**检查二者是否解耦——那会逼着人把搜索页又拆出一套。
+# v2.19.40：搜索页回退为「解析随卡片展开、无独立按钮」（用户口径：
+# 「搜索页不需要搞这种解析展开或关闭…原来那个样式也是那样子的，
+#   这样子我们都统一一下，比较好管理」）。
+# 所以提示文案**应当**含「与解析」——它随卡片一起展开，是卡片内容之一。
+if "点开查看全部选项" not in _sc2:
+    print("[FAIL] 搜索页折叠提示文案缺失")
     fail = True
-elif _i_expl < _i_exp:
-    print("[FAIL] 搜索页：解析开关须在卡片展开区之外（须 independent of expanded）")
+if "explanationOpen" in _sc2:
+    print("[FAIL] 搜索页不该再有解析的独立开关（v2.19.40 已收回，解析统一走 ParseBlock）")
     fail = True
-if "点开查看全部选项与解析" in _sc2:
-    print("[FAIL] 搜索页折叠提示文案须去掉「与解析」——解析已有独立按钮（用户口径：恒折叠）")
-    fail = True
+
+# 7.z7) 解析组件统一（v2.19.40）
+#      用户反馈：「无论考试还是刷题，解析仍然是默认展开的，没看到折叠功能」。
+#      病灶：v2.19.39 我只改了搜索页（给它加了个独立开关），
+#      而刷题四类题 + 模考 + 错题本共五处仍沿用「判定即摊开解析」的旧写法——
+#      用户看到的就是「没变化」。六处各画各的，加折叠开关要改六遍、极易漏。
+#      现收敛到**唯一**的 ParseBlock（QuestionBody.kt）：默认折叠 + 逐字揭示，
+#      六处调用点全部走它。想改解析观感只改这一处。
+#
+#      搜索页显式传 autoOpen=true（解析随卡片展开、无独立按钮），
+#      其余五处用默认折叠态。
+_qb3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
+for _tok, _why in [
+    ("fun ParseBlock(explanation: String, autoOpen: Boolean = false)",
+     "ParseBlock 须有 autoOpen 参数（搜索页解析随卡片展开，不需要独立按钮）"),
+    ("var open by remember(explanation) { mutableStateOf(autoOpen) }",
+     "解析须默认折叠（用户口径：无论考试还是刷题都不该默认摊开）"),
+    ("点击展开解析", "折叠态须有可点的展开入口"),
+    ("REVEAL_CPS = 20f", "逐字揭示速度须为 20 字/秒（用户口径）"),
+    ("REVEAL_BLUR_PX = 3f", "起始模糊半径 3px（用户指定参考页的参数）"),
+    ("private fun easeOut", "blur 须用 easeOut 提前收干净，否则末尾残影落在满不透明度的字上"),
+    ("BlurEffect(blurPx, blurPx, TileMode.Clamp)", "逐字模糊须用 BlurEffect"),
+    ("revealArrivalMs", "须按逐字到达时刻推进，而非一次性全出"),
+]:
+    if _tok not in _qb3:
+        print("[FAIL] 解析组件：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+# 六处调用点：不得再有自己画解析的（说明又分叉了）
+for _f, _min in [
+    ("screens/PracticeScreen.kt", 4),
+    ("screens/ExamScreens.kt", 1),
+    ("screens/SearchScreen.kt", 1),
+]:
+    _src = load(_repo_root + "/app/src/main/java/com/drone/quiz/" + _f)
+    _n = _src.count("ParseBlock(")
+    if _n < _min:
+        print("[FAIL] %s 应经由共用的 ParseBlock 渲染解析（找到 %d 处，少于 %d）——"
+              "各页自己画解析会再次分叉" % (_f, _n, _min))
+        fail = True
+    if "Text(q.explanation," in _src:
+        print("[FAIL] %s 仍有直接渲染解析正文的写法，应改走 ParseBlock" % _f)
+        fail = True
 
 # ============================================================
 # 收尾（**唯一**出口）
