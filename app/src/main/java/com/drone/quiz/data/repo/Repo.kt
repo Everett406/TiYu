@@ -685,6 +685,14 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
     fun recentExams(bankId: String): Flow<List<ExamRecordEntity>> = eDao.recentExams(bankId, 20)
 
     /**
+     * 最近的模考（v2.19.50 首页「模考走势」用）。
+     * [recentExams] 固定取 20 条，其中大半是未交卷的进行中记录，
+     * 真正画图只需要最近几条已出分的。
+     */
+    fun recentScoredExams(bankId: String, n: Int = 8): Flow<List<ExamRecordEntity>> =
+        eDao.recentScoredExamsFlow(bankId, n)
+
+    /**
      * 从数据库重建历史模考成绩（供"最近模考"记录点击进入成绩页使用）。
      * 未交卷/不存在 → null。
      */

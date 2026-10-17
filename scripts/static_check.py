@@ -546,8 +546,10 @@ if "clipToBounds" in _heat3_code:
 _home6 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
 _blk = _home6[_home6.index("// ---- 顶行：连击（左） / 今日（右）----"):
               _home6.index("// ---- 18 周热力图")]
-_foot = _home6[_home6.index("// ---- 脚注：主语写全的答对/答错 + 图例同处一行 ----"):
-               _home6.index("// ---- 近 7 天图表 ----")]
+# 锚点改用**内容**而非注释名：图表卡的注释在 v2.19.50 改过名，
+# 按注释切片这类写法很脆（改个注释名就炸），换成唯一定位脚注文案。
+_foot_i = _home6.index('"今天还没开始，来几题热热手"')
+_foot = _home6[max(0, _foot_i - 400): _foot_i + 400]
 if _blk.count("maxLines = 1") < 4:
     print("[FAIL] 打卡卡顶行四个文本须加 maxLines=1（文案长短不一会撑高卡片）"); fail = True
 if "maxLines = 1" not in _foot:
@@ -1358,6 +1360,34 @@ for _gone, _why in [
     if _gone in _es_ui:
         print("[FAIL] 模考设置记忆：不该再显示 %r（%s）" % (_gone, _why))
         fail = True
+
+# ── 首页图表卡的模式切换（v2.19.50）─────────────────────────────
+# 用户反馈：图表卡上那个「本题库」标签多余——但这卡的数据本来就按题库隔离，
+# 切到哪个库它都写着「本题库」，等于一句废话。要求换成练习/模考两种模式的切换，
+# 且**不创作新图表**，直接把现有的七天练习图切过去。
+_hm = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+_hm_code = re.sub(r"/\*.*?\*/", "", _hm, flags=re.S)
+_hm_code = re.sub(r"//[^\n]*", "", _hm_code)
+for _tok, _why in [
+    ("data class ChartPoint", "图表必须泛化成通用数据点，否则两种模式得各画一份"),
+    ("fun Chart(", "必须有通用的 Chart 组件"),
+    ("fun List<Repo.DayStat>.toChartPoints()", "七天练习需转成 ChartPoint"),
+    # 关键：要验证它**被调用**，而不只是定义了——定义留着不调用，
+    # 就等于「两种模式各画一份」，正是用户明确不要的。
+    ("stats.exams.toExamChartPoints()", "模考数据必须真的喂给 ChartPoint（共用同一张图）"),
+    ("stats.days.toChartPoints()", "七天练习数据必须真的喂给 ChartPoint"),
+    ("private fun ChartModeSwitch", "必须有模式切换控件"),
+    ('if (examMode) "模考走势" else "近 7 天练习"', "标题须随模式切换"),
+    ('if (examMode) " 得分  " else " 题量  "', "图例的柱含义须随模式切换"),
+]:
+    if _tok not in _hm_code:
+        print("[FAIL] 首页图表：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+# 「本题库」那个恒为真的话的标签不得复活
+if '"本题库"' in _hm_code:
+    print("[FAIL] 首页图表：不得再显示「本题库」标签（数据本就按题库隔离，等于废话）")
+    fail = True
 
 # ── 预估通过率（v2.19.48）────────────────────────────────────────
 # 旧算法只有一行：累计刷题正确率 ÷ 及格分，再和「刷题覆盖率」三七分。

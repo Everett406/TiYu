@@ -286,6 +286,13 @@ interface ExamDao {
     @Query("SELECT * FROM exam_records WHERE bankId = :bankId ORDER BY startedAt DESC LIMIT :n")
     fun recentExams(bankId: String, n: Int): Flow<List<ExamRecordEntity>>
 
+    /** 已交卷（有分数）的模考，倒序（v2.19.50 首页模考走势） */
+    @Query(
+        "SELECT * FROM exam_records WHERE bankId = :bankId AND score IS NOT NULL " +
+            "ORDER BY startedAt DESC LIMIT :n"
+    )
+    fun recentScoredExamsFlow(bankId: String, n: Int): Flow<List<ExamRecordEntity>>
+
     @Query("SELECT * FROM exam_answers WHERE examId = :examId")
     suspend fun answersFor(examId: Long): List<ExamAnswerEntity>
 

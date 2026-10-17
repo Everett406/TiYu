@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import com.drone.quiz.ServiceLocator
 import com.drone.quiz.data.repo.Repo
@@ -72,6 +73,10 @@ import androidx.compose.foundation.border
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.animation.core.animateDpAsState
+
+import androidx.compose.foundation.layout.offset
+
 
 @Composable
 fun HomeScreen(
@@ -93,6 +98,7 @@ fun HomeScreen(
         val accuracy: Float = 0f,
         val streak: Int = 0,
         val days: List<Repo.DayStat> = emptyList(),
+        val exams: List<com.drone.quiz.data.db.ExamRecordEntity> = emptyList(),
         val todayAnswered: Int = 0,
         val todayCorrect: Int = 0,
         // 打卡热力图：近 154 天「日期 / 当日题量 / 当日答对」，全局数据（不按题库隔离）
@@ -109,14 +115,15 @@ fun HomeScreen(
             ServiceLocator.repo.answeredDistinctFlow(bank),
             ServiceLocator.repo.totalAnsweredFlow(),
             ServiceLocator.repo.activeWrong(bank).map { it.size },
-            ServiceLocator.repo.recentExams(bank)
+            ServiceLocator.repo.recentScoredExams(bank, 8)
         ) { total, distinct, answered, wrong, exams ->
             HomeStats(
                 total = total,
                 answeredDistinct = distinct,
                 totalAnswered = answered,
                 wrongCount = wrong,
-                lastExam = exams.firstOrNull()
+                lastExam = exams.firstOrNull(),
+                exams = exams
             )
         }.collect { s0 ->
             val acc = ServiceLocator.repo.accuracy(bank)
@@ -451,8 +458,9 @@ fun HomeScreen(
             }
         }
 
-        // ---- 近 7 天图表 ----
+        // ---- 图表卡：近 7 天练习 ↔ 模考走势（v2.19.50 可切换，共用同一张图）----
         item {
+            var examMode by remember(settings.currentBank) { mutableStateOf(false) }
             GlassCard(
                 backdrop = backdrop,
                 modifier = Modifier
@@ -463,30 +471,23 @@ fun HomeScreen(
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "近 7 天练习",
+                            if (examMode) "模考走势" else "近 7 天练习",
                             color = ui.text,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
                         )
-                        // 范围标记（v2.8.2：今日/近 7 天已按题库隔离，与全局打卡区分）
-                        Text(
-                            "本题库",
-                            color = ui.textSub, fontSize = 10.sp,
-                            modifier = Modifier
-                                .padding(end = 10.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(ui.ink.copy(alpha = 0.06f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                        // 图例
+                        // 图例：柱的含义随模式切换（题量 / 得分），折线始终是正确率
                         Box(
                             Modifier
                                 .size(8.dp)
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(ui.ink)
                         )
-                        Text(" 题量  ", color = ui.textSub, fontSize = 11.sp)
+                        Text(
+                            if (examMode) " 得分  " else " 题量  ",
+                            color = ui.textSub, fontSize = 11.sp
+                        )
                         Box(
                             Modifier
                                 .size(8.dp)
@@ -495,17 +496,41 @@ fun HomeScreen(
                         )
                         Text(" 正确率", color = ui.textSub, fontSize = 11.sp)
                     }
-                    WeekChart(
-                        days = stats.days,
-                        barColor = ui.ink,
-                        lineColor = ui.accent,
-                        trackColor = ui.ink.copy(alpha = 0.08f),
-                        textColor = ui.textSub,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 14.dp)
-                            .height(140.dp)
+                    // v2.19.50：切换按钮。
+                    // 原先这里有个恒为「本题库」的标签——但这卡的数据本来就
+                    // 已经按题库隔离，无论切到哪个库它都写着「本题库」，
+                    // 等于一句废话。位置让给真正有用的模式切换。
+                    ChartModeSwitch(
+                        examMode = examMode,
+                        onChange = { examMode = it },
+                        modifier = Modifier.padding(top = 10.dp)
                     )
+
+                    val examPoints = stats.exams.toExamChartPoints()
+                    val points = if (examMode) examPoints else stats.days.toChartPoints()
+                    if (points.isEmpty()) {
+                        Text(
+                            if (examMode) "还没有模考记录，考一场就能看到走势" else "近 7 天还没有练习记录",
+                            color = ui.textSub, fontSize = 12.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 14.dp)
+                                .height(140.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Chart(
+                            points = points,
+                            barColor = ui.ink,
+                            lineColor = ui.accent,
+                            trackColor = ui.ink.copy(alpha = 0.08f),
+                            textColor = ui.textSub,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .height(140.dp)
+                        )
+                    }
                 }
             }
         }
@@ -696,11 +721,62 @@ fun ProgressRing(
 }
 
 /**
- * 近 7 天柱状图 + 正确率折线（Canvas 自绘）。
+ * 图表的一个数据点（v2.19.50 泛化）。
+ *
+ * 原先 [WeekChart] 只吃 [Repo.DayStat]，于是「近 7 天练习」和
+ * 「模考走势」得各画一份。这里把两种来源都归一成同一种形状，
+ * 底下的绘制逻辑一行都不用改——用户要的正是"不创作新图表，直接切换"。
+ */
+data class ChartPoint(
+    val label: String,      // X 轴标签
+    val bar: Float,         // 柱状值（题量 / 得分）
+    val line: Float,        // 折线值，0..1（正确率）
+    val barZero: Boolean = false,   // 柱为 0 → 淡显
+    val emphasize: Boolean = false   // 高亮（今天 / 最近一次）
+)
+
+/** 近 7 天练习 → 图表数据点 */
+fun List<Repo.DayStat>.toChartPoints(): List<ChartPoint> = map {
+    ChartPoint(
+        label = it.label,
+        bar = it.answered.toFloat(),
+        line = if (it.answered > 0) it.correct.toFloat() / it.answered else 0f,
+        barZero = it.answered == 0,
+        emphasize = it.isToday
+    )
+}
+
+/** 最近若干次模考 → 图表数据点（时间正序，越靠右越新） */
+fun List<com.drone.quiz.data.db.ExamRecordEntity>.toExamChartPoints(): List<ChartPoint> =
+    asReversed().filter { it.score != null }.map { e ->
+        val sc = e.score!!
+        ChartPoint(
+            label = shortDate(e.startedAt),
+            // 得分与正确率同向（分数就是按正确率算的），柱与线不会互相打架
+            bar = sc,
+            line = (sc / 100f).coerceIn(0f, 1f),
+            barZero = sc <= 0f,
+            emphasize = false
+        )
+    }
+
+/** MM/DD（同年不写年） */
+private fun shortDate(ts: Long): String {
+    val c = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+    val m = c.get(java.util.Calendar.MONTH) + 1
+    val d = c.get(java.util.Calendar.DAY_OF_MONTH)
+    val y = c.get(java.util.Calendar.YEAR)
+    val now = java.util.Calendar.getInstance()
+    return if (y == now.get(java.util.Calendar.YEAR)) "$m/$d" else "$y/$m"
+}
+
+/**
+ * 柱状图 + 折线（Canvas 自绘）。
+ * 两种模式共用：**近 7 天练习**（柱=题量）与**模考走势**（柱=得分）。
  */
 @Composable
-fun WeekChart(
-    days: List<Repo.DayStat>,
+fun Chart(
+    points: List<ChartPoint>,
     barColor: Color,
     lineColor: Color,
     trackColor: Color,
@@ -710,21 +786,21 @@ fun WeekChart(
     val density = LocalDensity.current
     val labelPx = with(density) { 10.sp.toPx() }
     Canvas(modifier) {
-        if (days.isEmpty()) return@Canvas
-        val n = days.size
+        if (points.isEmpty()) return@Canvas
+        val n = points.size
         val labelSpace = labelPx * 2.2f
         val chartH = size.height - labelSpace
         val slot = size.width / n
         val barW = slot * 0.42f
-        val maxV = (days.maxOf { it.answered }).coerceAtLeast(10).toFloat()
+        val maxV = points.maxOf { it.bar }.coerceAtLeast(10f)
 
         // 柱
-        days.forEachIndexed { i, d ->
-            val h = chartH * 0.82f * (d.answered / maxV)
+        points.forEachIndexed { i, d ->
+            val h = chartH * 0.82f * (d.bar / maxV)
             val left = slot * i + (slot - barW) / 2
             val top = chartH - h
             drawRoundRect(
-                color = if (d.isToday) barColor else barColor.copy(alpha = if (d.answered == 0) 0.12f else 0.32f),
+                color = if (d.emphasize) barColor else barColor.copy(alpha = if (d.barZero) 0.12f else 0.32f),
                 topLeft = Offset(left, top),
                 size = Size(barW, h.coerceAtLeast(3f)),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2)
@@ -732,23 +808,22 @@ fun WeekChart(
         }
 
         // 正确率折线
-        val points = days.mapIndexed { i, d ->
-            val acc = if (d.answered > 0) d.correct.toFloat() / d.answered else 0f
-            Offset(slot * i + slot / 2, chartH - chartH * 0.82f * acc - chartH * 0.02f)
+        val linePts = points.mapIndexed { i, d ->
+            Offset(slot * i + slot / 2, chartH - chartH * 0.82f * d.line - chartH * 0.02f)
         }
-        if (days.any { it.answered > 0 }) {
+        if (points.any { !it.barZero }) {
             val path = androidx.compose.ui.graphics.Path().apply {
-                points.forEachIndexed { i, p ->
+                linePts.forEachIndexed { i, p ->
                     if (i == 0) moveTo(p.x, p.y) else cubicTo(
-                        (points[i - 1].x + p.x) / 2, points[i - 1].y,
-                        (points[i - 1].x + p.x) / 2, p.y,
+                        (linePts[i - 1].x + p.x) / 2, linePts[i - 1].y,
+                        (linePts[i - 1].x + p.x) / 2, p.y,
                         p.x, p.y
                     )
                 }
             }
             drawPath(path, lineColor, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
-            points.forEachIndexed { i, p ->
-                if (days[i].answered > 0) {
+            linePts.forEachIndexed { i, p ->
+                if (!points[i].barZero) {
                     drawCircle(lineColor, 3.5f, p)
                     drawCircle(Color.White, 1.5f, p)
                 }
@@ -767,13 +842,71 @@ fun WeekChart(
             textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
         }
-        days.forEachIndexed { i, d ->
+        points.forEachIndexed { i, d ->
             drawContext.canvas.nativeCanvas.drawText(
                 d.label,
                 slot * i + slot / 2,
                 size.height - labelPx * 0.4f,
                 textPaint
             )
+        }
+    }
+}
+
+/**
+ * 图表模式切换（v2.19.50）：练习 / 模考。
+ *
+ * 用紧凑的滑动胶囊而不是 [SegmentedRow]——后者 fillMaxWidth，
+ * 放进卡片标题行会显得头重脚轻，这里只需要占标题宽度的一半。
+ */
+@Composable
+private fun ChartModeSwitch(
+    examMode: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ui = LocalUi.current
+    val labels = listOf("练习", "模考")
+    val selected = if (examMode) 1 else 0
+    val width = 132.dp
+    val segW = width / 2
+    val pillX by animateDpAsState(
+        targetValue = segW * selected,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 520f),
+        label = "chartMode"
+    )
+    Row(
+        modifier
+            .width(width)
+            .height(26.dp)
+            .clip(RoundedCornerShape(50))
+            .background(ui.ink.copy(alpha = if (ui.isDark) 0.22f else 0.07f))
+    ) {
+        Box(
+            Modifier
+                .offset(x = pillX + 2.dp, y = 2.dp)
+                .size(width = segW - 4.dp, height = 22.dp)
+                .clip(RoundedCornerShape(50))
+                .background(ui.ink)
+        )
+        labels.forEachIndexed { i, label ->
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(26.dp)
+                    .clickable(
+                        interactionSource = null,
+                        indication = null
+                    ) { onChange(i == 1) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    label,
+                    color = if (i == selected) ui.onInk else ui.textSub,
+                    fontSize = 11.sp,
+                    fontWeight = if (i == selected) FontWeight.SemiBold else FontWeight.Medium
+                )
+            }
         }
     }
 }
