@@ -72,7 +72,11 @@ class PassEstimateTest {
 
     /**
      * 小样本不该给出「100% 通过」这种极端结论。
-     * 只做过 10 道题且全对，先验（相当于 24 题）应当把它拉下来。
+     *
+     * v2.19.51 起这条的下界改了：换成正态分布模型后，10 道题全对、
+     * 及格 60 分给出的通过率是 **37%**，而旧比值模型会报 95%。
+     * 37% 才是诚实的——10 道题确实不足以断定能过 60 分及格线。
+     * 所以这里断言「不接近满、也不归零」，而不是拍一个具体下限。
      */
     @Test
     fun `小样本全对不会给出满格结论`() {
@@ -81,8 +85,8 @@ class PassEstimateTest {
             exams = listOf(exam(0, 10, 8 to 8, 2 to 2, now)),
             bankTypeMix = MIX, passLine = 60, now = now
         )
-        assertTrue("小样本不该报 100%（实得 ${r.estimate}）", r.estimate < 1f)
-        assertTrue("但也不该过于悲观（实得 ${r.estimate}）", r.estimate > 0.6f)
+        assertTrue("小样本不该报接近满格（实得 ${r.estimate}）", r.estimate < 0.75f)
+        assertTrue("但也不该归零（实得 ${r.estimate}）", r.estimate > 0.20f)
     }
 
     @Test

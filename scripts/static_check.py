@@ -1361,6 +1361,42 @@ for _gone, _why in [
         print("[FAIL] 模考设置记忆：不该再显示 %r（%s）" % (_gone, _why))
         fail = True
 
+# ── 通过率的模型（v2.19.51）─────────────────────────────────────
+# 用户实机：「及格 60 给我报 100% 我相信，但调到 95 还是 81%。
+#           我最高就考到 86，没到过 90 分往上。」
+#
+# 病灶：`estimate = ability / pass` 是「能力 ÷ 及格线」的**比值**，不是概率。
+# 后果是**及格线越高、通过率反而越接近 1**——82 分能力、95 分及格报 86%。
+# 差 0.001 和差 0.10 报出来的数字几乎一样，因为它压根不在回答「能不能过」，
+# 只是把「离及格线还有多远」除了一下。
+#
+# 正确模型：通过率 = Φ((能力 − 及格线) / σ)，σ 是单次考试发挥的波动。
+_pe = load(_repo_root + "/app/src/main/java/com/drone/quiz/data/PassEstimate.kt")
+_pe_code = re.sub(r"/\*.*?\*/", "", _pe, flags=re.S)
+_pe_code = re.sub(r"//[^\n]*", "", _pe_code)
+for _tok, _why in [
+    ("fun normalCdf(", "须有标准正态 CDF：通过率是概率，不能用比值"),
+    ("fun estimateSigma(", "须从用户自己的成绩估计考试波动 σ"),
+    ("val z = (ability - pass) / sigma", "通过率必须是 Φ((能力−及格线)/σ)"),
+    ("const val SIGMA_DEFAULT", "σ 缺样本时须有默认值"),
+    ("SIGMA_PRIOR_N", "σ 的估计须向默认值收缩（两场分数不足以代表波动）"),
+    ("const val SIGMA_MIN", "σ 须有下界：再稳也不该零波动"),
+    ("const val SIGMA_MAX", "σ 须有上界：再飘也不该离谱"),
+]:
+    if _tok not in _pe_code:
+        print("[FAIL] 通过率模型：%s（缺 %r）" % (_why, _tok))
+        fail = True
+
+for _bad, _why in [
+    ("(ability / pass)", "不得再用量 ÷ 及格线的比值当通过率"),
+    ("(correctW / totalW)", "注意这个是收缩公式的退化形态，需连同 prior 一起检查"),
+]:
+    if _bad in _pe_code:
+        if _bad == "(correctW / totalW)" and "prior" in _pe_code and "PRIOR_STRENGTH" in _pe_code:
+            continue          # 收缩仍然健在，误报
+        print("[FAIL] 通过率模型：%s（出现 %r）" % (_why, _bad))
+        fail = True
+
 # ── 首页图表卡的模式切换（v2.19.50）─────────────────────────────
 # 用户反馈：图表卡上那个「本题库」标签多余——但这卡的数据本来就按题库隔离，
 # 切到哪个库它都写着「本题库」，等于一句废话。要求换成练习/模考两种模式的切换，
@@ -1430,7 +1466,7 @@ if "PassEstimate.compute(" not in _home_code:
 if "stats.accuracy / (settings.passScore" in _home_code:
     print("[FAIL] 首页：旧的一行式（stats.accuracy / passScore）不得复活")
     fail = True
-if "r.basis()" not in _home:
+if "r.basis(settings.passScore)" not in _home:
     print("[FAIL] 首页：须展示估计依据（basis），别给一个凭空而来的百分数")
     fail = True
 

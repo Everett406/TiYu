@@ -324,7 +324,7 @@ fun HomeScreen(
                         passResult?.let { r ->
                             if (!r.coldStart) {
                                 Text(
-                                    r.basis(),
+                                    r.basis(settings.passScore),
                                     color = ui.textSub.copy(alpha = 0.85f),
                                     fontSize = 10.5.sp,
                                     lineHeight = 14.sp,

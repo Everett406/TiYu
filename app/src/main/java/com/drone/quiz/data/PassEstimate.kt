@@ -55,6 +55,22 @@ object PassEstimate {
     /** 最多回看多少场模考 */
     const val MAX_EXAMS = 8
 
+    // ── 考试波动 σ（v2.19.51）──────────────────────────────────
+    // 通过率是「单次考试会不会过这条线」，所以必须考虑发挥的波动：
+    // 同一个人，同样水平，状态好时多考几分、状态差时少考几分。
+    // σ 越小 = 发挥越稳，通过率曲线越陡（差一分就必然过或必然不过）。
+    //
+    // 默认值取 0.09：大致是「一次模考比另一��低 9 分」这个量级。
+    // 样本不足时用它；样本够了就换成用户**自己**的成绩波动。
+    const val SIGMA_DEFAULT = 0.09f
+
+    /** σ 的先验强度（以"次"计）：样本少时向默认值收缩 */
+    const val SIGMA_PRIOR_N = 8f
+
+    /** σ 的硬边界：再稳也不该零波动，再飘也不该离谱 */
+    const val SIGMA_MIN = 0.04f
+    const val SIGMA_MAX = 0.22f
+
     /** 刷题证据的封顶**去重题数**，防止大量刷题把模考信号淹没 */
     const val PRACTICE_CAP = 300
 
@@ -73,8 +89,9 @@ object PassEstimate {
     }
 
     data class Result(
-        val estimate: Float,        // 0..1 预估通过率
+        val estimate: Float,        // 0..1 预估通过率（正态分布尾部概率）
         val ability: Float,         // 0..1 估计的期望正确率（收缩后）
+        val sigma: Float,           // 0..1 单次考试波动
         val examCount: Int,         // 用到几场模考
         val questionWeight: Float,  // 模考证据总量（加权题数）
         val enough: Boolean,        // 证据是否充分
@@ -87,14 +104,17 @@ object PassEstimate {
                     (1f - 1f / (1f + examCount / 2.5f))
 
         /** 副标题：把依据摊开给用户看，而不是给一个凭空而来的百分数 */
-        fun basis(): String = when {
+        fun basis(passLine: Int = 60): String = when {
             coldStart -> "暂无成绩，先练几道就能估了"
             examCount == 0 -> "还没有模考记录，先去刷题"
             questionWeight < 20f ->
-                "基于 $examCount 次模考 · 约 ${questionWeight.toInt()} 题，样本偏少仅供参考"
+                "估计水平 ${pct(ability)} · 波动 ±${pct(sigma)} · $examCount 次模考，样本偏少"
             else ->
-                "基于 $examCount 次模考 · 约 ${questionWeight.toInt()} 题"
+                "估计水平 ${pct(ability)} · 波动 ±${pct(sigma)} · 基于 $examCount 次模考"
         }
+
+        /** 0.82 → "82" */
+        private fun pct(v: Float) = (v * 100).toInt().toString()
     }
 
     /**
@@ -105,6 +125,44 @@ object PassEstimate {
      * @param practiceN    刷题覆盖的**去重题数**（不是作答次数）
      * @param coverage     题库覆盖率（仅冷启动时用作起步提示）
      */
+    /**
+     * 从用户自己的模考成绩估计单次波动 σ。
+     *
+     * 样本少时向 [SIGMA_DEFAULT] 收缩——一个人只考过两场，两场分数之差
+     * 一半来自实力变化、一半来自运气，直接当 σ 会严重低估波动。
+     */
+    fun estimateSigma(exams: List<ExamSample>): Float {
+        val scores = exams.take(MAX_EXAMS).mapNotNull { it.rawAccuracy() }
+        if (scores.size < 2) return SIGMA_DEFAULT
+        val mean = scores.average()
+        val varSum = scores.sumOf { (it - mean) * (it - mean).toDouble() }.toFloat()
+        // 样本标准差（Bessel 校正）
+        val sample = kotlin.math.sqrt(varSum / (scores.size - 1)).toFloat()
+        val n = scores.size.toFloat()
+        val blended = kotlin.math.sqrt(
+            (n * sample * sample + SIGMA_PRIOR_N * SIGMA_DEFAULT * SIGMA_DEFAULT) /
+                (n + SIGMA_PRIOR_N)
+        ).toFloat()
+        return blended.coerceIn(SIGMA_MIN, SIGMA_MAX)
+    }
+
+    /**
+     * 标准正态分布的累积分布函数 Φ(z)。
+     *
+     * 用 Abramowitz & Stegun 7.1.26 的误差函数近似，
+     * 最大绝对误差约 7.5e-8 —— 远小于百分位显示精度。
+     * 不引第三方库：为一个 erf 拉一个依赖不划算。
+     */
+    fun normalCdf(z: Float): Float {
+        val az = kotlin.math.abs(z)
+        val t = 1f / (1f + 0.2316419f * az)
+        val poly = t * (0.319381530f + t * (-0.356563782f +
+            t * (1.781477937f + t * (-1.821255978f + t * 1.330274429f))))
+        val d = 0.3989423f * kotlin.math.exp(-0.5f * az * az)
+        val tail = d * poly
+        return if (z >= 0f) 1f - tail else tail
+    }
+
     fun compute(
         exams: List<ExamSample>,
         bankTypeMix: Map<String, Float>,
@@ -112,7 +170,7 @@ object PassEstimate {
         practiceAcc: Map<String, Float> = emptyMap(),
         practiceN: Int = 0,
         coverage: Float = 0f,
-        now: Long
+        now: Long = System.currentTimeMillis()
     ): Result {
         val pass = (passLine.coerceIn(1, 100)) / 100f
 
@@ -163,8 +221,9 @@ object PassEstimate {
         if (totalW <= 0f) {
             val seed = (PRIOR_PASS * 0.45f + coverage.coerceIn(0f, 1f) * 0.55f)
             return Result(
-                estimate = (seed / pass).coerceIn(0f, 1f),
+                estimate = normalCdf((seed - pass) / SIGMA_DEFAULT).coerceIn(0f, 1f),
                 ability = seed,
+                sigma = SIGMA_DEFAULT,
                 examCount = 0, questionWeight = 0f,
                 enough = false, coldStart = true
             )
@@ -175,10 +234,26 @@ object PassEstimate {
         val ability = ((correctW + prior * PRIOR_STRENGTH) /
                 (totalW + PRIOR_STRENGTH)).coerceIn(0f, 1f)
 
-        val estimate = (ability / pass).coerceIn(0f, 1f)
+        // ── 通过率 = P(单次考试得分 ≥ 及格线) ──
+        //
+        // v2.19.50 之前用的是 `ability / pass`，那是「能力 ÷ 及格线」的**比值**，
+        // 不是概率。后果是及格线越高、通过率反而越接近 1：
+        //   能力 82 分、及格 60 → 137% → clamp 成 100%（还算合理）
+        //   能力 82 分、及格 95 → 86%（荒谬——差 13 分还报 86%）
+        // 用户原话：「考到 95 分时通过率依然有 81%」。
+        //
+        // 差 0.001 和差 0.10 报出来的数字几乎一样，因为它压根不是在回答
+        // 「能不能过」，只是把「离及格线还有多远」除了一下。
+        //
+        // 正确做法是把它当成概率问题：单次考试发挥有波动 σ，
+        // 于是通过率 = Φ((能力 − 及格线) / σ)。
+        val sigma = estimateSigma(exams)
+        val z = (ability - pass) / sigma
+        val estimate = normalCdf(z).coerceIn(0f, 1f)
         return Result(
             estimate = estimate,
             ability = ability,
+            sigma = sigma,
             examCount = used,
             questionWeight = totalW,
             enough = used > 0 && totalW >= 20f,
