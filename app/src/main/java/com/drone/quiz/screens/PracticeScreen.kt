@@ -849,7 +849,7 @@ private fun ChoiceSection(q: Question, ua: UserAnswer?, onCommit: (UserAnswer) -
                 judgeAnswer(q, ua),
                 " · 正确答案：${q.correctAnswerText(brief = true)}"
             )
-            ParseBlock(q.explanation, explanationImages = q.explanationImages, bankId = q.bankId)
+            ParseBlock(q.explanation)
         }
     }
 }
@@ -927,7 +927,7 @@ private fun MultiSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
                 YourAnswerLine(pickedAnswerText(q.options, ua?.picked))
             }
             CorrectAnswerLine(q.correctAnswerText(brief = true))
-            ParseBlock(q.explanation, explanationImages = q.explanationImages, bankId = q.bankId)
+            ParseBlock(q.explanation)
         }
     }
 }
@@ -967,7 +967,7 @@ private fun BlankSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
             Column(Modifier.padding(top = 16.dp)) {
                 ResultHeader(judgeAnswer(q, ua))
                 CorrectAnswerLine(q.correctAnswerText(brief = true))
-                ParseBlock(q.explanation, explanationImages = q.explanationImages, bankId = q.bankId)
+                ParseBlock(q.explanation)
             }
         }
     }
@@ -1005,6 +1005,8 @@ private fun ShortSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
                 yourText = ua?.text.orEmpty(),
                 graded = ua?.graded == true,
                 selfCorrect = if (ua?.graded == true) ua.picked == 1 else null,
+                referenceImages = q.explanationImages,
+                bankId = q.bankId,
                 onGrade = { correct ->
                     onCommit((ua ?: UserAnswer()).copy(picked = if (correct) 1 else 0, graded = true))
                 }
@@ -1016,7 +1018,7 @@ private fun ShortSection(q: Question, ua: UserAnswer?, backdrop: Backdrop, onCom
             ) {
                 Column(Modifier.padding(top = 10.dp)) {
                     ResultHeader(judgeAnswer(q, ua), " · 自评")
-                    ParseBlock(q.explanation, explanationImages = q.explanationImages, bankId = q.bankId)
+                    ParseBlock(q.explanation)
                 }
             }
         }

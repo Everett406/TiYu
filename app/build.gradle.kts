@@ -21,7 +21,7 @@ android {
         // 一眼能分清手上装的是哪一版。
         versionCode = if (providers.gradleProperty("tiyuPreview").orNull == "true") 92 else 109
         versionName = if (providers.gradleProperty("tiyuPreview").orNull == "true")
-            "2.19.52-preview" else "2.19.52"
+            "2.19.53-preview" else "2.19.53"
         // v2.12.1：只留 ARM 双架构（模拟器 x86 系无真机价值）
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }

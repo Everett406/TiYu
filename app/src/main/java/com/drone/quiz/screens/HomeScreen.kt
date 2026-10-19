@@ -477,7 +477,20 @@ fun HomeScreen(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
                         )
-                        // 图例：柱的含义随模式切换（题量 / 得分），折线始终是正确率
+                        // v2.19.53：切换按钮挪到标题行右侧。
+                        // 原先它独占一整行（下面那个 132dp 的分段开关），
+                        // 而这卡横向宽度本来就吃紧——用户明确要求收成一个按钮。
+                        ChartModeSwitch(
+                            examMode = examMode,
+                            onChange = { examMode = it }
+                        )
+                    }
+                    // v2.19.53：图例让位给切换按钮，下移一行。
+                    // 图例：柱的含义随模式切换（题量 / 得分），折线始终是正确率
+                    Row(
+                        Modifier.padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             Modifier
                                 .size(8.dp)
@@ -496,15 +509,6 @@ fun HomeScreen(
                         )
                         Text(" 正确率", color = ui.textSub, fontSize = 11.sp)
                     }
-                    // v2.19.50：切换按钮。
-                    // 原先这里有个恒为「本题库」的标签——但这卡的数据本来就
-                    // 已经按题库隔离，无论切到哪个库它都写着「本题库」，
-                    // 等于一句废话。位置让给真正有用的模式切换。
-                    ChartModeSwitch(
-                        examMode = examMode,
-                        onChange = { examMode = it },
-                        modifier = Modifier.padding(top = 10.dp)
-                    )
 
                     val examPoints = stats.exams.toExamChartPoints()
                     val points = if (examMode) examPoints else stats.days.toChartPoints()
@@ -866,48 +870,35 @@ private fun ChartModeSwitch(
     modifier: Modifier = Modifier
 ) {
     val ui = LocalUi.current
-    val labels = listOf("练习", "模考")
-    val selected = if (examMode) 1 else 0
-    val width = 132.dp
-    val segW = width / 2
-    val pillX by animateDpAsState(
-        targetValue = segW * selected,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = 520f),
-        label = "chartMode"
-    )
+    // v2.19.53：从「两段滑动开关」改成**单个按钮，点一下翻到另一个**。
+    // 用户口径：两个并排的分段开关要占 132dp，这卡的横向宽度不够，
+    // 挤到图例甚至挤到标题。所以只留一个按钮，显示当前模式，
+    // 点一下在「练习 ⇄ 模考」之间来回切。
+    val label = if (examMode) "模考" else "练习"
     Row(
         modifier
-            .width(width)
-            .height(26.dp)
             .clip(RoundedCornerShape(50))
-            .background(ui.ink.copy(alpha = if (ui.isDark) 0.22f else 0.07f))
+            .background(ui.ink)
+            .clickable(
+                interactionSource = null,
+                indication = null
+            ) { onChange(!examMode) }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .offset(x = pillX + 2.dp, y = 2.dp)
-                .size(width = segW - 4.dp, height = 22.dp)
-                .clip(RoundedCornerShape(50))
-                .background(ui.ink)
+        Icon(
+            if (examMode) AppIcons.Timer else AppIcons.Cards,
+            null,
+            tint = ui.onInk,
+            modifier = Modifier.size(13.dp)
         )
-        labels.forEachIndexed { i, label ->
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(26.dp)
-                    .clickable(
-                        interactionSource = null,
-                        indication = null
-                    ) { onChange(i == 1) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    label,
-                    color = if (i == selected) ui.onInk else ui.textSub,
-                    fontSize = 11.sp,
-                    fontWeight = if (i == selected) FontWeight.SemiBold else FontWeight.Medium
-                )
-            }
-        }
+        Spacer(Modifier.width(5.dp))
+        Text(
+            label,
+            color = ui.onInk,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

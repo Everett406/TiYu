@@ -1708,7 +1708,7 @@ private fun ExamQuestionCard(
                         " · 正确答案：${q.correctAnswerText(brief = true)}"
                     )
                     // 打乱生效时不显示解析：解析文字绑定的是原始选项字母
-                    if (!hideExplanation) ParseBlock(q.explanation, explanationImages = q.explanationImages, bankId = q.bankId)
+                    if (!hideExplanation) ParseBlock(q.explanation)
                 }
             }
         }
@@ -1912,6 +1912,8 @@ private fun ExamShortSection(
                 yourText = ua?.text.orEmpty(),
                 graded = ua.graded,
                 selfCorrect = if (ua.graded) ua.picked == 1 else null,
+                referenceImages = q.explanationImages,
+                bankId = q.bankId,
                 onGrade = { correct ->
                     onAnswer(ua.copy(picked = if (correct) 1 else 0, graded = true))
                 }

@@ -469,7 +469,7 @@ private fun SearchResultItem(
 
             // 解析交给共用的 ParseBlock：默认折叠、点开逐字「对焦」揭示。
             // 与刷题页/模考页/错题本完全同一套观感与交互，全 app 只此一份实现。
-            ParseBlock(q.explanation, autoOpen = true, explanationImages = q.explanationImages, bankId = q.bankId)
+            ParseBlock(q.explanation, autoOpen = true)
         }
     }
     }

@@ -1616,24 +1616,41 @@ for _tok, _why in [
         print("[FAIL] 产品页 demo：%s（缺 %r）" % (_why, _tok))
         fail = True
 
-# ── 解析图片（v2.19.52）─────────────────────────────────────────
-# 作图题的答案本身就是一张图。它必须藏在**折叠的解析**里：
-# 用户主动点「查看解析」才展开 → 作答前看不到答案。
-# 填错列（把答案图放进「图片」列）= 答案显示在题干下方 = 直接剧透。
+def _fn_body(src, sig):
+    """取出某个顶层 Composable/函数从签名到其**顶格**右花括号之间的正文。
+
+    不能找 '\n}\n'——函数体内每个嵌套 lambda / if 都会先撞上，
+    切出来的片段根本不完整，后面的 index 比较全都会误判。
+    """
+    i = src.index(sig)
+    j = src.index("\n}\n", i)
+    # 剥掉注释再返回：否则注释里出现的「你的回答」「解析图片」等字样
+    # 会被下面的 index 比较当成真实代码命中（自身就把自己判失败）。
+    body = src[i:j]
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    body = re.sub(r"//[^\n]*", "", body)
+    return body
+
+
+# ── 解析图片 / 答案图（v2.19.52 / v2.19.53）──────────────────────────
+# 作图题的答案本身就是一张图。它必须出现在**作答前看不见**的位置：
+#   · ShortReferenceCard（参考答案框）—— 只在提交后渲染 ✓
+#   · 不能放 ParseBlock 里 —— 解析一展开就跟着图，且逐字浮现的文字会叠图
+#   · 更不能放「图片」列 —— 显示在题干下方，作答前就剧透
 _qf = load("app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
 _rp = load("app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
 _qb = load("app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
 _bi = load("app/src/main/java/com/drone/quiz/screens/BankImportSheet.kt")
 
-# 1) 解析图片列必须与题目图列分开存在
+# 1) CSV 里「解析图片」列必须与题目图列分开存在
 if "解析图片" not in _qf:
-    print("[FAIL] 解析图片：CSV 里没有「解析图片」列的识别（作图题的答案图无处安放）")
+    print("[FAIL] 答案图：CSV 里没有「解析图片」列的识别（作图题的答案图无处安放）")
     fail = True
 
 # 2) 落盘必须同时包含题目图与解析图。
-#    只落题目图 = 解析图在 App 里永远加载不出来（这正是本轮修掉的 bug）。
+#    只落题目图 = 解析图在 App 里永远加载不出来（这正是 v2.19.52 修掉的 bug）。
 if "it.images + it.explanationImages" not in _rp:
-    print("[FAIL] 解析图片：importParsedBank 落盘时必须带上 explanationImages，"
+    print("[FAIL] 答案图：importParsedBank 落盘时必须带上 explanationImages，"
           "否则解析图不会写进 bank_images/<bankId>/，展开解析是空图")
     fail = True
 
@@ -1641,66 +1658,140 @@ if "it.images + it.explanationImages" not in _rp:
 _ent = load("app/src/main/java/com/drone/quiz/data/db/Entities.kt")
 _db = load("app/src/main/java/com/drone/quiz/data/db/AppDatabase.kt")
 if "explanationImages" not in _ent:
-    print("[FAIL] 解析图片：QuestionEntity 缺 explanationImages 列")
+    print("[FAIL] 答案图：QuestionEntity 缺 explanationImages 列")
     fail = True
 if "MIGRATION_5_6" not in _db or "version = 6" not in _db:
-    print("[FAIL] 解析图片：缺 MIGRATION_5_6 或 DB version 未升到 6")
+    print("[FAIL] 答案图：缺 MIGRATION_5_6 或 DB version 未升到 6")
     fail = True
 if "explanationImages" not in _db:
-    print("[FAIL] 解析图片：迁移里没有 ALTER TABLE 加 explanationImages 列")
+    print("[FAIL] 答案图：迁移里没有 ALTER TABLE 加 explanationImages 列")
     fail = True
 
-# 4) 解析图只在展开后出现：ParseBlock 必须把图放在 AnimatedVisibility(open) 内部，
-#    且默认 autoOpen=false（作答前不展开 = 不剧透）。
-if "explanationImages: List<String> = emptyList()" not in _qb:
-    print("[FAIL] 解析图片：ParseBlock 缺 explanationImages 参数")
+# 4) 答案图渲染在 ShortReferenceCard，且在「你的回答」之上
+if "referenceImages: List<String> = emptyList()" not in _qb:
+    print("[FAIL] 答案图：ShortReferenceCard 缺 referenceImages 参数")
     fail = True
-if "ExplanationImageBlock" not in _qb:
-    print("[FAIL] 解析图片：缺 ExplanationImageBlock 组件")
+_rc = _fn_body(_qb, "fun ShortReferenceCard(")
+if "ExpandableQuestionImage" not in _rc:
+    print("[FAIL] 答案图：ShortReferenceCard 内没有渲染图片")
     fail = True
+if _rc.index("ExpandableQuestionImage") > _rc.index("你的回答"):
+    print("[FAIL] 答案图：图须排在「你的回答」之上（用户口径：紧跟参考答案文字，"
+          "在作答记录下面）")
+    fail = True
+# 4b) 「见解析图」文字与图必须合成**同一个块**（v2.19.53 用户口径：
+#     「把图片放在见解析图同一个块里面去」）。裸图贴在文字下面会被看成
+#     两样不相干的东西，必须有容器把文字+图圈成一个整体。
+#     注意不能用「函数体里有没有 RoundedCornerShape(12.dp)」来判——同一函数内
+#     「答对了/答错了」按钮也用 12dp 圆角，去掉容器照样命中，守卫就成了摆设。
+#     正确的判据：reference 文本**自身**被 clip+background+border 包着。
+_ri = _rc.index("ExpandableQuestionImage")
+_ref_txt = _rc.rfind("reference,", 0, _ri)
+_head = _rc[max(0, _ref_txt - 800):_ref_txt + 80] if _ref_txt > 0 else ""
+for _need in [".clip(", ".background(", ".border("]:
+    if _need not in _head:
+        print("[FAIL] 答案图：「见解析图」与图须包进**同一个块**（用户口径："
+              "把图片放在见解析图同一个块里面去），缺 %s 的容器就是裸图贴文字" % _need)
+        fail = True
+if _ri < _ref_txt:
+    print("[FAIL] 答案图：图须排在「见解析图」文字之后（现在顺序反了）")
+    fail = True
+
+# 5) 答案图不得再出现在 ParseBlock 里（v2.19.53：会和逐字浮现的文字叠在一起）
+_pb_i = _qb.index("fun ParseBlock(")
+_pb = _fn_body(_qb, "fun ParseBlock(")
+for _bad, _why in [
+    ("explanationImages", "答案图已改放 ShortReferenceCard，ParseBlock 不该再收图"),
+    ("ExpandableQuestionImage", "答案图已改放 ShortReferenceCard，ParseBlock 不该再画图"),
+]:
+    if _bad in _pb:
+        print("[FAIL] 答案图：ParseBlock 内仍有 %r —— %s" % (_bad, _why))
+        fail = True
+
+# 6) 解析默认折叠：autoOpen=false 是「作答前不剧透」的根基
 if "autoOpen: Boolean = false" not in _qb:
-    print("[FAIL] 解析图片：ParseBlock 的 autoOpen 默认值必须是 false——"
+    print("[FAIL] 解析：ParseBlock 的 autoOpen 默认值必须是 false——"
           "解析默认折叠是「作答前不剧透」的根基，改成 true 等于把答案亮出来")
     fail = True
 
-# 5) 六处调用点都要传 explanationImages + bankId，否则解析图永远不显示
+# 7) 两处 ShortReferenceCard 调用都要传答案图，否则简答/作图题永远看不到答案图
 for _f, _why in [
     ("app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt", "刷题"),
     ("app/src/main/java/com/drone/quiz/screens/ExamScreens.kt", "模考"),
-    ("app/src/main/java/com/drone/quiz/screens/SearchScreen.kt", "搜索"),
 ]:
     _c = load(_f)
-    if "explanationImages = q.explanationImages" not in _c:
-        print("[FAIL] 解析图片：%s（%s）调用 ParseBlock 时没传 explanationImages" % (_f.split('/')[-1], _why))
+    if "referenceImages = q.explanationImages" not in _c:
+        print("[FAIL] 答案图：%s（%s）调用 ShortReferenceCard 时没传 referenceImages" % (_f.split('/')[-1], _why))
         fail = True
     if "bankId = q.bankId" not in _c:
-        print("[FAIL] 解析图片：%s（%s）调用 ParseBlock 时没传 bankId（图片路径要靠它定位）" % (_f.split('/')[-1], _why))
+        print("[FAIL] 答案图：%s（%s）没传 bankId（图片路径要靠它定位）" % (_f.split('/')[-1], _why))
         fail = True
 
-# 6) 导入规范必须讲清两列的区别（写在提示词/模板里，不在 App 界面摆说明）
+# 8) 六处 ParseBlock 调用保持原状（共用组件收敛的架构不变量）
+for _f, _min in [
+    ("screens/PracticeScreen.kt", 4),
+    ("screens/ExamScreens.kt", 1),
+    ("screens/SearchScreen.kt", 1),
+]:
+    _c = load(_repo_root + "/app/src/main/java/com/drone/quiz/" + _f)
+    if _c.count("ParseBlock(") < _min:
+        print("[FAIL] %s 应经由共用的 ParseBlock 渲染解析（找到 %d 处，少于 %d）"
+              % (_f, _c.count("ParseBlock("), _min))
+        fail = True
+
+# 9) 导入规范必须讲清两列的区别（写在提示词/模板里，不在 App 界面摆说明）
 if "解析图片" not in _bi:
-    print("[FAIL] 解析图片：导入模板/提示词里没有「解析图片」的说明")
+    print("[FAIL] 答案图：导入模板/提示词里没有「解析图片」的说明")
     fail = True
 if "解析默认" not in _bi and "默认是折叠" not in _bi:
-    print("[FAIL] 解析图片：导入规范必须写明「解析默认折叠、用户主动展开才看到答案图」")
+    print("[FAIL] 答案图：导入规范必须写明「解析默认折叠、用户主动展开才看到」")
     fail = True
 
-# 7) 模板表头必须同时有「图片」和「解析图片」两列，且不能合成一列
+# 10) 模板表头必须同时有「图片」和「解析图片」两列，且不能合成一列
 _tpl = ""
 for _line in _bi.split("\n"):
     if _line.startswith("题号,题型,题干"):
         _tpl = _line
         break
 if _tpl:
-    if "图片" not in _tpl or "解析图片" not in _tpl:
-        print("[FAIL] 解析图片：CSV 模板表头须同时含「图片」和「解析图片」两列，实际：%r" % _tpl)
-        fail = True
     _cols = _tpl.split(",")
+    if "图片" not in _cols or "解析图片" not in _cols:
+        print("[FAIL] 答案图：CSV 模板表头须同时含「图片」和「解析图片」两列，实际：%r" % _tpl)
+        fail = True
     if _cols.count("解析图片") != 1:
-        print("[FAIL] 解析图片：CSV 模板表头里「解析图片」列应恰好 1 个")
+        print("[FAIL] 答案图：CSV 模板表头里「解析图片」列应恰好 1 个")
         fail = True
 else:
-    print("[FAIL] 解析图片：找不到 CSV 模板表头")
+    print("[FAIL] 答案图：找不到 CSV 模板表头")
+    fail = True
+
+# ── 首页图表卡：练习/模考切换（v2.19.53）───────────────────────────
+# 用户口径：两个并排的分段开关要 132dp，这卡横向宽度不够（挤到图例、挤到标题）。
+# 收成**单个按钮**，点一下在练习 ⇄ 模考之间翻面，挪到标题行右侧。
+_hm = load("app/src/main/java/com/drone/quiz/screens/HomeScreen.kt")
+_hs_i = _hm.index("private fun ChartModeSwitch(")
+_hs = _fn_body(_hm, "private fun ChartModeSwitch(")
+for _bad, _why in [
+    ("animateDpAsState", "不许再做成左右滑动的分段开关（宽度不够）"),
+    (".weight(1f)", "不该再有左右两个可点的分段"),
+    ("listOf(\"练习\", \"模考\")", "不该再并排渲染两个标签"),
+]:
+    if _bad in _hs:
+        print("[FAIL] 图表切换：ChartModeSwitch 内仍有 %r —— %s" % (_bad, _why))
+        fail = True
+for _must, _why in [
+    ("onChange(!examMode)", "单个按钮点一下翻面"),
+    ('if (examMode) "模考" else "练习"', "按钮上要显示当前模式"),
+]:
+    if _must not in _hs:
+        print("[FAIL] 图表切换：ChartModeSwitch 缺 %r —— %s" % (_must, _why))
+        fail = True
+# 按钮必须在标题行里（图例已下移一行）
+_hm_call = _hm.index("ChartModeSwitch(")
+_hm_title = _hm.rindex('if (examMode) "模考走势" else "近 7 天练习"', 0, _hm_call)
+_hm_legend = _hm.index('" 正确率"', _hm_call)
+if not (_hm_title < _hm_call < _hm_legend):
+    print("[FAIL] 图表切换：按钮必须在标题行右侧、图例之前（用户口径：移到右上角）")
     fail = True
 
 # （新检查段请加在这段注释上方。）
