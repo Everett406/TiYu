@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WrongBookEntity::class,
         StreakLogEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -138,6 +138,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 → v6（v2.19.52 解析图片）：questions +explanationImages 列。
+         * 照 v3→v4 / v4→v5 已验证模式：ADD COLUMN 带 DEFAULT 0，
+         * 实体声明一致的 @ColumnInfo(defaultValue = "")——两侧对齐 Room 逐列校验。
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `questions` ADD COLUMN `explanationImages` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -146,7 +157,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v2 起使用新库文件名，规避旧版本残留数据库的 schema 校验冲突
                     "drone_quiz_v2.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

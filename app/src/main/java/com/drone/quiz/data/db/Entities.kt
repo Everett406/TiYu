@@ -19,7 +19,10 @@ data class QuestionEntity(
     val explanation: String,
     val bankId: String = "drone",     // 所属题库（v2.8.0 多题库）
     val answerText: String = "",      // blank：各空答案（|| 分隔空，| 分隔同空可接受变体）；short：参考答案
-    val images: String = ""           // v2.8.5：题目图片文件名 JSON 数组（文件存于 bank_images/<bankId>/）
+    val images: String = "",          // v2.8.5：题目图片文件名 JSON 数组（文件存于 bank_images/<bankId>/）
+    // v2.19.52：**解析**里的图片（JSON 数组，同目录）。作图题的答案本身就是一张图
+    // （电路图 / 流程图 / 几何作图），只能放解析——放「图片」列会在作答前剧透。
+    @ColumnInfo(defaultValue = "") val explanationImages: String = ""
 )
 
 /** 题库登记表（v2.8.0）：内置题库（assets 播种）与导入题库统一管理。 */

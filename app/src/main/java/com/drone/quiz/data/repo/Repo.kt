@@ -34,7 +34,10 @@ data class Question(
     val answer: Int,           // single/judge：下标；multi：位掩码
     val answerText: String,    // blank：各空答案（|| 分空、| 分变体）；short：参考答案
     val explanation: String,
-    val images: List<String> = emptyList() // v2.8.5：题目图片文件名（存于 bank_images/<bankId>/）
+    val images: List<String> = emptyList(), // v2.8.5：题目图片文件名（存于 bank_images/<bankId>/）
+    // v2.19.52：解析里的图片。作图题的答案本身就是一张图，只能放解析——
+    // 放 images 会在作答前把答案露出来。
+    val explanationImages: List<String> = emptyList()
 ) {
     val isJudge: Boolean get() = type == QuestionTypes.JUDGE
 
@@ -289,7 +292,9 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         val savedNames = HashMap<String, String>()   // key = 引用名小写
         if (images.isNotEmpty()) {
             val taken = mutableSetOf<String>()
-            preview.ok.flatMap { it.images }.distinct().forEach { ref ->
+            // 题目图 + 解析图都要落盘（v2.19.52）。
+            // 漏掉解析图 = 作图题的答案图在 App 里永远加载不出来。
+            preview.ok.flatMap { it.images + it.explanationImages }.distinct().forEach { ref ->
                 val key = ref.lowercase()
                 val bytes = images[key] ?: return@forEach
                 savedNames[key] = QuestionImages.saveBankImage(appContext, bankId, ref, bytes, taken)
@@ -307,7 +312,10 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
                 explanation = p.explanation,
                 bankId = bankId,
                 answerText = p.answerText,
-                images = json.encodeToString(p.images.map { savedNames[it.lowercase()] ?: it })
+                images = json.encodeToString(p.images.map { savedNames[it.lowercase()] ?: it }),
+                explanationImages = json.encodeToString(
+                    p.explanationImages.map { savedNames[it.lowercase()] ?: it }
+                )
             )
         }
         db.withTransaction {
@@ -400,7 +408,10 @@ class Repo(private val db: AppDatabase, private val appContext: Context) {
         answer = answer,
         answerText = answerText,
         explanation = explanation,
-        images = runCatching { json.decodeFromString<List<String>>(images) }.getOrDefault(emptyList())
+        images = runCatching { json.decodeFromString<List<String>>(images) }.getOrDefault(emptyList()),
+        explanationImages = runCatching {
+            json.decodeFromString<List<String>>(explanationImages)
+        }.getOrDefault(emptyList())
     )
 
     /**

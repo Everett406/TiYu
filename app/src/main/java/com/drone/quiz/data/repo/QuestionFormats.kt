@@ -145,7 +145,10 @@ data class ParsedQuestion(
     val answerText: String,   // blank / short
     val explanation: String,
     val id: Long? = null,     // JSON 内置题库可指定稳定 id
-    val images: List<String> = emptyList() // v2.8.5：题目图片（ZIP 内的规范文件名，按引用顺序）
+    val images: List<String> = emptyList(), // v2.8.5：题目图片（ZIP 内的规范文件名，按引用顺序）
+    // v2.19.52：**解析**里的图片。作图题的答案本身就是一张图（电路图 / 流程图 /
+    // 几何作图），只能放在解析里——放「图片」列会在作答前剧透答案。
+    val explanationImages: List<String> = emptyList()
 )
 
 /** ZIP 导入结果：题目预览 + 图片字节表（key = 文件名小写）+ 唯一 CSV 名。 */
@@ -186,8 +189,9 @@ object BankImport {
      * └─ images/           ← 图片文件夹可选；图片也允许在任意层级
      *     └─ 1.png ...
      * ```
-     * CSV 新增「图片」列填文件名（忽略大小写匹配），多图用 | 分隔。
-     * 仅被题目引用到的图片会随题库落盘；其余文件（说明等）忽略。
+     * CSV 的「图片」列填文件名（忽略大小写匹配），多图用 | 分隔；
+     * 「解析图片」列同理（v2.19.52，作图题的答案图走这里）。
+     * 仅被引用到的图片会随题库落盘；其余文件（说明等）忽略。
      */
     fun parseZip(zipBytes: ByteArray): ZipImportResult {
         val csvEntries = mutableListOf<Pair<String, ByteArray>>()
@@ -229,7 +233,10 @@ object BankImport {
         if (text.startsWith("\uFEFF")) text = text.removePrefix("\uFEFF")
         val preview = parseCsvText(text, imageIndex)
         require(preview.ok.isNotEmpty() || preview.errors.isNotEmpty()) { "没有解析到任何题目" }
-        val used = preview.ok.flatMap { it.images }.map { it.lowercase() }.toSet()
+        // 解析里的图同样要落盘（作图题的答案图就在解析里）
+        val used = preview.ok
+            .flatMap { it.images + it.explanationImages }
+            .map { it.lowercase() }.toSet()
         return ZipImportResult(preview, csvName, imageBytes.filterKeys { it in used })
     }
 
@@ -288,6 +295,9 @@ object BankImport {
         val iExpl = colOf(listOf("解析", "答案解析", "Explanation"))
         val iNote = colOf(listOf("备注", "Note"))
         val iImg = colOf(listOf("图片", "配图", "插图", "image", "images", "picture"))
+        // v2.19.52：解析图片单独一列。刻意不与「图片」列合并——
+        // 合并会让作图题在作答前就把答案图露出来。
+        val iExplImg = colOf(listOf("解析图片", "解析图", "解析配图", "explanation_image", "explanationImage"))
         // 选项列：选项A…选项H（兼容 A/optionA 写法）
         val optionCols = IntArray(8) { -1 }
         header.forEachIndexed { idx, h ->
@@ -331,7 +341,31 @@ object BankImport {
                 }
                 imageRefs.map { imageIndex[it.lowercase()]!! }.distinct()
             }
-            handleParsedRaw(lineNo, no, rawType, stem, opts, ansRaw, expl, resolvedImages, ok, errors)
+            // v2.19.52：解析图片（作图题的答案图走这里，作答前不剧透）
+            val explImgRefs = if (iExplImg >= 0) {
+                cell(iExplImg).split('|', '；', ';').map { it.trim() }.filter { it.isNotEmpty() }
+            } else emptyList()
+            val resolvedExplImages = when {
+                explImgRefs.isEmpty() -> emptyList()
+                imageIndex == null -> {
+                    errors.add(
+                        "第 $lineNo 行：填了解析图片「${explImgRefs.first()}」——带图片的题库需打包 ZIP（题目 CSV + 图片）导入"
+                    )
+                    return@forEachIndexed
+                }
+                else -> {
+                    val missing = explImgRefs.filter { it.lowercase() !in imageIndex }
+                    if (missing.isNotEmpty()) {
+                        errors.add(
+                            "第 $lineNo 行：解析图片「${missing.first()}」在压缩包中未找到（文件名需与 ZIP 内图片一致）"
+                        )
+                        return@forEachIndexed
+                    }
+                    explImgRefs.map { imageIndex[it.lowercase()]!! }.distinct()
+                }
+            }
+            handleParsedRaw(lineNo, no, rawType, stem, opts, ansRaw, expl, resolvedImages,
+                ok, errors, resolvedExplImages)
         }
         return ImportPreview(ok, errors, ok.map { it.category }.distinct().sorted())
     }
@@ -347,7 +381,8 @@ object BankImport {
         explanation: String,
         images: List<String> = emptyList(),
         ok: MutableList<ParsedQuestion>,
-        errors: MutableList<String>
+        errors: MutableList<String>,
+        explanationImages: List<String> = emptyList()
     ) {
         val type = normalizeType(rawType)
             ?: run { errors.add("第 $lineNo 行（题号 $no）：无法识别题型「$rawType」"); return }
@@ -359,7 +394,8 @@ object BankImport {
                 if (it.size < 2) errors.add("第 $lineNo 行（题号 $no）：多选题答案需至少两个选项（如 ABD）")
             }
         }
-        buildParsed(lineNo, type, "未分类", stem, opts, ansSupplier, answersSupplier, { ansRaw }, explanation, images, ok, errors)
+        buildParsed(lineNo, type, "未分类", stem, opts, ansSupplier, answersSupplier,
+            { ansRaw }, explanation, images, ok, errors, explanationImages)
     }
 
     private fun buildParsed(
@@ -374,20 +410,21 @@ object BankImport {
         explanation: String,
         images: List<String> = emptyList(),
         ok: MutableList<ParsedQuestion>,
-        errors: MutableList<String>
+        errors: MutableList<String>,
+        explanationImages: List<String> = emptyList()
     ) {
         when (type) {
             QuestionTypes.SINGLE, QuestionTypes.JUDGE -> {
                 if (opts.size < 2) { errors.add("第 $lineNo 处：${QuestionTypes.label(type)}题至少需要 2 个选项"); return }
                 val a = answer() ?: return // 错误已在 parseAnswerIndex 内记录
-                ok.add(ParsedQuestion(category, type, stem, opts, a, "", explanation, images = images))
+                ok.add(ParsedQuestion(category, type, stem, opts, a, "", explanation, images = images, explanationImages = explanationImages))
             }
             QuestionTypes.MULTI -> {
                 if (opts.size < 3) { errors.add("第 $lineNo 处：多选题至少需要 3 个选项"); return }
                 val list = answers() ?: return
                 if (list.size < 2) return // 错误已记录
                 val mask = list.fold(0) { acc, i -> acc or (1 shl i) }
-                ok.add(ParsedQuestion(category, type, stem, opts, mask, "", explanation, images = images))
+                ok.add(ParsedQuestion(category, type, stem, opts, mask, "", explanation, images = images, explanationImages = explanationImages))
             }
             QuestionTypes.BLANK -> {
                 val ansText = answerText()
@@ -399,12 +436,12 @@ object BankImport {
                     errors.add("第 $lineNo 处：填空题空位数（$blanksInStem）与答案空数（$blanksInAns）不一致（多空用 || 分隔）")
                     return
                 }
-                ok.add(ParsedQuestion(category, type, stem, emptyList(), 0, ansText, explanation, images = images))
+                ok.add(ParsedQuestion(category, type, stem, emptyList(), 0, ansText, explanation, images = images, explanationImages = explanationImages))
             }
             QuestionTypes.SHORT -> {
                 val ansText = answerText()
                 if (ansText.isBlank()) { errors.add("第 $lineNo 处：简答题需要参考答案（自评判分的对照）"); return }
-                ok.add(ParsedQuestion(category, type, stem, emptyList(), 0, ansText, explanation, images = images))
+                ok.add(ParsedQuestion(category, type, stem, emptyList(), 0, ansText, explanation, images = images, explanationImages = explanationImages))
             }
         }
     }

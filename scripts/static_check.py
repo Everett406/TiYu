@@ -595,7 +595,7 @@ _vpos = _exam.find("ResultHeader(")
 _opos = _exam.find("OptionRow(")
 if _vpos < 0 or (_opos > 0 and _vpos < _opos):
     print("[FAIL] 判定结果与解析须排在作答区**之后**（用户反馈『排版上把解析放到了前面』）"); fail = True
-if "ParseBlock(q.explanation)" not in _exam:
+if "ParseBlock(q.explanation" not in _exam:
     print("[FAIL] 考试页解析须用共用 ParseBlock（与刷题页同构）"); fail = True
 
 # v2.19.19：即时判定开关必须真的生效；设置项副标题一律单行
@@ -1148,9 +1148,9 @@ if "explanationOpen" in _sc2:
 #      其余五处用默认折叠态。
 _qb3 = load(_repo_root + "/app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
 for _tok, _why in [
-    ("fun ParseBlock(explanation: String, autoOpen: Boolean = false)",
-     "ParseBlock 须有 autoOpen 参数（搜索页解析随卡片展开，不需要独立按钮）"),
-    ("var open by remember(explanation) { mutableStateOf(autoOpen) }",
+    ("autoOpen: Boolean = false",
+     "ParseBlock 须有 autoOpen 参数且默认 false（搜索页解析随卡片展开，不需要独立按钮）"),
+    ("mutableStateOf(autoOpen)",
      "解析须默认折叠（用户口径：无论考试还是刷题都不该默认摊开）"),
     ("查看解析", "折叠态须有可点的展开入口"),
     # ── v2.19.42 用户回归：容器暴涨 + 吐字抖动 + 看不到对焦效果 ──
@@ -1615,6 +1615,93 @@ for _tok, _why in [
     if _tok not in _site:
         print("[FAIL] 产品页 demo：%s（缺 %r）" % (_why, _tok))
         fail = True
+
+# ── 解析图片（v2.19.52）─────────────────────────────────────────
+# 作图题的答案本身就是一张图。它必须藏在**折叠的解析**里：
+# 用户主动点「查看解析」才展开 → 作答前看不到答案。
+# 填错列（把答案图放进「图片」列）= 答案显示在题干下方 = 直接剧透。
+_qf = load("app/src/main/java/com/drone/quiz/data/repo/QuestionFormats.kt")
+_rp = load("app/src/main/java/com/drone/quiz/data/repo/Repo.kt")
+_qb = load("app/src/main/java/com/drone/quiz/screens/common/QuestionBody.kt")
+_bi = load("app/src/main/java/com/drone/quiz/screens/BankImportSheet.kt")
+
+# 1) 解析图片列必须与题目图列分开存在
+if "解析图片" not in _qf:
+    print("[FAIL] 解析图片：CSV 里没有「解析图片」列的识别（作图题的答案图无处安放）")
+    fail = True
+
+# 2) 落盘必须同时包含题目图与解析图。
+#    只落题目图 = 解析图在 App 里永远加载不出来（这正是本轮修掉的 bug）。
+if "it.images + it.explanationImages" not in _rp:
+    print("[FAIL] 解析图片：importParsedBank 落盘时必须带上 explanationImages，"
+          "否则解析图不会写进 bank_images/<bankId>/，展开解析是空图")
+    fail = True
+
+# 3) 数据库必须有该列 + 迁移（改表必须递增 version 并加 MIGRATION）
+_ent = load("app/src/main/java/com/drone/quiz/data/db/Entities.kt")
+_db = load("app/src/main/java/com/drone/quiz/data/db/AppDatabase.kt")
+if "explanationImages" not in _ent:
+    print("[FAIL] 解析图片：QuestionEntity 缺 explanationImages 列")
+    fail = True
+if "MIGRATION_5_6" not in _db or "version = 6" not in _db:
+    print("[FAIL] 解析图片：缺 MIGRATION_5_6 或 DB version 未升到 6")
+    fail = True
+if "explanationImages" not in _db:
+    print("[FAIL] 解析图片：迁移里没有 ALTER TABLE 加 explanationImages 列")
+    fail = True
+
+# 4) 解析图只在展开后出现：ParseBlock 必须把图放在 AnimatedVisibility(open) 内部，
+#    且默认 autoOpen=false（作答前不展开 = 不剧透）。
+if "explanationImages: List<String> = emptyList()" not in _qb:
+    print("[FAIL] 解析图片：ParseBlock 缺 explanationImages 参数")
+    fail = True
+if "ExplanationImageBlock" not in _qb:
+    print("[FAIL] 解析图片：缺 ExplanationImageBlock 组件")
+    fail = True
+if "autoOpen: Boolean = false" not in _qb:
+    print("[FAIL] 解析图片：ParseBlock 的 autoOpen 默认值必须是 false——"
+          "解析默认折叠是「作答前不剧透」的根基，改成 true 等于把答案亮出来")
+    fail = True
+
+# 5) 六处调用点都要传 explanationImages + bankId，否则解析图永远不显示
+for _f, _why in [
+    ("app/src/main/java/com/drone/quiz/screens/PracticeScreen.kt", "刷题"),
+    ("app/src/main/java/com/drone/quiz/screens/ExamScreens.kt", "模考"),
+    ("app/src/main/java/com/drone/quiz/screens/SearchScreen.kt", "搜索"),
+]:
+    _c = load(_f)
+    if "explanationImages = q.explanationImages" not in _c:
+        print("[FAIL] 解析图片：%s（%s）调用 ParseBlock 时没传 explanationImages" % (_f.split('/')[-1], _why))
+        fail = True
+    if "bankId = q.bankId" not in _c:
+        print("[FAIL] 解析图片：%s（%s）调用 ParseBlock 时没传 bankId（图片路径要靠它定位）" % (_f.split('/')[-1], _why))
+        fail = True
+
+# 6) 导入规范必须讲清两列的区别（写在提示词/模板里，不在 App 界面摆说明）
+if "解析图片" not in _bi:
+    print("[FAIL] 解析图片：导入模板/提示词里没有「解析图片」的说明")
+    fail = True
+if "解析默认" not in _bi and "默认是折叠" not in _bi:
+    print("[FAIL] 解析图片：导入规范必须写明「解析默认折叠、用户主动展开才看到答案图」")
+    fail = True
+
+# 7) 模板表头必须同时有「图片」和「解析图片」两列，且不能合成一列
+_tpl = ""
+for _line in _bi.split("\n"):
+    if _line.startswith("题号,题型,题干"):
+        _tpl = _line
+        break
+if _tpl:
+    if "图片" not in _tpl or "解析图片" not in _tpl:
+        print("[FAIL] 解析图片：CSV 模板表头须同时含「图片」和「解析图片」两列，实际：%r" % _tpl)
+        fail = True
+    _cols = _tpl.split(",")
+    if _cols.count("解析图片") != 1:
+        print("[FAIL] 解析图片：CSV 模板表头里「解析图片」列应恰好 1 个")
+        fail = True
+else:
+    print("[FAIL] 解析图片：找不到 CSV 模板表头")
+    fail = True
 
 # （新检查段请加在这段注释上方。）
 # ============================================================

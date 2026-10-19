@@ -421,10 +421,18 @@ fun YourAnswerLine(text: String) {
  * @param autoOpen 默认 false（折叠）。传 true 可让特定场景直接展开。
  */
 @Composable
-fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
+fun ParseBlock(
+    explanation: String,
+    autoOpen: Boolean = false,
+    // v2.19.52：解析里的图（作图题的答案图）。与 explanationImages 分开传，
+    // 是为了让本组件不依赖 Question / 数据层，保持可在任意上下文复用。
+    explanationImages: List<String> = emptyList(),
+    bankId: String = ""
+) {
     val ui = LocalUi.current
-    var open by remember(explanation) { mutableStateOf(autoOpen) }
-    val hasText = explanation.isNotBlank()
+    var open by remember(explanation, explanationImages) { mutableStateOf(autoOpen) }
+    // 只有图、没有文字的解析也是有效的（答案本身就是一张图）
+    val hasText = explanation.isNotBlank() || explanationImages.isNotEmpty()
 
     Column(
         Modifier
@@ -489,10 +497,73 @@ fun ParseBlock(explanation: String, autoOpen: Boolean = false) {
         ) {
             RevealText(
                 text = explanation,
+                // 有图时给个短延迟：文字先逐字浮现，图随后淡入。
+                // 图没法参与逐字动画，硬一起播会显得突兀。
                 modifier = Modifier.padding(top = 6.dp)
             )
+            if (explanationImages.isNotEmpty() && bankId.isNotBlank()) {
+                ExplanationImageBlock(
+                    images = explanationImages,
+                    bankId = bankId,
+                    textDurationMs = revealDurationMs(explanation)
+                )
+            }
         }
     }
+}
+
+/**
+ * 解析里的图（v2.19.52）。
+ *
+ * 出现的时机：**文字逐字浮现结束后**再淡入——
+ * 图片没法拆成「一个字一个字」，跟文字同时播会像卡了一下。
+ *
+ * 默认折叠：**不自动展开**。作图题的答案往往就是这张图，作答前露出来等于剧透；
+ * 用户必须主动点「查看解析」才能看到。这与文字解析的行为一致。
+ */
+@Composable
+private fun ExplanationImageBlock(
+    images: List<String>,
+    bankId: String,
+    textDurationMs: Long,
+    modifier: Modifier = Modifier
+) {
+    val ui = LocalUi.current
+    val context = LocalContext.current
+    val shown = remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(textDurationMs + 120)
+        shown.value = true
+    }
+    AnimatedVisibility(
+        visible = shown.value,
+        enter = fadeIn(tween(260)) + expandVertically(tween(240)),
+        exit = fadeOut(tween(120)) + shrinkVertically(tween(160))
+    ) {
+        Column(
+            modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "参考答案图",
+                color = ui.textSub, fontSize = 10.sp
+            )
+            images.forEach { name ->
+                ExpandableQuestionImage(
+                    path = remember(bankId, name) { QuestionImages.resolve(context, bankId, name) }
+                )
+            }
+        }
+    }
+}
+
+/** 逐字浮现的总时长（与 RevealText 的时钟同源，供图片错开） */
+private fun revealDurationMs(text: String): Long {
+    if (text.isEmpty()) return 0L
+    val last = (text.length - 1) * (1000f / REVEAL_CPS) + ENTRY_MS
+    return last.toLong().coerceAtLeast(0L)
 }
 
 /**
