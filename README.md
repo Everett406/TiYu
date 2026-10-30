@@ -10,7 +10,7 @@
 
 **纯离线的刷题 App** · Jetpack Compose · 液态玻璃 UI
 
-[![Release](https://img.shields.io/github/v/release/Everett406/TiYu?style=flat-square)](https://github.com/Everett406/TiYu/releases)
+[![Release](https://img.shields.io/github/v/release/Everett406/TiYu?style=flat-square)](https://gitee.com/Everett5678/TiYu/releases)
 [![Build APK](https://github.com/Everett406/TiYu/actions/workflows/build.yml/badge.svg)](https://github.com/Everett406/TiYu/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/Everett406/TiYu?style=flat-square)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Android%2012%2B-3DDC84?style=flat-square)
@@ -18,9 +18,9 @@
 
 🌐 **[产品页 everett406.github.io/TiYu](https://everett406.github.io/TiYu/)**
 
-⬇️ **[下载最新 APK](https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk)**（约 36 MB，固定名直链，永远指向最新正式版）
+⬇️ **[下载最新 APK](https://gitee.com/Everett5678/TiYu/releases/download/v2.19.53/TiYu-latest.apk)**（约 36 MB，固定名直链，永远指向最新正式版）
 
-[全部版本与更新日志](https://github.com/Everett406/TiYu/releases) · [问题反馈](https://github.com/Everett406/TiYu/issues)
+[全部版本与更新日志](https://gitee.com/Everett5678/TiYu/releases) · [问题反馈](https://gitee.com/Everett5678/TiYu/issues)
 
 </div>
 
@@ -134,7 +134,7 @@
 
 ### 安装步骤
 
-1. 从 [Releases](https://github.com/Everett406/TiYu/releases/latest) 下载最新 `TiYu-x.y.z.apk`；
+1. 从 [Releases](https://gitee.com/Everett5678/TiYu/releases/tag/v2.19.53) 下载最新 `TiYu-x.y.z.apk`；
 2. 直接安装。**v2.0.2 起所有版本使用同一固定签名，之后升级均可直接覆盖安装，无需卸载旧版**；
    - 若从 v2.0.x 旧签名版本升级，需先卸载一次旧版（签名不同导致）；
 3. 首次启动若提示未知来源，按系统引导授权即可。
@@ -477,7 +477,7 @@ Checkout → JDK 21(Temurin) → Gradle Setup
 
 **产品页**：[https://everett406.github.io/TiYu/](https://everett406.github.io/TiYu/)，由 `site/` 目录经 `git subtree split` 发布到 `gh-pages` 分支。
 
-- 固定名资产 `TiYu-latest.apk` 让 `[releases/latest/download/TiYu-latest.apk](https://github.com/Everett406/TiYu/releases/latest/download/TiYu-latest.apk)` 成为**永不过期的直链**，页面与任何外部引用都不必跟着版本号改；仅正式版更新它，preview/draft 不抢「最新」这个位置；
+- 固定名资产 `TiYu-latest.apk` 让 `[releases/latest/download/TiYu-latest.apk](https://gitee.com/Everett5678/TiYu/releases/download/v2.19.53/TiYu-latest.apk)` 成为**永不过期的直链**，页面与任何外部引用都不必跟着版本号改；仅正式版更新它，preview/draft 不抢「最新」这个位置；
 - **版本号由 CI 写入 `site/version.json`**，页面同源读取。不能用 `fetch('https://github.com/.../releases/latest')` 再读 `r.url` ——那是跨域请求 GitHub 的 HTML 页，GitHub 不返回 `Access-Control-Allow-Origin`，浏览器会按 CORS 直接拦掉，站点永远读不到版本号（v2.19.43 修）。
 
 - workflow 配置了 `paths-ignore: ['**.md']`：**只改 Markdown 文档的提交不会触发构建**，避免同版本号 tag 重复发布；
